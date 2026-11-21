@@ -7,7 +7,16 @@ import { today, addDays, dow, nowStr, uid, anorm, lvD, kv, kvSet, geoQuery, CORS
 
 export const KEY = 'stav', NAME = 'Pazemes stāvvietu mazgāšana', KIND = 'stav_mazg';
 const WEATHER = [], MAX_INT = 400;
-export const DEF_CFG = {"interval": 180, "maxQty": 6000, "season": ["01-01", "12-31"], "workdays": [1, 2, 3, 4, 5], "rainMm": 99, "wetDays": 0, "frostC": -50, "noticeDays": 5, "photoReq": true, "veidi": ["Grīda nomazgāta", "Notekas iztīrītas", "Sienas / kolonnas", "Atkritumi savākti"]};
+export const DEF_CFG = {"interval": 180, "maxQty": 6000, "season": ["01-01", "12-31"], "workdays": [1, 2, 3, 4, 5], "rainMm": 99, "wetDays": 0, "frostC": -50, "noticeDays": 5, "photoReq": true, "veidi": ["Grīda nomazgāta", "Notekas iztīrītas", "Sienas / kolonnas", "Atkritumi savākti"], "photoBefore": true, "laiksNo": "08:00", "laiksLidz": "16:00", "zina": "Cienījamie iedzīvotāji! {datums} no {no} līdz {lidz} notiks pazemes stāvvietas mazgāšana. Lūdzam līdz {no} izbraukt ar automašīnām no stāvvietas. Paldies par sapratni! SIA SELECTUM HOME"};
+
+/* ---------- Stāvvietu specifika ---------- */
+export const NOTEKAS = ['Kārtībā', 'Aizsērējušas', 'Ūdens uz grīdas'];
+const int = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(+v || 0)));
+const str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+const hm = (v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '')) ? String(v) : '';
+function cleanReq(d) { d = d || {}; return { limeni: int(d.limeni, 0, 10) }; }
+function cleanObj(d) { d = d || {}; return { limeni: int(d.limeni, 1, 10) || 1, vieta: str(d.vieta, 120) }; }
+function cleanDone(d) { d = d || {}; return { limeni: (Array.isArray(d.limeni) ? d.limeni : []).map(Number).filter(x => x >= 1 && x <= 10).slice(0, 10), auto: str(d.auto, 300), notekas: NOTEKAS.indexOf(d.notekas) !== -1 ? d.notekas : '' }; }
 
 async function cfgOf(db) { return Object.assign({}, DEF_CFG, (await kv(db, 'stav:cfg')) || {}); }
 const log = (db, t) => db.prepare('INSERT INTO stav_log (laiks, teksts) VALUES (?, ?)').bind(nowStr(), String(t).slice(0, 300));
@@ -42,8 +51,9 @@ export function plan(objs, visits, cfg, wx, t) {
   plans.filter(v => v.datums >= t && v.datums <= addDays(t, 3) && C.workdays.indexOf(dow(v.datums)) !== -1 && badWx(C, wx, v.datums)).forEach(v => {
     const why = badWx(C, wx, v.datums), d = firstDay(addDays(v.datums, 1), qOf[v.anorm] || 0); moves.push({ id: v.id, datums: d, why: why + ' ' + lvD(v.datums) }); v.datums = d; v.prio = 1; });
   plans.filter(v => v.datums >= t).forEach(v => addLoad(v.datums, v.anorm));
-  const lastDone = {}; visits.filter(v => v.statuss === 'done').forEach(v => { if (!lastDone[v.anorm] || v.datums > lastDone[v.anorm]) lastDone[v.anorm] = v.datums; });
-  const hasPlan = new Set(plans.filter(v => v.datums >= t).map(v => v.anorm));
+  const sched = visits.filter(v => v.avots !== 'pieteikums');   // vienreizēji pieteikumi intervālu neietekmē
+  const lastDone = {}; sched.filter(v => v.statuss === 'done').forEach(v => { if (!lastDone[v.anorm] || v.datums > lastDone[v.anorm]) lastDone[v.anorm] = v.datums; });
+  const hasPlan = new Set(sched.filter(v => v.statuss === 'plan' && v.datums >= t).map(v => v.anorm));
   const earliest = addDays(t, C.noticeDays || 0);
   objs.filter(o => (+o.qty > 0) && !hasPlan.has(o.anorm))
     .map(o => ({ o, due: lastDone[o.anorm] ? addDays(lastDone[o.anorm], +o.intervals || C.interval) : t }))
@@ -60,7 +70,7 @@ export function plan(objs, visits, cfg, wx, t) {
 export async function schedule(db) {
   const C = await cfgOf(db), t = today(), wx = (await kv(db, 'wx')) || {};
   const objs = (await db.prepare('SELECT s.anorm, o.adrese, s.qty, s.intervals, s.brigade FROM stav_obj s JOIN objects o ON o.anorm = s.anorm WHERE s.aktivs = 1').all()).results || [];
-  const visits = (await db.prepare("SELECT id, anorm, datums, statuss, prio FROM stav_visit WHERE statuss = 'plan' OR (statuss = 'done' AND datums >= ?)").bind(addDays(t, -800)).all()).results || [];
+  const visits = (await db.prepare("SELECT id, anorm, datums, statuss, prio, avots FROM stav_visit WHERE statuss = 'plan' OR (statuss = 'done' AND datums >= ?)").bind(addDays(t, -800)).all()).results || [];
   const r = plan(objs, visits, C, wx, t), st = [];
   const adrOf = {}; objs.forEach(o => adrOf[o.anorm] = o.adrese); const vOf = {}; visits.forEach(v => vOf[v.id] = v);
   r.moves.forEach(m => { st.push(db.prepare('UPDATE stav_visit SET datums = ?, prio = 1, parcelts = parcelts + 1 WHERE id = ?').bind(m.datums, m.id));
@@ -113,9 +123,9 @@ export async function api(request, env, X, fetchWx) {
   try {
     if (a === 'boot') {
       const t = today(), from = b.from || addDays(t, -7), to = b.to || addDays(t, 21);
-      const objects = (await db.prepare('SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, o.piekluve, s.qty, s.intervals, s.aktivs, s.brigade, s.piezime, s.veidi, s.lat, s.lng FROM objects o LEFT JOIN stav_obj s ON s.anorm = o.anorm ORDER BY o.ord').all()).results || [];
+      const objects = (await db.prepare('SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, o.piekluve, s.qty, s.intervals, s.aktivs, s.brigade, s.piezime, s.veidi, s.dati, s.lat, s.lng FROM objects o LEFT JOIN stav_obj s ON s.anorm = o.anorm ORDER BY o.ord').all()).results || [];
       if (ROLE_W[role] < 1) objects.forEach(o => { o.piekluve = ''; });
-      let visits = (await db.prepare('SELECT * FROM stav_visit WHERE datums >= ? AND datums <= ? ORDER BY datums, prio DESC, adrese').bind(from, to).all()).results || [];
+      let visits = (await db.prepare("SELECT * FROM stav_visit WHERE (datums >= ? AND datums <= ?) OR (avots = 'pieteikums' AND statuss = 'plan') ORDER BY datums, steidzami DESC, prio DESC, adrese").bind(from, to).all()).results || [];
       if (me.company) visits = visits.filter(v => !v.brigade || v.brigade === me.name);   // SIA redz savus darbus
       const last = (await db.prepare("SELECT anorm, MAX(datums) d FROM stav_visit WHERE statuss = 'done' GROUP BY anorm").all()).results || [];
       const logs = ROLE_W[role] < 2 ? [] : ((await db.prepare('SELECT laiks, teksts FROM stav_log ORDER BY id DESC LIMIT 30').all()).results || []);
@@ -125,11 +135,11 @@ export async function api(request, env, X, fetchWx) {
     }
     if (a === 'month') {
       const ym = String(b.ym || today().slice(0, 7)).slice(0, 7);
-      const visits = (await db.prepare('SELECT id, anorm, adrese, datums, statuss, prio, parcelts, foto, izpilditajs, laiks, iemesls, pazinots FROM stav_visit WHERE substr(datums, 1, 7) = ? ORDER BY datums').bind(ym).all()).results || [];
+      const visits = (await db.prepare('SELECT id, anorm, adrese, datums, statuss, prio, parcelts, foto, izpilditajs, laiks, iemesls, pazinots, avots, steidzami FROM stav_visit WHERE substr(datums, 1, 7) = ? ORDER BY datums').bind(ym).all()).results || [];
       return out({ ok: true, visits });
     }
     if (a === 'obj') {
-      const hist = (await db.prepare('SELECT id, datums, statuss, laiks, izpilditajs, foto, iemesls, piezime, parcelts FROM stav_visit WHERE anorm = ? ORDER BY datums DESC LIMIT 40').bind(anorm(b.anorm || b.adrese)).all()).results || [];
+      const hist = (await db.prepare('SELECT id, datums, statuss, laiks, sakums, izpilditajs, foto, foto_pirms, iemesls, piezime, parcelts, avots, apraksts, izpilde FROM stav_visit WHERE anorm = ? ORDER BY datums DESC LIMIT 40').bind(anorm(b.anorm || b.adrese)).all()).results || [];
       return out({ ok: true, hist });
     }
     if (a === 'geo') { need('vaditajs'); return out(Object.assign({ ok: true }, await geocode(db, 12))); }
@@ -139,13 +149,43 @@ export async function api(request, env, X, fetchWx) {
       for (const o of list) {
         const k = anorm(o.adrese || o.anorm); if (!k) continue;
         const act = !(o.aktivs === false || o.aktivs === 0), br = String(o.brigade || '').slice(0, 80);
-        st.push(db.prepare('INSERT INTO stav_obj (anorm, qty, intervals, aktivs, brigade, piezime, veidi) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET qty = excluded.qty, intervals = excluded.intervals, aktivs = excluded.aktivs, brigade = excluded.brigade, piezime = excluded.piezime, veidi = excluded.veidi')
+        st.push(db.prepare('INSERT INTO stav_obj (anorm, qty, intervals, aktivs, brigade, piezime, veidi, dati) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET qty = excluded.qty, intervals = excluded.intervals, aktivs = excluded.aktivs, brigade = excluded.brigade, piezime = excluded.piezime, veidi = excluded.veidi, dati = excluded.dati')
           .bind(k, Math.max(0, Math.min(1e6, +o.qty || 0)), Math.max(1, Math.min(MAX_INT, Math.round(+o.intervals || C.interval))), act ? 1 : 0, br, String(o.piezime || '').slice(0, 300),
-            (Array.isArray(o.veidi) ? o.veidi : String(o.veidi || '').split(',')).map(x => String(x).trim()).filter(x => (C.veidi || []).indexOf(x) !== -1).join(',')));
-        st.push(act ? db.prepare("UPDATE stav_visit SET brigade = ? WHERE anorm = ? AND statuss = 'plan'").bind(br, k) : db.prepare("DELETE FROM stav_visit WHERE anorm = ? AND statuss = 'plan'").bind(k));
+            (Array.isArray(o.veidi) ? o.veidi : String(o.veidi || '').split(',')).map(x => String(x).trim()).filter(x => (C.veidi || []).indexOf(x) !== -1).join(','), JSON.stringify(cleanObj(o.dati))));
+        st.push(act ? db.prepare("UPDATE stav_visit SET brigade = ? WHERE anorm = ? AND statuss = 'plan'").bind(br, k) : db.prepare("DELETE FROM stav_visit WHERE anorm = ? AND statuss = 'plan' AND avots != 'pieteikums'").bind(k));
       }
       for (let i = 0; i < st.length; i += 90) await db.batch(st.slice(i, i + 90));
       return out(Object.assign({ ok: true }, await schedule(db)));
+    }
+    if (a === 'request') {   // vienreizējs pieteikums ārpus grafika
+      need('vaditajs');
+      const k = anorm(b.adrese); const o = k && await db.prepare('SELECT adrese FROM objects WHERE anorm = ?').bind(k).first(); if (!o) throw new Error('Izvēlieties adresi no saraksta');
+      const t = today(), d = /^\d{4}-\d{2}-\d{2}$/.test(b.datums || '') && b.datums >= t ? b.datums : t, term = /^\d{4}-\d{2}-\d{2}$/.test(b.termins || '') ? b.termins : '';
+      const id = uid(), C = await cfgOf(db);
+      await db.batch([db.prepare("INSERT INTO stav_visit (id, anorm, adrese, datums, brigade, avots, termins, steidzami, apraksts, dati, prio, pieteica, laiks_no, laiks_lidz, izveidots) VALUES (?, ?, ?, ?, ?, 'pieteikums', ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(id, k, o.adrese, d, String(b.brigade || '').slice(0, 80), term, b.steidzami ? 1 : 0, String(b.apraksts || '').slice(0, 500), JSON.stringify(cleanReq(b.dati)), b.steidzami ? 1 : 0, me.name, String(b.laiksNo || C.laiksNo || '').slice(0, 5), String(b.laiksLidz || C.laiksLidz || '').slice(0, 5), nowStr()),
+        log(db, me.name + ' pieteica: ' + o.adrese + ' (' + lvD(d) + (b.steidzami ? ', steidzami' : '') + ')')]);
+      return out({ ok: true, id });
+    }
+    if (a === 'editReq') {   // pieteikuma vai izbraukuma datums, laiks, izpildītājs
+      need('vaditajs');
+      const v = await db.prepare('SELECT * FROM stav_visit WHERE id = ?').bind(String(b.id || '')).first(); if (!v || v.statuss === 'done') throw new Error('Nav atrasts vai jau izpildīts');
+      const d = /^\d{4}-\d{2}-\d{2}$/.test(b.datums || '') ? b.datums : v.datums, hmv = (x, y) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(x || '')) ? x : y;
+      await db.batch([db.prepare('UPDATE stav_visit SET datums = ?, laiks_no = ?, laiks_lidz = ?, brigade = ?, apraksts = ?, steidzami = ? WHERE id = ?')
+        .bind(d, hmv(b.laiksNo, v.laiks_no), hmv(b.laiksLidz, v.laiks_lidz), b.brigade != null ? String(b.brigade).slice(0, 80) : v.brigade, b.apraksts != null ? String(b.apraksts).slice(0, 500) : v.apraksts, b.steidzami != null ? (b.steidzami ? 1 : 0) : v.steidzami, v.id)]);
+      return out({ ok: true });
+    }
+    if (a === 'start') {
+      need('izpilditajs');
+      const v = await db.prepare('SELECT id, sakums FROM stav_visit WHERE id = ?').bind(String(b.id || '')).first(); if (!v) throw new Error('Nav atrasts — atjaunojiet');
+      if (!v.sakums) await db.batch([db.prepare('UPDATE stav_visit SET sakums = ?, izpilditajs = ? WHERE id = ?').bind(nowStr().slice(11), me.name, v.id)]);
+      return out({ ok: true });
+    }
+    if (a === 'report') {   // mēneša kopsavilkums (rēķinam)
+      need('vaditajs');
+      const ym = String(b.ym || today().slice(0, 7)).slice(0, 7);
+      const rows = (await db.prepare("SELECT id, adrese, datums, izpilditajs, brigade, sakums, laiks, izpilde, avots FROM stav_visit WHERE statuss = 'done' AND substr(datums, 1, 7) = ? ORDER BY datums").bind(ym).all()).results || [];
+      return out({ ok: true, rows });
     }
     if (a === 'notice') {   // iedzīvotāji paziņoti (stāvvietām)
       need('vaditajs');
@@ -159,10 +199,13 @@ export async function api(request, env, X, fetchWx) {
       if (v.statuss === 'done') return out({ ok: true, already: true });
       if (a === 'done') {
         const C = await cfgOf(db), photos = (b.photos || []).filter(p => /^data:image\/(jpeg|png|webp);base64,/.test(String(p))).slice(0, 4);
+        const before = (b.photosBefore || []).filter(p => /^data:image\/(jpeg|png|webp);base64,/.test(String(p))).slice(0, 4);
+        if (C.photoBefore && !before.length && !v.foto_pirms) throw new Error('Pievienojiet bildi pirms darba');
         if (C.photoReq && !photos.length) throw new Error('Pievienojiet bildi pēc darba');
         const ids = photos.length ? await X.savePhotos({ datums: v.datums, adrese: NAME + ' · ' + v.adrese }, photos) : [];
-        await db.batch([db.prepare("UPDATE stav_visit SET statuss = 'done', datums = ?, laiks = ?, izpilditajs = ?, foto = ?, piezime = ? WHERE id = ?")
-          .bind(today(), nowStr().slice(11), me.name, ids.join(','), String(b.piezime || '').slice(0, 300), v.id)]);
+        const idsB = before.length ? await X.savePhotos({ datums: v.datums, adrese: NAME + ' · pirms · ' + v.adrese }, before) : [];
+        await db.batch([db.prepare("UPDATE stav_visit SET statuss = 'done', datums = ?, laiks = ?, sakums = CASE WHEN sakums = '' THEN ? ELSE sakums END, izpilditajs = ?, foto = ?, foto_pirms = CASE WHEN ? = '' THEN foto_pirms ELSE ? END, piezime = ?, izpilde = ? WHERE id = ?")
+          .bind(today(), nowStr().slice(11), String(b.sakums || '').slice(0, 5), me.name, ids.join(','), idsB.join(','), idsB.join(','), String(b.piezime || '').slice(0, 300), JSON.stringify(cleanDone(b.izpilde)), v.id)]);
       } else {
         const why = String(b.iemesls || 'Nepaspēja').slice(0, 60), C = await cfgOf(db), wx = (await kv(db, 'wx')) || {};
         const d = nextDay(addDays(v.datums > today() ? v.datums : today(), 1), C, wx);
@@ -174,6 +217,9 @@ export async function api(request, env, X, fetchWx) {
     if (a === 'saveCfg') {
       need('admin'); const c = b.cfg || {}, C = await cfgOf(db), n = Object.assign({}, C);
       const num = (k, lo, hi) => { if (c[k] != null && c[k] !== '' && !isNaN(+c[k])) n[k] = Math.max(lo, Math.min(hi, +c[k])); };
+      if (typeof c.photoBefore === 'boolean') n.photoBefore = c.photoBefore;
+      ['laiksNo', 'laiksLidz'].forEach(k => { if (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(c[k] || ''))) n[k] = c[k]; });
+      if (typeof c.zina === 'string' && c.zina.trim()) n.zina = c.zina.trim().slice(0, 800);
       num('rainMm', 0, 99); num('wetDays', 0, 3); num('maxQty', 1, 1e6); num('interval', 1, MAX_INT); num('frostC', -50, 20); num('noticeDays', 0, 30);
       ['wetDays', 'interval', 'noticeDays'].forEach(k => n[k] = Math.round(n[k]));
       if (typeof c.photoReq === 'boolean') n.photoReq = c.photoReq;
