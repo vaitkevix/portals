@@ -1,3 +1,4 @@
+import { clientsData, saveClient, delClient, report } from './klienti.js';
 import { notify } from './webpush.js';
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
 export const APPS_P = ['aizv', 'izv', 'kais', 'pers', 'budz'];
@@ -175,6 +176,11 @@ export async function portal(request, env, ctx, hooks) {
       await hooks.saved(list);
       return pj({ ok: true, people: await people(env.DB) });
     }
+    /* Klienti un izpildes akti */
+    if (a === 'clients') return pj(Object.assign({ ok: true }, await clientsData(env.DB)));
+    if (a === 'saveClient') { await saveClient(env.DB, b.client || {}); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
+    if (a === 'delClient') { await delClient(env.DB, String(b.id || '')); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
+    if (a === 'clientReport') return pj(Object.assign({ ok: true }, await report(env.DB, String(b.client || ''), String(b.ym || ''))));
     if (hooks.admin) { const r = await hooks.admin(a, b, me); if (r) return pj(r); }
     return pj({ ok: false, error: 'Nezināma darbība' });
   } catch (e) { return pj({ ok: false, error: String(e && e.message || e) }); }

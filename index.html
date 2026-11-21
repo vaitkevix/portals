@@ -124,6 +124,7 @@ button{cursor:pointer}
 .afil{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 12px}
 .afil select{height:40px;border:0;border-radius:999px;background:var(--surface-2);padding:0 12px;font:inherit;font-weight:700;color:var(--ink);max-width:100%}
 .f select.fsel{width:100%;height:46px;border:0;border-radius:16px;background:var(--surface-2);padding:0 14px;font:inherit;font-weight:700;color:var(--ink)}
+.kcen{display:grid;gap:6px}.kc{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border-radius:14px;background:var(--surface-2);font-weight:700;font-size:14px}.kc span{flex:1;min-width:0;display:flex;align-items:center;gap:8px}.kc input{width:90px!important;height:38px!important;text-align:right;border:0;border-radius:10px;background:var(--surface);font:inherit;font-weight:800;padding:0 10px}.kc small{width:64px;color:var(--ink-3);font-weight:700}
 .afil .n{font-size:13px;font-weight:700;color:var(--ink-3);margin-left:4px}
 @media(min-width:900px){.sheet.adm .plist{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .adm-top input{flex:1;height:44px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 14px;outline:none;min-width:0}
@@ -607,7 +608,7 @@ $('menuBtn').onclick = () => {
 };
 
 /* ---------- Administrēšana: cilvēki un pilnvaras + pamatdati (viens saraksts visām lietotnēm) ---------- */
-const TABS = [['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['companies', 'Uzņēmumi'], ['lists', 'Saraksti'], ['review', 'Pārbaudīt']];
+const TABS = [['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['companies', 'Uzņēmumi'], ['lists', 'Saraksti'], ['review', 'Pārbaudīt']];
 const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kaisāmmateriāls)', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
 const KN = { izvedejs: 'Izvedējs', kurjers: 'Kurjers', plausejs: 'Pļāvējs', darba_devejs: 'Darba devējs' };
 /* Darbu izpildītāja (SIA) pilnvaras pa projektiem: projekts → veids */
@@ -700,6 +701,25 @@ function drawAdmin() {
       saveM('saveLists', { lists: L });
     });
   }
+  if (A.tab === 'clients' || A.tab === 'reports') {
+    if (!A.K) { adminShell('<div class="skel"></div>', null); api('clients').then(r => { A.K = r; drawAdmin(); }).catch(e => toast(netMsg(e), 'err')); return; }
+    if (A.tab === 'clients') {
+      const L = A.K.clients.map((c, i) => Object.assign({ i }, c)).filter(c => qm(c.name + ' ' + c.regnr + ' ' + c.objekti.join(' ')));
+      const s = adminShell(`<p class="copy" style="text-align:left;margin:0 0 10px">Klientam piesaistiet objektus un cenas par vienību — tad «Atskaites» saskaita mēneša izpildi un sagatavo izpildes aktu un CSV rēķinam.</p><div class="plist">${L.map(c => `<button class="prow ${c.aktivs ? '' : 'off'}" data-k="${c.i}"><div class="nm"><b>${esc(c.name)}</b>
+        <div class="chips"><span class="chip a">${c.objekti.length} objekti</span>${Object.keys(c.cenas).map(k => `<span class="chip">${esc(A.K.units[k].name)} ${String(c.cenas[k]).replace('.', ',')} €/${esc(A.K.units[k].unit)}</span>`).join('')}${c.regnr ? `<span class="chip">${esc(c.regnr)}</span>` : ''}</div></div>${CHEV}</button>`).join('') || empty()}</div>`, 'Klients');
+      $('pAdd').onclick = () => editClient(-1);
+      s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-k]'); if (r) { remember(); editClient(+r.dataset.k); } };
+      return;
+    }
+    const ym = A.ym || (A.ym = new Date(Date.now() - 864e5 * new Date().getDate() + 864e5).toISOString().slice(0, 7)), [y, m] = ym.split('-').map(Number);
+    const mon = new Date(y, m - 1, 1).toLocaleDateString('lv-LV', { month: 'long', year: 'numeric' });
+    const s = adminShell(`<div class="afil" id="rF"><select id="rC" aria-label="Klients"><option value="">Visi objekti (bez klienta filtra)</option>${A.K.clients.filter(c => c.aktivs).map(c => `<option value="${c.id}" ${A.rc === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+      <button class="btn ghost" data-m="-1" style="width:auto;height:40px;padding:0 14px">‹</button><b style="font-weight:800">${esc(mon)}</b><button class="btn ghost" data-m="1" style="width:auto;height:40px;padding:0 14px">›</button></div><div id="rOut"><div class="skel"></div></div>`, null);
+    const go = async () => { const out = $('rOut'); try { const R = A.R = await api('clientReport', { client: A.rc || '', ym }); out.innerHTML = reportHtml(R); out.querySelector('#rCsv').onclick = () => reportCsv(R); out.querySelector('#rAkts').onclick = () => reportAkts(R); } catch (e) { out.innerHTML = `<p>${esc(netMsg(e))}</p>`; } };
+    s.querySelector('#rC').onchange = (e) => { A.rc = e.target.value; go(); };
+    s.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { A.ym = new Date(Date.UTC(y, m - 1 + +b.dataset.m, 1)).toISOString().slice(0, 7); drawAdmin(); });
+    go(); return;
+  }
   if (A.tab === 'review') {
     const R = A.M.review || [], PR = '  ↔  ';
     const pairs = R.filter(r => String(r[1]).indexOf(PR) >= 0).length, info = R.length - pairs;
@@ -750,6 +770,69 @@ function editObject(i) {
       if (list.some((x, j) => j !== i && x.adrese.toLowerCase() === n.adrese.toLowerCase())) return toast('Šāda adrese jau ir', 'err');
       if (i >= 0) list[i] = n; else list.unshift(n); saveM('saveObjects', { objects: list }, () => sheet('')); },
     i >= 0 ? () => { const list = A.M.objects.slice(); list.splice(i, 1); saveM('saveObjects', { objects: list }, () => sheet('')); } : null);
+}
+/* ---------- Klienti ---------- */
+const eur = (n) => (+n || 0).toLocaleString('lv-LV', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+const num = (n) => (+n || 0).toLocaleString('lv-LV', { maximumFractionDigits: 2 });
+function editClient(i) {
+  const c = i >= 0 ? JSON.parse(JSON.stringify(A.K.clients[i])) : { id: '', name: '', regnr: '', adrese: '', epasts: '', kontakts: '', liguma_nr: '', cenas: {}, objekti: [], aktivs: true };
+  const an = (x) => String(x || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const sel = new Set(c.objekti.map(an)), other = {}; A.K.clients.forEach((x, j) => { if (j !== i) x.objekti.forEach(a => other[an(a)] = x.name); });
+  const GR = [...new Set(A.M.objects.map(o => o.grupa).filter(Boolean))].sort();
+  subSheet(i >= 0 ? c.name : 'Jauns klients', fld('kN', 'Nosaukums', c.name, 'SIA … / biedrība / pašvaldība') +
+    `<div class="row2" style="gap:8px">${fld('kR', 'Reģ. nr.', c.regnr, '4000…')}${fld('kL', 'Līguma nr.', c.liguma_nr, '')}</div>` + fld('kA', 'Juridiskā adrese', c.adrese, '') +
+    `<div class="row2" style="gap:8px">${fld('kE', 'E-pasts', c.epasts, '')}${fld('kK', 'Kontaktpersona', c.kontakts, '')}</div>` +
+    `<div class="f"><label>Cenas par vienību (bez PVN)</label><div class="kcen">${Object.keys(A.K.units).map(k => `<div class="kc"><span>${gl(k, 16)}${esc(A.K.units[k].name)}</span><input data-c="${k}" inputmode="decimal" aria-label="${esc(A.K.units[k].name)} cena" value="${c.cenas[k] != null ? String(c.cenas[k]).replace('.', ',') : ''}" placeholder="—"><small>€/${esc(A.K.units[k].unit)}</small></div>`).join('')}</div></div>` +
+    `<div class="f"><label>Objekti: <b id="kNum">0</b></label><div class="row2" style="gap:8px;margin-bottom:8px"><input type="text" id="kQ" placeholder="Meklēt adresi…" autocomplete="off"><select id="kG" class="fsel" style="max-width:46%"><option value="">+ visa grupa…</option>${GR.map(g => `<option>${esc(g)}</option>`).join('')}</select></div><div id="kList" class="glist"></div></div>` +
+    `<label class="tog">Aktīvs<input type="checkbox" id="kAk" ${c.aktivs ? 'checked' : ''}></label>`,
+    () => { const n = { id: c.id, name: $('kN').value.trim(), regnr: $('kR').value.trim(), liguma_nr: $('kL').value.trim(), adrese: $('kA').value.trim(), epasts: $('kE').value.trim(), kontakts: $('kK').value.trim(), aktivs: $('kAk').checked,
+        cenas: Object.fromEntries([...document.querySelectorAll('.kcen [data-c]')].map(x => [x.dataset.c, x.value.trim()])), objekti: A.M.objects.filter(o => sel.has(an(o.adrese))).map(o => o.adrese) };
+      if (!n.name) return toast('Ierakstiet nosaukumu', 'err');
+      api('saveClient', { client: n }).then(r => { A.K = r; toast('Saglabāts'); sheet(''); drawAdmin(); }).catch(e => toast(netMsg(e), 'err')); },
+    i >= 0 ? () => api('delClient', { id: c.id }).then(r => { A.K = r; toast('Dzēsts'); sheet(''); drawAdmin(); }).catch(e => toast(netMsg(e), 'err')) : null);
+  const draw = () => { const q = an($('kQ').value), L = A.M.objects.filter(o => !q || an(o.adrese).includes(q)).sort((a, b) => sel.has(an(b.adrese)) - sel.has(an(a.adrese))).slice(0, 250);
+    $('kList').innerHTML = L.map(o => `<label class="gpick"><input type="checkbox" data-a="${esc(o.adrese)}" ${sel.has(an(o.adrese)) ? 'checked' : ''}><span>${esc(o.adrese)}${other[an(o.adrese)] && !sel.has(an(o.adrese)) ? `<small>pie: ${esc(other[an(o.adrese)])}</small>` : o.grupa && o.grupa !== 'SH objekti' ? `<small>${esc(o.grupa)}</small>` : ''}</span></label>`).join('') || '<p class="copy">Nekas neatbilst</p>';
+    $('kNum').textContent = sel.size; };
+  $('kQ').oninput = draw;
+  $('kG').onchange = (e) => { const g = e.target.value; if (!g) return; A.M.objects.filter(o => o.grupa === g).forEach(o => sel.add(an(o.adrese))); e.target.value = ''; draw(); };
+  $('kList').onchange = (e) => { const x = e.target.closest('[data-a]'); if (!x) return; const k = an(x.dataset.a); if (x.checked) sel.add(k); else sel.delete(k); $('kNum').textContent = sel.size; };
+  draw();
+}
+function reportHtml(R) {
+  if (!R.rows.length) return '<div class="card" style="padding:18px;text-align:center;font-weight:700;color:var(--ink-3)">Šajā mēnesī nav izpildītu darbu šī klienta objektos</div>';
+  return `<div class="card" style="padding:6px 14px;margin:0 0 10px">${R.sum.map(x => `<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)">${ib(x.app, 16)}<b style="flex:1;font-weight:800">${esc(x.name)}</b><span style="font-weight:700;color:var(--ink-2)">${x.reizes}× · ${num(x.daudz)} ${esc(x.unit)}${x.cena ? ' × ' + String(x.cena).replace('.', ',') + ' €' : ''}</span><b style="min-width:90px;text-align:right">${x.cena ? eur(x.summa) : '—'}</b></div>`).join('')}
+    <div style="display:flex;justify-content:space-between;padding:10px 0;font-weight:800"><span>Kopā bez PVN / PVN 21% / ar PVN</span><span>${eur(R.total)} · ${eur(R.pvn)} · ${eur(R.arPvn)}</span></div></div>
+    <div style="display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap"><button class="btn" id="rAkts" style="width:auto;padding:0 18px">Izpildes akts (drukāt / PDF)</button><button class="btn ghost" id="rCsv" style="width:auto;padding:0 18px">CSV rēķinam</button></div>
+    <div class="plist">${R.rows.slice(0, 200).map(r => `<div class="prow"><div class="nm"><b>${esc(r.adrese)}</b><div class="chips"><span class="chip">${esc(fmtD(r.datums))}</span><span class="chip a">${esc(APPS[r.app] ? APPS[r.app].name : r.app)}</span><span class="chip">${num(r.daudz)} ${esc(A.K.units[r.app].unit)}</span>${r.kas ? `<span class="chip">${esc(r.kas)}</span>` : ''}${r.foto ? '<span class="chip">📷</span>' : ''}</div></div></div>`).join('')}</div>`;
+}
+function reportCsv(R) {
+  const q = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"', n = (v) => String(v).replace('.', ',');
+  const lines = [['Datums', 'Adrese', 'Pakalpojums', 'Daudzums', 'Vienība', 'Cena EUR', 'Summa EUR', 'Izpildītājs', 'Piezīmes'].map(q).join(';')]
+    .concat(R.rows.map(r => [r.datums, r.adrese, A.K.units[r.app].name, n(r.daudz), A.K.units[r.app].unit, n(r.cena || ''), n(r.summa || ''), r.kas, r.piez].map(q).join(';')))
+    .concat(['', ['', '', 'Kopā bez PVN', '', '', '', n(R.total)].map(q).join(';'), ['', '', 'PVN 21%', '', '', '', n(R.pvn)].map(q).join(';'), ['', '', 'Kopā ar PVN', '', '', '', n(R.arPvn)].map(q).join(';')]);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'izpilde-' + (R.client ? R.client.name.replace(/[^\wĀ-ž-]+/g, '_') : 'visi') + '-' + R.ym + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+function reportAkts(R) {
+  const IMGU = 'https://aizvietosana-api.vaitkevix.workers.dev/img?sz=w300&id=', c = R.client || {}, [y, m] = R.ym.split('-').map(Number);
+  const mon = new Date(y, m - 1, 1).toLocaleDateString('lv-LV', { month: 'long', year: 'numeric' }), last = new Date(y, m, 0).toLocaleDateString('lv-LV');
+  const w = window.open('', '_blank'); if (!w) return toast('Atļaujiet uznirstošos logus', 'err');
+  w.document.write(`<!doctype html><html lang="lv"><head><meta charset="utf-8"><title>Izpildes akts · ${esc(c.name || 'visi objekti')} · ${esc(mon)}</title><style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:32px;font-size:12.5px}h1{font-size:22px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 8px}.m{color:#555}
+    table{width:100%;border-collapse:collapse;margin:6px 0}th,td{border:1px solid #bbb;padding:5px 7px;text-align:left;vertical-align:top}th{background:#f1f1f1}td.r,th.r{text-align:right}
+    .ph{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}.ph img{width:86px;height:64px;object-fit:cover;border-radius:4px}.sig{display:flex;gap:60px;margin-top:46px}.sig div{flex:1;border-top:1px solid #111;padding-top:6px}
+    @media print{body{margin:14mm}h2{break-after:avoid}tr{break-inside:avoid}}</style></head><body>
+    <h1>Izpildes akts</h1><div class="m">par ${esc(mon)} · sastādīts ${esc(new Date().toLocaleDateString('lv-LV'))}</div>
+    <table style="margin-top:14px"><tr><th style="width:50%">Izpildītājs</th><th>Pasūtītājs</th></tr><tr><td><b>SIA SELECTUM HOME</b></td><td><b>${esc(c.name || '—')}</b>${c.regnr ? '<br>Reģ. nr. ' + esc(c.regnr) : ''}${c.adrese ? '<br>' + esc(c.adrese) : ''}${c.liguma_nr ? '<br>Līgums Nr. ' + esc(c.liguma_nr) : ''}</td></tr></table>
+    <h2>Kopsavilkums</h2><table><tr><th>Pakalpojums</th><th class="r">Reizes</th><th class="r">Daudzums</th><th class="r">Cena, EUR</th><th class="r">Summa, EUR</th></tr>
+    ${R.sum.map(x => `<tr><td>${esc(x.name)}</td><td class="r">${x.reizes}</td><td class="r">${num(x.daudz)} ${esc(x.unit)}</td><td class="r">${x.cena ? String(x.cena).replace('.', ',') : '—'}</td><td class="r">${x.cena ? eur(x.summa) : '—'}</td></tr>`).join('')}
+    <tr><td colspan="4" class="r"><b>Kopā bez PVN</b></td><td class="r"><b>${eur(R.total)}</b></td></tr><tr><td colspan="4" class="r">PVN 21%</td><td class="r">${eur(R.pvn)}</td></tr><tr><td colspan="4" class="r"><b>Kopā ar PVN</b></td><td class="r"><b>${eur(R.arPvn)}</b></td></tr></table>
+    <h2>Izpildītie darbi</h2><table><tr><th>Datums</th><th>Adrese</th><th>Pakalpojums</th><th class="r">Daudzums</th><th>Izpildītājs, piezīmes, bildes</th></tr>
+    ${R.rows.map(r => `<tr><td>${esc(r.datums.split('-').reverse().join('.'))}</td><td>${esc(r.adrese)}</td><td>${esc(A.K.units[r.app].name)}</td><td class="r">${num(r.daudz)} ${esc(A.K.units[r.app].unit)}</td><td>${esc(r.kas || '')}${r.piez ? '<br><span class="m">' + esc(r.piez) + '</span>' : ''}${r.foto ? `<div class="ph">${String(r.foto).split(',').filter(Boolean).slice(0, 4).map(id => `<img src="${IMGU + encodeURIComponent(id)}" alt="">`).join('')}</div>` : ''}</td></tr>`).join('')}</table>
+    <p class="m">Darbi izpildīti laikā līdz ${esc(last.replace(/\.$/, ''))}. Bildes pirms un pēc darba glabājas SH sistēmā.</p>
+    <div class="sig"><div>Izpildītājs: SIA SELECTUM HOME<br><br>(paraksts, atšifrējums)</div><div>Pasūtītājs: ${esc(c.name || '')}<br><br>(paraksts, atšifrējums)</div></div>
+    <script>setTimeout(()=>print(),800)<\/script></body></html>`);
+  w.document.close();
 }
 function bulkMgr(idx) {
   const mgrs = mgrNames();
