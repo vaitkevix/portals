@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="lv">
+<head>
+<meta charset="utf-8">
+<title>Šodienas pļaušanas plāns</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#17201c}a:hover{color:#4a534f}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #f1f4f2; color: #17201c; font-family: Manrope, system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; position: relative">
+  <div style="flex: 1; overflow: hidden; padding: 20px 16px 0; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <div style="flex: 1">
+        <div style="font-size: 13px; font-weight: 700; color: #6d7672">Otrdiena, 19. maijs</div>
+        <h1 style="margin: 2px 0 0; font-size: 30px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05">Labrīt, Jānis</h1>
+      </div>
+      <button aria-label="Profils" style="width: 48px; height: 48px; border-radius: 50%; border: 0; background: #17201c; color: #fff; font: 800 16px Manrope, sans-serif">JB</button>
+    </div>
+
+    <div style="display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-radius: 24px; background: #d8e6f2">
+      <span style="width: 40px; height: 40px; border-radius: 50%; background: #fff; display: grid; place-items: center; flex: none">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#17201c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 15a4 4 0 1 1 .9-7.9A5.5 5.5 0 0 1 18.5 9 3.5 3.5 0 0 1 17.5 15"/><path d="M9 18l-1 2M13 18l-1 2M17 18l-1 2"/></svg>
+      </span>
+      <div style="flex: 1; min-width: 0">
+        <b style="display: block; font-size: 14px; font-weight: 800">Lietus no 14:00 · 6 mm</b>
+        <span style="display: block; font-size: 12.5px; font-weight: 700; color: #4a534f">3 adreses pārceltas uz trešdienu</span>
+      </div>
+      <a href="Menesis.dc.html" style="font-size: 13px; font-weight: 800; text-decoration: none; padding: 10px 12px; border-radius: 999px; background: #fff">Skatīt</a>
+    </div>
+
+    <div style="padding: 16px 18px 18px; border-radius: 28px; background: #d6e8e1">
+      <div style="display: flex; justify-content: space-between; align-items: baseline">
+        <span style="font-size: 13px; font-weight: 700; color: #4a534f">Šodien nopļauts</span>
+        <span style="font-size: 13px; font-weight: 700; color: #4a534f">2 380 / 5 120 m²</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 4px">
+        <b style="font-size: 44px; font-weight: 800; letter-spacing: -0.03em; line-height: 1">4</b>
+        <span style="font-size: 16px; font-weight: 800; color: #4a534f">no 6 objektiem</span>
+      </div>
+      <div style="height: 8px; border-radius: 999px; background: rgba(23,32,28,0.15); margin-top: 12px; overflow: hidden"><div style="width: 46%; height: 100%; border-radius: 999px; background: #17201c"></div></div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px">
+      <h2 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Maršruts</h2>
+      <a href="Karte.dc.html" style="font-size: 13px; font-weight: 800; text-decoration: none; padding: 10px 14px; border-radius: 999px; background: #fff">Karte</a>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <sc-for list="{{stops}}" as="s" hint-placeholder-count="6">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 22px; background: {{s.bg}}">
+          <span style="width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 14px; font-weight: 800; background: {{s.dotBg}}; color: {{s.dotFg}}">{{s.n}}</span>
+          <div style="flex: 1; min-width: 0">
+            <b style="display: block; font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.adr}}</b>
+            <span style="display: block; font-size: 12.5px; font-weight: 700; color: #4a534f">{{s.sub}}</span>
+          </div>
+          <sc-if value="{{s.isNext}}" hint-placeholder-val="{{false}}">
+            <a href="Izpilde.dc.html" style="flex: none; font-size: 13px; font-weight: 800; text-decoration: none; padding: 11px 16px; border-radius: 999px; background: #17201c; color: #fff">Sākt</a>
+          </sc-if>
+          <sc-if value="{{s.hasChip}}" hint-placeholder-val="{{true}}">
+            <span style="flex: none; font-size: 12px; font-weight: 800; padding: 6px 10px; border-radius: 999px; background: #fff; color: {{s.chipFg}}">{{s.chip}}</span>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <nav style="flex: none; margin: 0 16px 16px; padding: 6px; border-radius: 999px; background: #fff; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; box-shadow: 0 6px 24px -10px rgba(16,32,26,0.35)">
+    <a href="Main.dc.html" style="min-height: 48px; border-radius: 999px; background: #17201c; color: #fff; display: grid; place-items: center; font-size: 13px; font-weight: 800; text-decoration: none">Šodien</a>
+    <a href="Karte.dc.html" style="min-height: 48px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 800; text-decoration: none">Karte</a>
+    <a href="Menesis.dc.html" style="min-height: 48px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 800; text-decoration: none">Grafiks</a>
+    <a href="Objekts.dc.html" style="min-height: 48px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 800; text-decoration: none">Objekti</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const done = { bg: '#fff', dotBg: '#d6e8e1', dotFg: '#17201c', hasChip: true, chip: 'Nopļauts', chipFg: '#2f5d45', isNext: false };
+    const next = { bg: '#fff', dotBg: '#17201c', dotFg: '#fff', hasChip: false, isNext: true };
+    const plan = { bg: '#fff', dotBg: '#f3f5f4', dotFg: '#17201c', hasChip: true, chip: '~ 13:10', chipFg: '#4a534f', isNext: false };
+    const moved = { bg: '#f4e4b4', dotBg: '#fff', dotFg: '#17201c', hasChip: true, chip: 'Pārcelts → Tr', chipFg: '#6b4a00', isNext: false };
+    return {
+      stops: [
+        Object.assign({ n: '1', adr: 'J | Dzintaru prospekts 20', sub: '1 230 m² · 08:10 · 3 bildes' }, done),
+        Object.assign({ n: '2', adr: 'J | Asaru prospekts 53, 57', sub: '640 m² · 09:05 · 2 bildes' }, done),
+        Object.assign({ n: '3', adr: 'J | Ceriņu iela 4, 6', sub: '510 m² · 10:20 · 2 bildes' }, done),
+        Object.assign({ n: '4', adr: 'Dumbrāja iela 29', sub: '0 m² palika · vārti slēgti' }, { bg: '#fff', dotBg: '#f5dbe3', dotFg: '#17201c', hasChip: true, chip: 'Nevar', chipFg: '#8a2a3b', isNext: false }),
+        Object.assign({ n: '5', adr: 'Upeņu iela 15, 17', sub: '980 m² · ~ 40 min' }, next),
+        Object.assign({ n: '6', adr: 'Jūrmalas gatve 74, 74A', sub: '760 m² · ~ 30 min' }, plan),
+        Object.assign({ n: '7', adr: 'Murjāņu iela 151, 153, 155', sub: '1 420 m² · lietus 14:00' }, moved)
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

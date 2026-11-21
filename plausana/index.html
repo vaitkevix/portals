@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="lv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SH | Pļaušana · koncepts</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../icon.png">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<!-- SH | Zāles pļaušana — koncepta apskate (ekrāni no ./*.dc.html, attēlo mazs renderētājs zemāk). © VAITKEVIX, SIA -->
+<style>
+:root{--bg:#f1f4f2;--ink:#17201c;--ink3:#6d7672}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Manrope,system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+.top{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(14px + env(safe-area-inset-top)) 16px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.top a.back{width:44px;height:44px;border-radius:50%;background:#fff;display:grid;place-items:center;flex:none}
+.top h1{margin:0;flex:1;min-width:180px;font-size:22px;font-weight:800;letter-spacing:-.02em}
+.top h1 small{display:block;font-size:12.5px;font-weight:700;color:var(--ink3);letter-spacing:0}
+.tabs{display:flex;gap:6px;flex-wrap:nowrap;padding:6px;border-radius:999px;background:#fff;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.stage a{color:#17201c}.stage a:hover{color:#4a534f}
+@media(max-width:700px){.tabs{flex:1 1 100%}}
+.tabs button{min-height:44px;padding:0 16px;border:0;border-radius:999px;background:transparent;font:800 14px Manrope,sans-serif;color:var(--ink);white-space:nowrap;cursor:pointer}
+.tabs button.on{background:var(--ink);color:#fff}
+.stage{padding:8px 16px 40px;display:flex;justify-content:center}
+.stage.phone>div{border-radius:36px;overflow:hidden;box-shadow:0 20px 50px -24px rgba(16,32,26,.45);max-width:100%}
+.stage.page>div{width:100%;border-radius:28px;overflow:hidden;box-shadow:0 20px 50px -30px rgba(16,32,26,.35)}
+.note{max-width:900px;margin:0 auto;padding:0 16px 40px;font-size:13px;font-weight:700;color:var(--ink3);text-align:center}
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="back" href="../" aria-label="Atpakaļ uz portālu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#17201c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
+  <h1>Zāles pļaušana <small>Koncepts — vēl nestrādā ar īstiem datiem</small></h1>
+  <nav class="tabs" id="tabs"></nav>
+</header>
+<main class="stage" id="stage"></main>
+<p class="note">Skaitļi un datumi ir piemēri. © VAITKEVIX, SIA</p>
+<script>
+/* Ekrāni: [fails, nosaukums, telefons?] */
+const SCREENS = [['Main', 'Šodienas plāns', 1], ['Izpilde', 'Atzīmēt nopļautu', 1], ['Objekts', 'Objekts', 1], ['Menesis', 'Mēneša grafiks', 0], ['Karte', 'Karte', 0], ['Noteikumi', 'Noteikumi', 0]];
+const cache = {};
+class DCLogic { constructor() { this.props = {}; this.state = {}; } setState() {} }
+
+/* {{a.b}} → vērtība no tvēruma */
+const get = (sc, path) => { path = path.trim(); if (path === 'true') return true; if (path === 'false') return false;
+  return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), sc); };
+const fill = (s, sc) => s.replace(/\{\{([^}]+)\}\}/g, (_, p) => { const v = get(sc, p); return v == null ? '' : String(v); });
+
+function renderInto(parent, nodes, sc) {
+  for (const n of nodes) {
+    if (n.nodeType === 3) { parent.appendChild(document.createTextNode(fill(n.nodeValue, sc))); continue; }
+    if (n.nodeType !== 1) continue;
+    const tag = n.tagName.toLowerCase();
+    if (tag === 'helmet' || tag === 'script') continue;
+    if (tag === 'sc-for') { const list = get(sc, n.getAttribute('list').replace(/[{}]/g, '')) || []; const as = n.getAttribute('as');
+      list.forEach((it, i) => renderInto(parent, n.childNodes, Object.assign(Object.create(sc), { [as]: it, $index: i }))); continue; }
+    if (tag === 'sc-if') { if (get(sc, n.getAttribute('value').replace(/[{}]/g, ''))) renderInto(parent, n.childNodes, sc); continue; }
+    const el = document.createElementNS(n.namespaceURI, n.localName);
+    for (const a of n.attributes) {
+      if (a.name.startsWith('hint-')) continue;
+      const whole = /^\{\{([^}]+)\}\}$/.exec(a.value.trim());
+      if (whole && (a.name === 'checked' || a.name === 'disabled')) { if (get(sc, whole[1])) el.setAttribute(a.name, ''); continue; }
+      let v = fill(a.value, sc);
+      if (a.name === 'href' && /\.dc\.html$/.test(v)) v = '#' + v.replace(/\.dc\.html$/, '');
+      el.setAttribute(a.name, v);
+    }
+    renderInto(el, n.childNodes, sc); parent.appendChild(el);
+  }
+}
+
+async function load(name) {
+  if (cache[name]) return cache[name];
+  const html = await (await fetch(name + '.dc.html', { cache: 'no-cache' })).text();
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const code = doc.querySelector('script[data-dc-script]').textContent;
+  const Comp = new Function('DCLogic', code + '\nreturn Component;')(DCLogic);
+  const tpl = doc.querySelector('x-dc');
+  return (cache[name] = { tpl, vals: new Comp().renderVals() });
+}
+
+async function show(name) {
+  const s = SCREENS.find(x => x[0] === name) || SCREENS[0];
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.s === s[0]));
+  const st = document.getElementById('stage'); st.className = 'stage ' + (s[2] ? 'phone' : 'page');
+  const { tpl, vals } = await load(s[0]);
+  st.innerHTML = ''; renderInto(st, tpl.childNodes, vals);
+  scrollTo(0, 0);
+}
+document.getElementById('tabs').innerHTML = SCREENS.map(s => `<button type="button" data-s="${s[0]}">${s[1]}</button>`).join('');
+document.getElementById('tabs').onclick = (e) => { const b = e.target.closest('[data-s]'); if (b) location.hash = b.dataset.s; };
+addEventListener('hashchange', () => show(location.hash.slice(1)));
+show(location.hash.slice(1) || 'Main');
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="lv">
+<head>
+<meta charset="utf-8">
+<title>Pļaušanas mēneša grafiks</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#17201c}a:hover{color:#4a534f}
+</style>
+</helmet>
+<div style="box-sizing: border-box; min-height: 940px; background: #f1f4f2; color: #17201c; font-family: Manrope, system-ui, sans-serif; padding: 32px clamp(16px, 3vw, 40px)">
+  <div style="max-width: 1360px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px">
+      <div style="flex: 1 1 320px">
+        <div style="font-size: 13px; font-weight: 700; color: #6d7672">Zāles pļaušana · grafiks veidojas pats</div>
+        <h1 style="margin: 2px 0 0; font-size: clamp(30px, 4vw, 46px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05">Maijs 2026</h1>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border-radius: 999px; background: #fff">
+        <sc-for list="{{filters}}" as="f" hint-placeholder-count="4">
+          <button type="button" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; font: 800 14px Manrope, sans-serif; background: {{f.bg}}; color: {{f.fg}}">{{f.t}}</button>
+        </sc-for>
+      </div>
+      <a href="Karte.dc.html" style="min-height: 56px; padding: 0 22px; border-radius: 999px; background: #17201c; color: #fff; display: inline-flex; align-items: center; font-size: 15px; font-weight: 800; text-decoration: none">Karte</a>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+      <sc-for list="{{kpis}}" as="k" hint-placeholder-count="4">
+        <div style="padding: 16px 18px; border-radius: 24px; background: {{k.bg}}">
+          <span style="display: block; font-size: 13px; font-weight: 700; color: #4a534f">{{k.l}}</span>
+          <b style="display: block; font-size: clamp(24px, 2.6vw, 34px); font-weight: 800; letter-spacing: -0.03em; margin-top: 4px">{{k.v}}</b>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <div style="flex: 999 1 640px; min-width: 0; padding: 20px; border-radius: 28px; background: #fff">
+        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px">
+          <sc-for list="{{wd}}" as="w" hint-placeholder-count="7">
+            <div style="font-size: 12px; font-weight: 800; color: #6d7672; text-align: center; padding: 4px 0">{{w}}</div>
+          </sc-for>
+          <sc-for list="{{cells}}" as="c" hint-placeholder-count="35">
+            <div style="min-height: 92px; border-radius: 16px; padding: 8px 10px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; background: {{c.bg}}; color: {{c.fg}}; outline: {{c.ring}}; outline-offset: -2px; opacity: {{c.op}}">
+              <div style="display: flex; justify-content: space-between; align-items: center">
+                <b style="font-size: 15px; font-weight: 800">{{c.d}}</b>
+                <span style="font-size: 11px; font-weight: 800">{{c.icon}}</span>
+              </div>
+              <span style="font-size: 12.5px; font-weight: 800">{{c.n}}</span>
+              <span style="font-size: 11.5px; font-weight: 700; opacity: 0.8">{{c.m}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; font-size: 12.5px; font-weight: 700; color: #4a534f">
+          <span style="display: inline-flex; gap: 6px; align-items: center"><i style="width: 14px; height: 14px; border-radius: 4px; background: #d6e8e1"></i>Nopļauts</span>
+          <span style="display: inline-flex; gap: 6px; align-items: center"><i style="width: 14px; height: 14px; border-radius: 4px; background: #f3f5f4"></i>Ieplānots</span>
+          <span style="display: inline-flex; gap: 6px; align-items: center"><i style="width: 14px; height: 14px; border-radius: 4px; background: #d8e6f2"></i>Lietus · pārcelts</span>
+          <span style="display: inline-flex; gap: 6px; align-items: center"><i style="width: 14px; height: 14px; border-radius: 4px; background: #f4e4b4"></i>Saņēma pārceltos</span>
+        </div>
+      </div>
+
+      <aside style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+        <div style="padding: 18px; border-radius: 28px; background: #d8e6f2">
+          <h2 style="margin: 0 0 4px; font-size: 20px; font-weight: 800; letter-spacing: -0.02em">Pārcelts automātiski</h2>
+          <p style="margin: 0 0 10px; font-size: 13px; font-weight: 700; color: #4a534f">Grafiks pats pārbīda adreses — vadītājam jāapstiprina tikai izņēmumi.</p>
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <sc-for list="{{log}}" as="l" hint-placeholder-count="4">
+              <div style="padding: 12px 14px; border-radius: 18px; background: #fff">
+                <div style="display: flex; justify-content: space-between; gap: 8px"><b style="font-size: 14px; font-weight: 800">{{l.t}}</b><span style="font-size: 12px; font-weight: 800; color: #4a534f; white-space: nowrap">{{l.w}}</span></div>
+                <span style="display: block; font-size: 12.5px; font-weight: 700; color: #4a534f; margin-top: 2px">{{l.s}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <a href="Noteikumi.dc.html" style="min-height: 56px; border-radius: 999px; background: #fff; display: grid; place-items: center; font-size: 15px; font-weight: 800; text-decoration: none">Grafika noteikumi</a>
+      </aside>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const today = 19, rain = { 12: 1, 13: 1, 19: 1 }, got = { 14: 1, 15: 1, 20: 1 }, wknd = (d) => [2, 3, 9, 10, 16, 17, 23, 24, 30, 31].indexOf(d) !== -1;
+    const cnt = { 4: 7, 5: 6, 6: 8, 7: 6, 8: 7, 11: 6, 12: 2, 13: 0, 14: 11, 15: 10, 18: 7, 19: 6, 20: 9, 21: 7, 22: 6, 25: 7, 26: 8, 27: 6, 28: 7, 29: 6, 1: 5 };
+    const cells = [];
+    for (let i = 0; i < 4; i++) cells.push({ d: '', n: '', m: '', icon: '', bg: 'transparent', fg: '#17201c', ring: '0', op: 1 });
+    for (let d = 1; d <= 31; d++) {
+      const n = cnt[d] || 0, past = d < today;
+      let bg = wknd(d) ? 'transparent' : past ? '#d6e8e1' : '#f3f5f4', icon = '';
+      if (rain[d]) { bg = '#d8e6f2'; icon = 'lietus'; }
+      if (got[d]) { bg = '#f4e4b4'; icon = '+ pārcelti'; }
+      cells.push({ d: String(d), n: wknd(d) ? '' : n + ' obj.', m: wknd(d) || !n ? '' : (n * 760).toLocaleString('lv-LV') + ' m²', icon,
+        bg, fg: '#17201c', ring: d === today ? '2px solid #17201c' : '0', op: wknd(d) ? 0.55 : 1 });
+    }
+    return {
+      filters: [{ t: 'Visi', bg: '#17201c', fg: '#fff' }, { t: 'Jūrmala', bg: 'transparent', fg: '#17201c' }, { t: 'VNĪ', bg: 'transparent', fg: '#17201c' }, { t: 'Brigāde 1', bg: 'transparent', fg: '#17201c' }],
+      kpis: [{ l: 'Objekti sezonā', v: '128', bg: '#fff' }, { l: 'Nopļauts maijā', v: '74 / 141', bg: '#d6e8e1' }, { l: 'm² maijā', v: '96 400', bg: '#fff' }, { l: 'Pārcelti', v: '19', bg: '#d8e6f2' }],
+      wd: ['P', 'O', 'T', 'C', 'Pk', 'S', 'Sv'],
+      cells,
+      log: [
+        { t: '3 adreses → trešdiena', w: 'šodien 06:00', s: 'Lietus prognoze 6 mm no 14:00 · Murjāņu 151–155, Upeņu 15' },
+        { t: 'Dumbrāja iela 29 → rīt, 1. rindā', w: 'šodien 10:42', s: 'Izpildītājs: vārti slēgti (bilde pievienota)' },
+        { t: '5 adreses → 14. un 15. maijs', w: '12. maijā', s: 'Lietus 12.–13. maijā · slapjš zāliens 24 h' },
+        { t: 'Ceriņu iela 4, 6 → 9. maijs (S)', w: '8. maijā', s: 'Nepaspēja · brigāde pārsniedza 6 000 m²' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="lv">
+<head>
+<meta charset="utf-8">
+<title>Pļaušanas karte</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#17201c}a:hover{color:#4a534f}
+</style>
+</helmet>
+<div style="box-sizing: border-box; min-height: 900px; background: #f1f4f2; color: #17201c; font-family: Manrope, system-ui, sans-serif; padding: 32px clamp(16px, 3vw, 40px)">
+  <div style="max-width: 1360px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px">
+      <div style="flex: 1 1 320px">
+        <div style="font-size: 13px; font-weight: 700; color: #6d7672">Otrdiena, 19. maijs · 2 brigādes</div>
+        <h1 style="margin: 2px 0 0; font-size: clamp(30px, 4vw, 46px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05">Karte</h1>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border-radius: 999px; background: #fff">
+        <sc-for list="{{layers}}" as="f" hint-placeholder-count="4">
+          <button type="button" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; font: 800 14px Manrope, sans-serif; background: {{f.bg}}; color: {{f.fg}}">{{f.t}}</button>
+        </sc-for>
+      </div>
+      <a href="Menesis.dc.html" style="min-height: 56px; padding: 0 22px; border-radius: 999px; background: #17201c; color: #fff; display: inline-flex; align-items: center; font-size: 15px; font-weight: 800; text-decoration: none">Grafiks</a>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch">
+      <figure style="flex: 999 1 640px; min-width: 0; margin: 0; position: relative; height: 680px; border-radius: 28px; overflow: hidden; background: #e7ece4">
+        <svg width="100%" height="100%" viewBox="0 0 900 680" preserveAspectRatio="none" role="img" aria-label="Rīgas un Jūrmalas karte ar šodienas pļaujamajiem objektiem un maršrutu">
+          <rect width="900" height="680" fill="#e7ece4"/>
+          <path d="M0 520 C200 470 300 560 470 500 S760 420 900 450 L900 680 L0 680 Z" fill="#cfe0ea"/>
+          <path d="M640 0 C620 160 700 260 660 420 L690 430 C730 270 650 160 680 0 Z" fill="#cfe0ea"/>
+          <path d="M0 300 L900 250" stroke="#fff" stroke-width="10"/><path d="M180 0 L260 680" stroke="#fff" stroke-width="8"/>
+          <path d="M0 140 L900 180" stroke="#fff" stroke-width="6"/><path d="M460 0 L420 680" stroke="#fff" stroke-width="6"/>
+          <path d="M90 360 L210 330 L330 250 L470 230 L560 300 L740 220" fill="none" stroke="#17201c" stroke-width="4" stroke-dasharray="10 8" stroke-linecap="round"/>
+        </svg>
+        <sc-for list="{{pins}}" as="p" hint-placeholder-count="9">
+          <span style="position: absolute; left: {{p.x}}; top: {{p.y}}; transform: translate(-50%, -50%); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 800; background: {{p.bg}}; color: {{p.fg}}; box-shadow: 0 0 0 3px #fff">{{p.n}}</span>
+        </sc-for>
+        <div style="position: absolute; left: 16px; bottom: 16px; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,0.94); font-size: 12.5px; font-weight: 800">
+          <span style="display: inline-flex; gap: 6px; align-items: center"><i style="width: 12px; height: 12px; border-radius: 50%; background: #3f7d5a"></i>Nopļauts</span>
+          <span style="display: inline-flex; gap: 6px; align-items: center"><i style="width: 12px; height: 12px; border-radius: 50%; background: #17201c"></i>Ieplānots</span>
+          <span style="display: inline-flex; gap: 6px; align-items: center"><i style="width: 12px; height: 12px; border-radius: 50%; background: #c98a00"></i>Pārcelts</span>
+          <span style="display: inline-flex; gap: 6px; align-items: center"><i style="width: 12px; height: 12px; border-radius: 50%; background: #b8435a"></i>Nevar</span>
+        </div>
+      </figure>
+
+      <aside style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+          <sc-for list="{{sum}}" as="s" hint-placeholder-count="3">
+            <div style="padding: 12px 14px; border-radius: 20px; background: {{s.bg}}">
+              <span style="display: block; font-size: 12px; font-weight: 700; color: #4a534f">{{s.l}}</span>
+              <b style="display: block; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">{{s.v}}</b>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding: 8px; border-radius: 28px; background: #fff; display: flex; flex-direction: column; gap: 4px">
+          <sc-for list="{{route}}" as="r" hint-placeholder-count="7">
+            <a href="Objekts.dc.html" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 18px; text-decoration: none">
+              <span style="width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 13px; font-weight: 800; background: {{r.bg}}; color: #fff">{{r.n}}</span>
+              <span style="flex: 1; min-width: 0">
+                <b style="display: block; font-size: 14px; font-weight: 800">{{r.a}}</b>
+                <span style="display: block; font-size: 12.5px; font-weight: 700; color: #4a534f">{{r.s}}</span>
+              </span>
+            </a>
+          </sc-for>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const C = { done: '#3f7d5a', plan: '#17201c', moved: '#c98a00', cant: '#b8435a' };
+    const route = [
+      { n: '1', a: 'J | Dzintaru prospekts 20', s: 'Nopļauts 08:10 · 1 230 m²', bg: C.done, x: '10%', y: '53%' },
+      { n: '2', a: 'J | Asaru prospekts 53, 57', s: 'Nopļauts 09:05 · 640 m²', bg: C.done, x: '23%', y: '49%' },
+      { n: '3', a: 'J | Ceriņu iela 4, 6', s: 'Nopļauts 10:20 · 510 m²', bg: C.done, x: '37%', y: '37%' },
+      { n: '4', a: 'Dumbrāja iela 29', s: 'Nevar · vārti slēgti → rīt', bg: C.cant, x: '45%', y: '22%' },
+      { n: '5', a: 'Upeņu iela 15, 17', s: 'Ieplānots ~ 11:40 · 980 m²', bg: C.plan, x: '52%', y: '34%' },
+      { n: '6', a: 'Jūrmalas gatve 74, 74A', s: 'Ieplānots ~ 13:10 · 760 m²', bg: C.plan, x: '62%', y: '44%' },
+      { n: '7', a: 'Murjāņu iela 151, 153, 155', s: 'Lietus → trešdiena', bg: C.moved, x: '82%', y: '32%' }
+    ];
+    return {
+      layers: [{ t: 'Šodien', bg: '#17201c', fg: '#fff' }, { t: 'Šonedēļ', bg: 'transparent', fg: '#17201c' }, { t: 'Visi objekti', bg: 'transparent', fg: '#17201c' }, { t: 'Teritoriju plāni', bg: 'transparent', fg: '#17201c' }],
+      pins: route.map(r => ({ n: r.n, x: r.x, y: r.y, bg: r.bg, fg: '#fff' })),
+      route,
+      sum: [{ l: 'Maršruts', v: '38 km', bg: '#fff' }, { l: 'Laiks', v: '~ 6 h', bg: '#fff' }, { l: 'Platība', v: '5 120 m²', bg: '#d6e8e1' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

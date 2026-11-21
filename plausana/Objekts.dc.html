@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="lv">
+<head>
+<meta charset="utf-8">
+<title>Objekta kartiņa</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#17201c}a:hover{color:#4a534f}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #f1f4f2; color: #17201c; font-family: Manrope, system-ui, sans-serif; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 10px">
+    <a href="Main.dc.html" aria-label="Atpakaļ" style="width: 44px; height: 44px; border-radius: 50%; background: #fff; display: grid; place-items: center; text-decoration: none; flex: none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#17201c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </a>
+    <div style="flex: 1; min-width: 0">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15">J | Dzintaru prospekts 20</h1>
+      <span style="font-size: 12.5px; font-weight: 700; color: #6d7672">Jūrmala · vadītājs Raimonds</span>
+    </div>
+    <a href="Noteikumi.dc.html" aria-label="Pļaušanas iestatījumi" style="width: 44px; height: 44px; border-radius: 50%; background: #17201c; display: grid; place-items: center; flex: none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+    </a>
+  </div>
+
+  <figure style="margin: 0; position: relative; height: 230px; border-radius: 28px; overflow: hidden; background: #3d5a40">
+    <svg width="358" height="230" viewBox="0 0 358 230" role="img" aria-label="Teritorijas plāns no Google Maps satelīta ar iezīmētām pļaujamām zonām">
+      <rect width="358" height="230" fill="#4a6b47"/>
+      <path d="M0 150 L358 120 L358 140 L0 172 Z" fill="#b9b3a3"/>
+      <path d="M210 0 L232 0 L250 230 L226 230 Z" fill="#b9b3a3"/>
+      <rect x="40" y="36" width="120" height="70" rx="4" fill="#8e8a86"/>
+      <rect x="262" y="24" width="70" height="80" rx="4" fill="#8e8a86"/>
+      <circle cx="190" cy="64" r="14" fill="#2f4a2e"/><circle cx="300" cy="186" r="18" fill="#2f4a2e"/><circle cx="70" cy="196" r="12" fill="#2f4a2e"/>
+      <path d="M20 112 L170 112 L196 150 L20 168 Z" fill="rgba(214,232,225,0.55)" stroke="#d6e8e1" stroke-width="2.5"/>
+      <path d="M244 112 L340 104 L340 214 L254 222 Z" fill="rgba(244,228,180,0.55)" stroke="#f4e4b4" stroke-width="2.5"/>
+    </svg>
+    <span style="position: absolute; left: 30px; top: 124px; font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: #d6e8e1">A · 820 m²</span>
+    <span style="position: absolute; left: 258px; top: 150px; font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: #f4e4b4">B · 410 m²</span>
+    <span style="position: absolute; left: 12px; top: 12px; font-size: 11.5px; font-weight: 800; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.92)">Google Maps satelīts · zīmēt zonas</span>
+  </figure>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+    <sc-for list="{{stats}}" as="s" hint-placeholder-count="4">
+      <div style="padding: 12px 14px; border-radius: 20px; background: {{s.bg}}">
+        <span style="display: block; font-size: 12px; font-weight: 800; color: #4a534f">{{s.l}}</span>
+        <b style="display: block; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px">{{s.v}}</b>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; justify-content: space-between; align-items: baseline">
+    <h2 style="margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.02em">Pēc pļaušanas</h2>
+    <span style="font-size: 12.5px; font-weight: 700; color: #6d7672">12 bildes šosezon</span>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+    <sc-for list="{{photos}}" as="p" hint-placeholder-count="3">
+      <div style="height: 92px; border-radius: 18px; background: {{p.bg}}; position: relative; overflow: hidden">
+        <span style="position: absolute; left: 6px; bottom: 6px; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,0.92)">{{p.d}}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="padding: 4px 14px; border-radius: 22px; background: #fff">
+    <sc-for list="{{hist}}" as="h" hint-placeholder-count="3">
+      <div style="display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; font-size: 13.5px; font-weight: 700; border-bottom: {{h.line}}">
+        <span>{{h.d}}</span><span style="color: {{h.fg}}; font-weight: 800">{{h.s}}</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      stats: [
+        { l: 'Pļaujamā platība', v: '1 230 m²', bg: '#d6e8e1' },
+        { l: 'Intervāls', v: 'ik 10 dienas', bg: '#fff' },
+        { l: 'Nākamā pļaušana', v: 'Pk, 29. maijs', bg: '#fff' },
+        { l: 'Sezona', v: '15.04.–15.10.', bg: '#fff' }
+      ],
+      photos: [{ d: '19.05.', bg: '#6f8f5c' }, { d: '09.05.', bg: '#7a9864' }, { d: '28.04.', bg: '#86a06c' }],
+      hist: [
+        { d: 'Otrdiena, 19. maijs · Jānis B.', s: 'Nopļauts', fg: '#2f5d45', line: '1px solid #eef1ef' },
+        { d: 'Sestdiena, 9. maijs · Jānis B.', s: 'Pārcelts no Pk', fg: '#6b4a00', line: '1px solid #eef1ef' },
+        { d: 'Otrdiena, 28. aprīlis · Ilze T.', s: 'Nopļauts', fg: '#2f5d45', line: '0' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
