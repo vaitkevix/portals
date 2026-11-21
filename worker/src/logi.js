@@ -11,12 +11,14 @@ export const DEF_CFG = {"interval": 180, "maxQty": 300, "season": ["04-01", "10-
 
 /* ---------- Logu mazgāšanas specifika ---------- */
 export const REQ_VEIDI = ['Kāpņu telpu logi', 'Dzīvokļu logi', 'Vitrīnas', 'Fasādes stikli', 'Jumta logi'];
-export const TEHNIKA = ['Nav', 'Pacēlājs', 'Alpīnisti'];
+export const KAS = ['Uzkopēja', 'Brigāde', 'Katošana', 'Alpīnisti'];   // kas mazgā
 const int = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(+v || 0)));
 const str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
-function cleanReq(d) { d = d || {}; return { veidi: (d.veidi || []).filter(x => REQ_VEIDI.indexOf(x) !== -1), stavi: int(d.stavi, 0, 40), tehnika: TEHNIKA.indexOf(d.tehnika) !== -1 ? d.tehnika : 'Nav', logi: int(d.logi, 0, 9999) }; }
-function cleanObj(d) { d = d || {}; return { stavi: int(d.stavi, 0, 40), tehnika: TEHNIKA.indexOf(d.tehnika) !== -1 ? d.tehnika : 'Nav' }; }
-function cleanDone(d) { d = d || {}; return { nomazgati: int(d.nomazgati, 0, 9999), pacelajs_h: Math.max(0, Math.min(24, Math.round((+d.pacelajs_h || 0) * 4) / 4)), bojajumi: str(d.bojajumi, 300) }; }
+const kas = (d) => KAS.indexOf(d.kas) !== -1 ? d.kas : d.tehnika === 'Alpīnisti' ? 'Alpīnisti' : '';   // vecais lauks «tehnika»
+const hrs = (v) => Math.max(0, Math.min(24, Math.round((+v || 0) * 4) / 4));
+function cleanReq(d) { d = d || {}; return { veidi: (d.veidi || []).filter(x => REQ_VEIDI.indexOf(x) !== -1), logi: int(d.logi, 0, 9999), kapnutelpas: int(d.kapnutelpas, 0, 99), stavi: int(d.stavi, 0, 40), kas: kas(d) }; }
+function cleanObj(d) { d = d || {}; return { reizes: int(d.reizes, 0, 52), kapnutelpas: int(d.kapnutelpas, 0, 99), stavi: int(d.stavi, 0, 40), kas: kas(d) }; }
+function cleanDone(d) { d = d || {}; return { nomazgati: int(d.nomazgati, 0, 9999), kapnutelpas: int(d.kapnutelpas, 0, 99), kas: kas(d), stundas: hrs(d.stundas != null ? d.stundas : d.pacelajs_h), bojajumi: str(d.bojajumi, 300) }; }
 
 async function cfgOf(db) { return Object.assign({}, DEF_CFG, (await kv(db, 'logi:cfg')) || {}); }
 const log = (db, t) => db.prepare('INSERT INTO logi_log (laiks, teksts) VALUES (?, ?)').bind(nowStr(), String(t).slice(0, 300));
@@ -52,24 +54,30 @@ export function plan(objs, visits, cfg, wx, t) {
     const why = badWx(C, wx, v.datums), d = firstDay(addDays(v.datums, 1), qOf[v.anorm] || 0); moves.push({ id: v.id, datums: d, why: why + ' ' + lvD(v.datums) }); v.datums = d; v.prio = 1; });
   plans.filter(v => v.datums >= t).forEach(v => addLoad(v.datums, v.anorm));
   const sched = visits.filter(v => v.avots !== 'pieteikums');   // vienreizēji pieteikumi intervālu neietekmē
+  /* Biežums pēc līguma: N reizes gadā → sadala pa sezonu, gadā ne vairāk par N */
+  const seasonLen = (() => { const a = Date.parse('2001-' + C.season[0] + 'T12:00:00Z'), b = Date.parse('2001-' + C.season[1] + 'T12:00:00Z'); let n = Math.round((b - a) / 864e5) + 1; if (n <= 0) n += 365; return n; })();
+  const reizesOf = (o) => { try { return Math.max(0, Math.min(52, Math.round(+JSON.parse(o.dati || '{}').reizes || 0))); } catch (e) { return 0; } };
+  const perYear = {}; sched.forEach(v => { const k = v.anorm + '|' + v.datums.slice(0, 4); perYear[k] = (perYear[k] || 0) + 1; });
   const lastDone = {}; sched.filter(v => v.statuss === 'done').forEach(v => { if (!lastDone[v.anorm] || v.datums > lastDone[v.anorm]) lastDone[v.anorm] = v.datums; });
   const hasPlan = new Set(sched.filter(v => v.statuss === 'plan' && v.datums >= t).map(v => v.anorm));
   const earliest = addDays(t, C.noticeDays || 0);
   objs.filter(o => (+o.qty > 0) && !hasPlan.has(o.anorm))
-    .map(o => ({ o, due: lastDone[o.anorm] ? addDays(lastDone[o.anorm], +o.intervals || C.interval) : t }))
+    .map(o => { const n = reizesOf(o), iv = n ? Math.max(1, Math.floor(seasonLen / n)) : (+o.intervals || C.interval); return { o, n, due: lastDone[o.anorm] ? addDays(lastDone[o.anorm], iv) : t }; })
     .sort((a, b) => a.due.localeCompare(b.due))
-    .forEach(({ o, due }) => {
+    .forEach(({ o, n, due }) => {
       let from = due < earliest ? earliest : due;
       if (!inSeason(from)) { const y = +from.slice(0, 4), s = y + '-' + C.season[0]; from = from < s ? s : (y + 1) + '-' + C.season[0]; }
+      if (n && (perYear[o.anorm + '|' + from.slice(0, 4)] || 0) >= n) from = (+from.slice(0, 4) + 1) + '-' + C.season[0];   // šī gada reizes izsmeltas
       if (from > addDays(t, 400)) return;
       const d = firstDay(from, +o.qty); adds.push({ anorm: o.anorm, adrese: o.adrese, datums: d, brigade: o.brigade || '' }); addLoad(d, o.anorm);
+      perYear[o.anorm + '|' + d.slice(0, 4)] = (perYear[o.anorm + '|' + d.slice(0, 4)] || 0) + 1;
     });
   return { moves, adds };
 }
 
 export async function schedule(db) {
   const C = await cfgOf(db), t = today(), wx = (await kv(db, 'wx')) || {};
-  const objs = (await db.prepare('SELECT s.anorm, o.adrese, s.qty, s.intervals, s.brigade FROM logi_obj s JOIN objects o ON o.anorm = s.anorm WHERE s.aktivs = 1').all()).results || [];
+  const objs = (await db.prepare('SELECT s.anorm, o.adrese, s.qty, s.intervals, s.brigade, s.dati FROM logi_obj s JOIN objects o ON o.anorm = s.anorm WHERE s.aktivs = 1').all()).results || [];
   const visits = (await db.prepare("SELECT id, anorm, datums, statuss, prio, avots FROM logi_visit WHERE statuss = 'plan' OR (statuss = 'done' AND datums >= ?)").bind(addDays(t, -800)).all()).results || [];
   const r = plan(objs, visits, C, wx, t), st = [];
   const adrOf = {}; objs.forEach(o => adrOf[o.anorm] = o.adrese); const vOf = {}; visits.forEach(v => vOf[v.id] = v);

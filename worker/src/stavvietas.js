@@ -15,7 +15,7 @@ const int = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(+v || 0)));
 const str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
 const hm = (v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '')) ? String(v) : '';
 function cleanReq(d) { d = d || {}; return { limeni: int(d.limeni, 0, 10) }; }
-function cleanObj(d) { d = d || {}; return { limeni: int(d.limeni, 1, 10) || 1, vieta: str(d.vieta, 120) }; }
+function cleanObj(d) { d = d || {}; return { reizes: int(d.reizes, 0, 52), limeni: int(d.limeni, 1, 10) || 1, vieta: str(d.vieta, 120) }; }
 function cleanDone(d) { d = d || {}; return { limeni: (Array.isArray(d.limeni) ? d.limeni : []).map(Number).filter(x => x >= 1 && x <= 10).slice(0, 10), auto: str(d.auto, 300), notekas: NOTEKAS.indexOf(d.notekas) !== -1 ? d.notekas : '' }; }
 
 async function cfgOf(db) { return Object.assign({}, DEF_CFG, (await kv(db, 'stav:cfg')) || {}); }
@@ -52,24 +52,30 @@ export function plan(objs, visits, cfg, wx, t) {
     const why = badWx(C, wx, v.datums), d = firstDay(addDays(v.datums, 1), qOf[v.anorm] || 0); moves.push({ id: v.id, datums: d, why: why + ' ' + lvD(v.datums) }); v.datums = d; v.prio = 1; });
   plans.filter(v => v.datums >= t).forEach(v => addLoad(v.datums, v.anorm));
   const sched = visits.filter(v => v.avots !== 'pieteikums');   // vienreizēji pieteikumi intervālu neietekmē
+  /* Biežums pēc līguma: N reizes gadā → sadala pa sezonu, gadā ne vairāk par N */
+  const seasonLen = (() => { const a = Date.parse('2001-' + C.season[0] + 'T12:00:00Z'), b = Date.parse('2001-' + C.season[1] + 'T12:00:00Z'); let n = Math.round((b - a) / 864e5) + 1; if (n <= 0) n += 365; return n; })();
+  const reizesOf = (o) => { try { return Math.max(0, Math.min(52, Math.round(+JSON.parse(o.dati || '{}').reizes || 0))); } catch (e) { return 0; } };
+  const perYear = {}; sched.forEach(v => { const k = v.anorm + '|' + v.datums.slice(0, 4); perYear[k] = (perYear[k] || 0) + 1; });
   const lastDone = {}; sched.filter(v => v.statuss === 'done').forEach(v => { if (!lastDone[v.anorm] || v.datums > lastDone[v.anorm]) lastDone[v.anorm] = v.datums; });
   const hasPlan = new Set(sched.filter(v => v.statuss === 'plan' && v.datums >= t).map(v => v.anorm));
   const earliest = addDays(t, C.noticeDays || 0);
   objs.filter(o => (+o.qty > 0) && !hasPlan.has(o.anorm))
-    .map(o => ({ o, due: lastDone[o.anorm] ? addDays(lastDone[o.anorm], +o.intervals || C.interval) : t }))
+    .map(o => { const n = reizesOf(o), iv = n ? Math.max(1, Math.floor(seasonLen / n)) : (+o.intervals || C.interval); return { o, n, due: lastDone[o.anorm] ? addDays(lastDone[o.anorm], iv) : t }; })
     .sort((a, b) => a.due.localeCompare(b.due))
-    .forEach(({ o, due }) => {
+    .forEach(({ o, n, due }) => {
       let from = due < earliest ? earliest : due;
       if (!inSeason(from)) { const y = +from.slice(0, 4), s = y + '-' + C.season[0]; from = from < s ? s : (y + 1) + '-' + C.season[0]; }
+      if (n && (perYear[o.anorm + '|' + from.slice(0, 4)] || 0) >= n) from = (+from.slice(0, 4) + 1) + '-' + C.season[0];   // šī gada reizes izsmeltas
       if (from > addDays(t, 400)) return;
       const d = firstDay(from, +o.qty); adds.push({ anorm: o.anorm, adrese: o.adrese, datums: d, brigade: o.brigade || '' }); addLoad(d, o.anorm);
+      perYear[o.anorm + '|' + d.slice(0, 4)] = (perYear[o.anorm + '|' + d.slice(0, 4)] || 0) + 1;
     });
   return { moves, adds };
 }
 
 export async function schedule(db) {
   const C = await cfgOf(db), t = today(), wx = (await kv(db, 'wx')) || {};
-  const objs = (await db.prepare('SELECT s.anorm, o.adrese, s.qty, s.intervals, s.brigade FROM stav_obj s JOIN objects o ON o.anorm = s.anorm WHERE s.aktivs = 1').all()).results || [];
+  const objs = (await db.prepare('SELECT s.anorm, o.adrese, s.qty, s.intervals, s.brigade, s.dati FROM stav_obj s JOIN objects o ON o.anorm = s.anorm WHERE s.aktivs = 1').all()).results || [];
   const visits = (await db.prepare("SELECT id, anorm, datums, statuss, prio, avots FROM stav_visit WHERE statuss = 'plan' OR (statuss = 'done' AND datums >= ?)").bind(addDays(t, -800)).all()).results || [];
   const r = plan(objs, visits, C, wx, t), st = [];
   const adrOf = {}; objs.forEach(o => adrOf[o.anorm] = o.adrese); const vOf = {}; visits.forEach(v => vOf[v.id] = v);
