@@ -358,12 +358,18 @@ const APPS = {
   kais: { name: 'Kaisāmmateriāls', sub: 'Sāls · smilts · mix', path: '/shkaisammaterials/' },
   pers: { name: 'Personāls', sub: 'Pieņemšana darbā · atvaļinājumi', path: '/shpersonals/' },
   budz: { name: 'Budžets', sub: 'Uzkopšanas tāmes', path: '/shbudzets/' },
-  pl: { name: 'Zāles pļaušana', sub: 'Grafiks · izpilde ar bildi', path: '/shplausana/' }
+  pl: { name: 'Zāles pļaušana', sub: 'Grafiks · izpilde ar bildi', path: '/shplausana/' },
+  logi: { name: 'Logu mazgāšana', sub: 'Grafiks · izpilde ar bildi', path: '/shlogi/' },
+  sniegs: { name: 'Sniega tīrīšana', sub: 'Traktoristu maršruti', path: '/shsniegs/' },
+  darz: { name: 'Dārzniecība', sub: 'Grafiks · izpilde ar bildi', path: '/shdarzs/' },
+  stav: { name: 'Pazemes stāvvietas', sub: 'Mazgāšana · tīrīšana', path: '/shstavvietas/' }
 };
 /* #lietotne/papildu → papildu nodod lietotnei rāmī (piem. #budz/kadastrs=…) */
 const HX = (function () { const m = location.hash.match(/^#(\w+)\/(.+)$/); if (!m) return null; history.replaceState(history.state, '', '#' + m[1]); return { k: m[1], x: m[2] }; })();
-const ORDER = ['aizv', 'izv', 'kais', 'pers', 'budz', 'pl'];
-const GLY = {aizv: '<path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M3.5 11V9.5A3.5 3.5 0 0 1 7 6h13.5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M20.5 13v1.5A3.5 3.5 0 0 1 17 18H3.5"/>', izv: '<path d="M14 16.5V6H2.5v10.5h2"/><path d="M14 9.5h4l3.5 4v3h-2"/><path d="M9.3 16.5h5.4"/><circle cx="7" cy="16.8" r="2.3"/><circle cx="17" cy="16.8" r="2.3"/>', kais: '<path d="M12.00 12.00L12.00 2.50M12.00 7.25L9.88 5.13M12.00 7.25L14.12 5.13M12.00 12.00L3.77 7.25M7.89 9.62L4.99 10.40M7.89 9.62L7.11 6.73M12.00 12.00L3.77 16.75M7.89 14.38L7.11 17.27M7.89 14.38L4.99 13.60M12.00 12.00L12.00 21.50M12.00 16.75L14.12 18.87M12.00 16.75L9.88 18.87M12.00 12.00L20.23 16.75M16.11 14.38L19.01 13.60M16.11 14.38L16.89 17.27M12.00 12.00L20.23 7.25M16.11 9.62L16.89 6.73M16.11 9.62L19.01 10.40"/>', pers: '<circle cx="9.5" cy="8" r="4"/><path d="M2.5 21a7 7 0 0 1 14 0"/><path d="M19.5 8v6M16.5 11h6"/>', budz: '<path d="M5.5 2.5h13v19l-3.2-2.1-3.3 2.1-3.3-2.1-3.2 2.1z"/><path d="M9 8h6M9 12h6M9 16h3.5"/>', pl: '<path d="M3 20h18"/><path d="M6 20c0-5 1-9 3-12M10 20c0-4 1-7 3-9M14 20c0-3 1-6 4-8"/>'};
+const ORDER = ['aizv', 'izv', 'kais', 'pers', 'budz', 'pl', 'logi', 'sniegs', 'darz', 'stav'];
+/* Grafika lietotnes: tās redz visi portāla cilvēki (skatīšanās); tiesības dod labošanu */
+const GRAF = ['pl', 'logi', 'sniegs', 'darz', 'stav'], DARBI = ['logi', 'sniegs', 'darz', 'stav'];
+const GLY = {aizv: '<path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M3.5 11V9.5A3.5 3.5 0 0 1 7 6h13.5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M20.5 13v1.5A3.5 3.5 0 0 1 17 18H3.5"/>', izv: '<path d="M14 16.5V6H2.5v10.5h2"/><path d="M14 9.5h4l3.5 4v3h-2"/><path d="M9.3 16.5h5.4"/><circle cx="7" cy="16.8" r="2.3"/><circle cx="17" cy="16.8" r="2.3"/>', kais: '<path d="M12.00 12.00L12.00 2.50M12.00 7.25L9.88 5.13M12.00 7.25L14.12 5.13M12.00 12.00L3.77 7.25M7.89 9.62L4.99 10.40M7.89 9.62L7.11 6.73M12.00 12.00L3.77 16.75M7.89 14.38L7.11 17.27M7.89 14.38L4.99 13.60M12.00 12.00L12.00 21.50M12.00 16.75L14.12 18.87M12.00 16.75L9.88 18.87M12.00 12.00L20.23 16.75M16.11 14.38L19.01 13.60M16.11 14.38L16.89 17.27M12.00 12.00L20.23 7.25M16.11 9.62L16.89 6.73M16.11 9.62L19.01 10.40"/>', pers: '<circle cx="9.5" cy="8" r="4"/><path d="M2.5 21a7 7 0 0 1 14 0"/><path d="M19.5 8v6M16.5 11h6"/>', budz: '<path d="M5.5 2.5h13v19l-3.2-2.1-3.3 2.1-3.3-2.1-3.2 2.1z"/><path d="M9 8h6M9 12h6M9 16h3.5"/>', pl: '<path d="M3 20h18"/><path d="M6 20c0-5 1-9 3-12M10 20c0-4 1-7 3-9M14 20c0-3 1-6 4-8"/>', logi: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v18M4 12h16"/>', sniegs: '<path d="M5 17V10h7l2 3h5v4"/><path d="M12 10V6h3l2 7"/><circle cx="8" cy="17.5" r="2"/><circle cx="16.5" cy="17.5" r="2"/><path d="M10 17.5h4.5"/><path d="M2.5 9.5v9"/>', darz: '<path d="M12 21v-8"/><path d="M12 13c0-4 3-7 8-7 0 5-3 7-8 7z"/><path d="M12 15.5c0-3-2.5-5-7-5 0 4 2.5 5 7 5z"/>', stav: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9.5 17V7h3.5a3 3 0 0 1 0 6H9.5"/>'};
 const gl = (k, n) => `<svg class="gl" width="${n || 22}" height="${n || 22}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLY[k]}</svg>`;
 const ib = (k, n) => `<span class="ib c-${k}">${gl(k, n)}</span>`;
 const RL = { admin: 'Administrators', vaditajs: 'Darbu vadītājs', izpilditajs: 'Izpildītājs', skatitajs: 'Skatītājs', pieteicejs: 'Pieteicējs', 'gatavotājs': 'Gatavotājs', 'vadība': 'Vadība' };
@@ -400,10 +406,11 @@ function sso(pin) {
   const P = S.me.perms;
   if (S.me.company) {
     const c = S.me.carrier || {};
-    ['shx_izv_user', 'shx_kais_user', 'darbi_pin', 'personals_pin', 'budzets_pin', 'plausana_pin'].forEach(ls.del);
+    ['shx_izv_user', 'shx_kais_user', 'darbi_pin', 'personals_pin', 'budzets_pin', 'plausana_pin', 'shd_pin'].forEach(ls.del);
     if (P.izv) { ls.set('carrierPin', c.name + '\n' + c.pass); ls.set('carrierUser', c.name); }
     if (P.kais) { ls.set('shx_kais_courier', c.name); try { sessionStorage.setItem('carrierOk', '1'); } catch (e) {} }
     if (P.pl) ls.set('plausana_pin', c.pass);
+    if (DARBI.some(k => P[k])) ls.set('shd_pin', c.pass);
     return;
   }
   if (P.aizv) ls.set('darbi_pin', pin);
@@ -414,20 +421,22 @@ function sso(pin) {
   if (P.pers) { ls.set('personals_pin', pin); ls.set('personals_login', ''); } else ls.del('personals_pin');
   if (P.budz) { ls.set('budzets_pin', pin); ls.del('budzets_user'); } else ls.del('budzets_pin');
   if (plRole()) ls.set('plausana_pin', pin); else ls.del('plausana_pin');
+  ls.set('shd_pin', pin);   // logi, sniegs, darz, stav — visi cilvēki vismaz skatās
 }
 async function logout() {
   try { await api('logout'); } catch (e) {}
-  ['sh_t', 'sh_pin', 'sh_me', 'carrierPin', 'carrierUser', 'shx_kais_courier', 'darbi_pin', 'shx_izv_user', 'shx_kais_user', 'personals_pin', 'budzets_pin', 'budzets_user', 'budzets_list', 'plausana_pin'].forEach(ls.del);
+  ['sh_t', 'sh_pin', 'sh_me', 'carrierPin', 'carrierUser', 'shx_kais_courier', 'darbi_pin', 'shx_izv_user', 'shx_kais_user', 'personals_pin', 'budzets_pin', 'budzets_user', 'budzets_list', 'plausana_pin', 'shd_pin'].forEach(ls.del);
   S.t = null; S.me = null; Object.values(S.frames).forEach(f => f.remove()); S.frames = {};
   closeSheet(); history.replaceState(null, '', location.pathname); show('vLogin'); setTimeout(() => $('pin').focus(), 150);
 }
 
 /* ---------- Sākums ---------- */
 /* Zāles pļaušanu redz visi portāla cilvēki (skatīšanās); tiesības pl dod labošanu */
-const plRole = () => S.me && !S.me.company ? (S.me.perms.pl || (S.me.perms.portal === 'admin' ? 'admin' : 'skatitajs')) : '';
-const hasApp = (k) => !!(S.me && (S.me.perms[k] || (k === 'pl' && plRole())));
+const gRole = (k) => S.me && !S.me.company ? (S.me.perms[k] || (S.me.perms.portal === 'admin' ? 'admin' : 'skatitajs')) : '';
+const plRole = () => gRole('pl');
+const hasApp = (k) => !!(S.me && (S.me.perms[k] || (GRAF.indexOf(k) !== -1 && gRole(k))));
 function apps() { return ORDER.filter(hasApp); }
-const COLOR = { aizv: 'c-aizv', izv: 'c-izv', kais: 'c-kais', pers: 'c-pers', budz: 'c-budz', pl: 'c-aizv' };
+const COLOR = { aizv: 'c-aizv', izv: 'c-izv', kais: 'c-kais', pers: 'c-pers', budz: 'c-budz', pl: 'c-aizv', logi: 'c-kais', sniegs: 'c-budz', darz: 'c-aizv', stav: 'c-izv' };
 const ARROW = '<span class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg></span>';
 const GRID = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="7.5" cy="7.5" r="3.5"/><circle cx="16.5" cy="7.5" r="3.5"/><circle cx="7.5" cy="16.5" r="3.5"/><circle cx="16.5" cy="16.5" r="3.5"/></svg>';
 const SHIELD = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3Z"/><path d="M9 12l2 2 4-4"/></svg>';
@@ -445,7 +454,7 @@ function appChip(k) {
   const D = (S.dash || {})[k] || {};
   if (k === 'izv' && D.urgent) return `<span class="chip w">● ${D.urgent} steidzami</span>`;
   if (k === 'aizv' && D.unassigned) return `<span class="chip w">● ${D.unassigned} bez brigādes</span>`;
-  const r = S.me.perms[k] || (k === 'pl' ? plRole() : ''); return r ? `<span class="chip">${esc(RL[r] || (r === 'izvedejs' ? 'Izvedējs' : r === 'kurjers' ? 'Kurjers' : r))}</span>` : '';
+  const r = S.me.perms[k] || (GRAF.indexOf(k) !== -1 ? gRole(k) : ''); return r ? `<span class="chip">${esc(RL[r] || (r === 'izvedejs' ? 'Izvedējs' : r === 'kurjers' ? 'Kurjers' : r))}</span>` : '';
 }
 function home() {
   show('vHome');
@@ -571,7 +580,7 @@ const TABS = [['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas
 const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kaisāmmateriāls)', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
 const KN = { izvedejs: 'Izvedējs', kurjers: 'Kurjers', plausejs: 'Pļāvējs', darba_devejs: 'Darba devējs' };
 /* Darbu izpildītāja (SIA) pilnvaras pa projektiem: projekts → veids */
-const CPERM = [['izv', 'izvedejs', 'Izvedējs'], ['kais', 'kurjers', 'Kurjers'], ['pl', 'plausejs', 'Izpildītājs']];
+const CPERM = [['izv', 'izvedejs', 'Izvedējs'], ['kais', 'kurjers', 'Kurjers'], ['pl', 'plausejs', 'Izpildītājs'], ['logi', 'logu_mazg', 'Izpildītājs'], ['sniegs', 'traktorists', 'Traktorists'], ['darz', 'darznieks', 'Izpildītājs'], ['stav', 'stav_mazg', 'Izpildītājs']];
 const isDoer = (c) => CPERM.some(x => c.kinds.includes(x[1]));
 const A = { tab: 'people', q: '', M: null };
 async function openAdmin(tab) {
@@ -755,7 +764,7 @@ function editPerson(p) {
       <label class="tog">Aktīvs<input type="checkbox" id="pAct" ${p.active ? 'checked' : ''}></label>
       <label class="tog">Portāla administrators (maina pilnvaras)<input type="checkbox" id="pAdm" ${p.perms.portal === 'admin' ? 'checked' : ''}></label>
       ${ORDER.map(k => `<div class="perm"><div class="pt">${ib(k, 16)}${APPS[k].name}</div><div class="seg" data-k="${k}">
-        ${S.roles[k].map(r => `<button type="button" data-r="${esc(r)}" class="${(p.perms[k] || '') === r ? 'on' : ''}">${r ? esc(RL[r] || r) : 'Nav piekļuves'}</button>`).join('')}</div></div>`).join('')}
+        ${S.roles[k].map(r => `<button type="button" data-r="${esc(r)}" class="${(p.perms[k] || '') === r ? 'on' : ''}">${r ? esc(RL[r] || r) : GRAF.indexOf(k) !== -1 ? 'Skatītājs' : 'Nav piekļuves'}</button>`).join('')}</div></div>`).join('')}
       <div class="acts">${isNew ? '' : '<button class="btn red" id="pDel" type="button">Dzēst</button>'}<button class="btn" id="pSave" type="button">Saglabāt</button></div>`;
     $('pBack').onclick = () => drawAdminSheet();
     $('pGen').onclick = () => { p.name = $('pName').value; p.phone = $('pTel').value; p.email = $('pMail').value; p.pin = genPin(); draw(); };
