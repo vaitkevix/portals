@@ -311,6 +311,8 @@ button{cursor:pointer}
     <input class="pin" id="pin" type="password" name="password" autocomplete="current-password" autocapitalize="characters" placeholder="PIN vai parole" aria-label="PIN vai parole">
     <div class="err" id="loginErr"></div>
     <button class="btn" id="loginBtn" type="submit">Ienākt</button>
+    <button class="btn ghost" id="guestBtn" type="button" style="margin-top:8px">Tikai skatīties (pārvaldniekiem)</button>
+    <p class="copy" style="margin-top:6px">Bez PIN: Izvešanas un Kaisāmmateriāla pieteikumi, statuss, statistika</p>
     <p class="copy">© VAITKEVIX, SIA</p>
   </form>
 </section>
@@ -407,7 +409,7 @@ $('loginForm').onsubmit = async (e) => {
   $('loginBtn').disabled = true; $('loginBtn').textContent = 'Pārbauda…'; $('loginErr').textContent = '';
   try {
     const r = await api('login', { pin });
-    S.t = r.token; ls.set('sh_t', r.token); ls.set('sh_pin', pin);
+    S.t = r.token; ls.del('sh_guest'); ls.set('sh_t', r.token); ls.set('sh_pin', pin);
     S.me = r.me; S.dash = r.dash; ls.set('sh_me', JSON.stringify(r.me)); sso(pin);
     try { if (window.PasswordCredential && navigator.credentials) navigator.credentials.store(new PasswordCredential({ id: 'SH portāls', password: pin })).catch(() => {}); } catch (e) {}
     $('pin').value = ''; home(); { const k = location.hash.slice(1); if (APPS[k] && hasApp(k)) openApp(k, true); } maybeTour();
@@ -439,7 +441,8 @@ function sso(pin) {
   ls.set('shd_pin', pin);   // logi, sniegs, darz, stav — visi cilvēki vismaz skatās
 }
 async function logout() {
-  try { await api('logout'); } catch (e) {}
+  ls.del('sh_guest');
+  if (S.t) try { await api('logout'); } catch (e) {}
   ['sh_t', 'sh_pin', 'sh_me', 'carrierPin', 'carrierUser', 'shx_kais_courier', 'darbi_pin', 'shx_izv_user', 'shx_kais_user', 'personals_pin', 'budzets_pin', 'budzets_user', 'budzets_list', 'plausana_pin', 'shd_pin'].forEach(ls.del);
   S.t = null; S.me = null; Object.values(S.frames).forEach(f => f.remove()); S.frames = {};
   closeSheet(); history.replaceState(null, '', location.pathname); show('vLogin'); setTimeout(() => $('pin').focus(), 150);
@@ -449,7 +452,10 @@ async function logout() {
 /* Zāles pļaušanu redz visi portāla cilvēki (skatīšanās); tiesības pl dod labošanu */
 const gRole = (k) => S.me && !S.me.company ? (S.me.perms[k] || (S.me.perms.portal === 'admin' ? 'admin' : 'skatitajs')) : '';
 const plRole = () => gRole('pl');
-const hasApp = (k) => !!(S.me && (S.me.perms[k] || (GRAF.indexOf(k) !== -1 && gRole(k))));
+const hasApp = (k) => !!(S.me && (S.me.guest ? GUEST.indexOf(k) !== -1 : (S.me.perms[k] || (GRAF.indexOf(k) !== -1 && gRole(k)))));
+/* Skatīšanās bez ielogošanās (pārvaldniekiem): tikai lietotnes, kuru saraksti ir publiski redzami */
+const GUEST = ['izv', 'kais'];
+function guest() { ['shx_izv_user', 'shx_kais_user', 'carrierPin', 'carrierUser', 'shx_kais_courier'].forEach(ls.del); ls.set('sh_guest', '1'); S.me = { name: 'Pārvaldnieks', guest: true, perms: { izv: 'skatitajs', kais: 'skatitajs' }, color: '' }; S.dash = {}; home(); }
 function apps() { return ORDER.filter(hasApp); }
 const COLOR = { aizv: 'c-aizv', izv: 'c-izv', kais: 'c-kais', pers: 'c-pers', budz: 'c-budz', pl: 'c-aizv', logi: 'c-kais', sniegs: 'c-budz', darz: 'c-aizv', stav: 'c-izv' };
 const ARROW = '<span class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg></span>';
@@ -551,6 +557,7 @@ $('tiles').onclick = (e) => {
   const t = e.target.closest('[data-app]'); if (t) openApp(t.dataset.app);
 };
 async function refresh(quiet) {
+  if (S.me && S.me.guest) return;
   try { const r = await api('me'); S.me = r.me; S.dash = r.dash; if (!$('vHome').hidden) home(); }
   catch (e) { if (e.code === 'auth') return logout(); if (!quiet) toast(netMsg(e), 'err'); }
 }
@@ -932,6 +939,7 @@ async function pushState() {
 }
 function isIOSnoPWA() { return /iphone|ipad/i.test(navigator.userAgent) && !(window.navigator.standalone || matchMedia('(display-mode: standalone)').matches); }
 async function pushSheet() {
+  if (S.me && S.me.guest) return toast('Paziņojumi pieejami pēc ielogošanās ar PIN', 'err');
   const s = sheet(`<div class="hd"><h3>Paziņojumi</h3>${X}</div><div class="skel"></div>`);
   const st = await pushState().catch(() => ({ ok: false, why: 'nav' }));
   const what = '<ul style="margin:0 0 14px;padding-left:18px;font-weight:600;line-height:1.6;color:var(--ink-2)"><li>sniega izsaukums un jūsu maršruts</li><li>steidzami pieteikumi</li><li>«nevar izpildīt» jūsu lietotnēs</li><li>stāvvietām — jāpaziņo iedzīvotājiem</li><li>Aizvietošanas darbi</li></ul>';
@@ -955,6 +963,8 @@ addEventListener('hashchange', () => { const k = location.hash.slice(1); if (S.m
 
 /* ---------- Starts ---------- */
 (async function boot() {
+  $('guestBtn').onclick = guest;
+  if (!S.t && ls.get('sh_guest')) { guest(); const k = location.hash.slice(1); if (APPS[k] && hasApp(k)) openApp(k, true); return; }
   if (!S.t) { show('vLogin'); setTimeout(() => $('pin').focus(), 200); return; }
   try { S.me = JSON.parse(ls.get('sh_me') || 'null'); } catch (e) {}
   if (S.me) { home(); const k = location.hash.slice(1); if (APPS[k]) openApp(k, true); }
