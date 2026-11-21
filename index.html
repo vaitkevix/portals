@@ -998,6 +998,7 @@ addEventListener('hashchange', () => { const k = location.hash.slice(1); if (S.m
 /* ---------- Starts ---------- */
 (async function boot() {
   $('guestBtn').onclick = guest;
+  if (/[?&]skats\b/.test(location.search) && !S.t) { history.replaceState(null, '', location.pathname + location.hash); ls.set('sh_guest', '1'); }   // pārvaldnieku saite vaitkevix.cloud/sh/?skats
   if (!S.t && ls.get('sh_guest')) { guest(); const k = location.hash.slice(1); if (APPS[k] && hasApp(k)) openApp(k, true); return; }
   if (!S.t) { show('vLogin'); setTimeout(() => $('pin').focus(), 200); return; }
   try { S.me = JSON.parse(ls.get('sh_me') || 'null'); } catch (e) {}
