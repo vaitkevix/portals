@@ -117,6 +117,15 @@ button{cursor:pointer}
 
 /* Pilnvaras */
 .adm-top{display:flex;gap:8px;margin:0 0 12px}
+/* Administrēšana: plats logs datorā, augša paliek redzama ritinot */
+.sheet.adm{width:min(980px,100%)}
+.adm-head{position:sticky;top:-18px;z-index:3;background:var(--surface);margin:-18px -18px 0;padding:18px 18px 4px}
+.adm-head #aTabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.adm-head #aTabs::-webkit-scrollbar{display:none}.adm-head #aTabs button{flex:none}
+.afil{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 12px}
+.afil select{height:40px;border:0;border-radius:999px;background:var(--surface-2);padding:0 12px;font:inherit;font-weight:700;color:var(--ink);max-width:100%}
+.f select.fsel{width:100%;height:46px;border:0;border-radius:16px;background:var(--surface-2);padding:0 14px;font:inherit;font-weight:700;color:var(--ink)}
+.afil .n{font-size:13px;font-weight:700;color:var(--ink-3);margin-left:4px}
+@media(min-width:900px){.sheet.adm .plist{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .adm-top input{flex:1;height:44px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 14px;outline:none;min-width:0}
 .adm-top .btn{width:auto;height:44px;padding:0 16px;font-size:14.5px}
 .plist{display:grid;gap:8px}
@@ -588,9 +597,9 @@ const KN = { izvedejs: 'Izvedējs', kurjers: 'Kurjers', plausejs: 'Pļāvējs', 
 /* Darbu izpildītāja (SIA) pilnvaras pa projektiem: projekts → veids */
 const CPERM = [['izv', 'izvedejs', 'Izvedējs'], ['kais', 'kurjers', 'Kurjers'], ['pl', 'plausejs', 'Izpildītājs'], ['logi', 'logu_mazg', 'Izpildītājs'], ['sniegs', 'traktorists', 'Traktorists'], ['darz', 'darznieks', 'Izpildītājs'], ['stav', 'stav_mazg', 'Izpildītājs']];
 const isDoer = (c) => CPERM.some(x => c.kinds.includes(x[1]));
-const A = { tab: 'people', q: '', M: null };
+const A = { tab: 'people', q: '', M: null, f: {} };
 async function openAdmin(tab) {
-  if (tab) A.tab = tab;
+  if (tab && tab !== A.tab) { A.tab = tab; A.q = ''; A.f = {}; }
   const s = sheet(`<div class="hd"><h3>Administrēšana</h3>${X}</div><div class="skel"></div>`);
   try { const [r, m] = await Promise.all([api('people'), api('master')]); S.people = r.people; S.roles = r.roles; A.M = m; drawAdmin(); }
   catch (e) { s.innerHTML = `<div class="hd"><h3>Administrēšana</h3>${X}</div><p>${esc(netMsg(e))}</p>`; }
@@ -600,37 +609,52 @@ function tabsHtml() {
   return `<div class="seg" id="aTabs" style="margin:0 0 12px">${TABS.map(([k, l]) => `<button type="button" data-t="${k}" class="${A.tab === k ? 'on' : ''}">${l}${k === 'review' && n ? ' · ' + n : ''}</button>`).join('')}</div>`;
 }
 function adminShell(inner, addLabel) {
-  const bg = $('sheetBg') || (sheet(''), $('sheetBg')); const s = bg.firstChild;
-  s.innerHTML = `<div class="hd"><h3>Administrēšana</h3>${X}</div>${tabsHtml()}
-    ${addLabel !== null ? `<div class="adm-top"><input id="pq" placeholder="Meklēt…" value="${esc(A.q)}">${addLabel ? `<button class="btn" id="pAdd">+ ${addLabel}</button>` : ''}</div>` : ''}${inner}
-    <p class="copy">Izmaiņas uzreiz darbojas visās lietotnēs un tiek ierakstītas Google tabulā (Aizvietošanas tabulā: Pilnvaras, Objekti, Uzņēmumi, Saraksti).</p>`;
-  $('aTabs').onclick = (e) => { const b = e.target.closest('[data-t]'); if (b) { A.tab = b.dataset.t; A.q = ''; drawAdmin(); } };
-  const inp = $('pq'); if (inp) inp.oninput = () => { const pos = inp.selectionStart; A.q = inp.value; drawAdmin(); const i2 = $('pq'); if (i2) { i2.focus(); i2.setSelectionRange(pos, pos); } };
+  const bg = $('sheetBg') || (sheet(''), $('sheetBg')); const s = bg.firstChild; s.classList.add('adm');
+  if (A.onlyList && $('aBody') && s.dataset.tab === A.tab) { $('aBody').innerHTML = inner; return s; }   // meklējot pārzīmē tikai sarakstu
+  s.dataset.tab = A.tab;
+  s.innerHTML = `<div class="adm-head"><div class="hd"><h3>Administrēšana</h3>${X}</div>${tabsHtml()}
+    ${addLabel !== null ? `<div class="adm-top"><input id="pq" type="search" placeholder="Meklēt…" value="${esc(A.q)}" autocomplete="off">${addLabel ? `<button class="btn" id="pAdd">+ ${addLabel}</button>` : ''}</div>` : ''}</div><div id="aBody">${inner}</div>
+    <p class="copy">Izmaiņas uzreiz darbojas visās lietotnēs un tiek ierakstītas Google tabulā «SH | Dati».</p>`;
+  $('aTabs').onclick = (e) => { const b = e.target.closest('[data-t]'); if (b) { A.tab = b.dataset.t; A.q = ''; A.f = {}; drawAdmin(); s.scrollTop = 0; } };
+  let tm = 0; const inp = $('pq'); if (inp) inp.oninput = () => { clearTimeout(tm); tm = setTimeout(() => { A.q = inp.value; A.onlyList = true; drawAdmin(); A.onlyList = false; }, 120); };
+  if (A.st) { s.scrollTop = A.st; A.st = 0; }
   return s;
 }
+/* Kas var būt darbu vadītājs: kam kādā lietotnē ir vadītāja vai admina tiesības */
+const mgrNames = () => [...new Set(S.people.filter(p => p.active && (p.perms.portal === 'admin' || Object.keys(p.perms).some(k => k !== 'portal' && (p.perms[k] === 'vaditajs' || p.perms[k] === 'admin')))).map(p => p.name))].sort((a, b) => a.localeCompare(b, 'lv'));
+const remember = () => { const s = document.querySelector('#sheetBg .sheet'); if (s) A.st = s.scrollTop; };
 const qm = (t) => !A.q || String(t).toLowerCase().includes(A.q.toLowerCase());
 function drawAdmin() {
   if (A.tab === 'people') {
-    const list = S.people.filter(p => qm(p.name));
-    const s = adminShell(`<div class="plist">${list.map(p => `<button class="prow ${p.active ? '' : 'off'}" data-p="${esc(p.name)}"><span class="dot" style="background:${esc(p.color || '')}"></span>
+    const F = A.f.p || '', list = S.people.filter(p => qm(p.name + ' ' + (p.phone || '') + ' ' + (p.email || '')) && (!F || (F === 'admin' ? p.perms.portal === 'admin' : F === 'off' ? !p.active : (p.perms[F] && p.perms[F] !== ''))));
+    const s = adminShell(`<div class="afil" id="pF"><select aria-label="Filtrs"><option value="">Visi cilvēki</option><option value="admin" ${F === 'admin' ? 'selected' : ''}>Portāla admini</option><option value="off" ${F === 'off' ? 'selected' : ''}>Neaktīvie</option>${ORDER.map(k => `<option value="${k}" ${F === k ? 'selected' : ''}>Ar piekļuvi: ${APPS[k].name}</option>`).join('')}</select><span class="n">${list.length}</span></div><div class="plist">${list.map(p => `<button class="prow ${p.active ? '' : 'off'}" data-p="${esc(p.name)}"><span class="dot" style="background:${esc(p.color || '')}"></span>
       <div class="nm"><b>${esc(p.name)}${p.active ? '' : ' · neaktīvs'}</b><div class="chips">${chipsOf(p)}</div></div>${CHEV}</button>`).join('') || empty()}</div>`, 'Jauns');
     $('pAdd').onclick = () => editPerson(null);
-    s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-p]'); if (r) editPerson(S.people.find(p => p.name === r.dataset.p)); };
+    s.querySelector('#pF select').onchange = (e) => { A.f.p = e.target.value; A.onlyList = true; drawAdmin(); A.onlyList = false; };
+    s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-p]'); if (r) { remember(); editPerson(S.people.find(p => p.name === r.dataset.p)); } };
   }
   if (A.tab === 'objects') {
-    const list = A.M.objects.map((o, i) => Object.assign({ i }, o)).filter(o => qm(o.adrese + ' ' + o.vaditajs + ' ' + o.grupa));
-    const s = adminShell(`<div class="plist">${list.slice(0, 300).map(o => `<button class="prow" data-o="${o.i}"><div class="nm"><b>${esc(o.adrese)}</b>
+    const F = A.f, VM = [...new Set(A.M.objects.map(o => o.vaditajs).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'lv')), GR = [...new Set(A.M.objects.map(o => o.grupa).filter(Boolean))].sort();
+    const list = A.M.objects.map((o, i) => Object.assign({ i }, o)).filter(o => qm(o.adrese + ' ' + o.vaditajs + ' ' + o.grupa)
+      && (!F.v || (F.v === '-' ? !o.vaditajs : o.vaditajs === F.v)) && (!F.g || o.grupa === F.g) && (!F.k || (F.k === '-' ? !o.piekluve : !!o.piekluve)));
+    const s = adminShell(`<div class="afil" id="oF"><select data-f="v" aria-label="Vadītājs"><option value="">Visi vadītāji</option><option value="-" ${F.v === '-' ? 'selected' : ''}>Bez vadītāja (${A.M.objects.filter(o => !o.vaditajs).length})</option>${VM.map(m => `<option ${F.v === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
+      <select data-f="g" aria-label="Grupa"><option value="">Visas grupas</option>${GR.map(g => `<option ${F.g === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>
+      <select data-f="k" aria-label="Piekļuve"><option value="">Piekļuve: visi</option><option value="+" ${F.k === '+' ? 'selected' : ''}>Ar piekļuvi</option><option value="-" ${F.k === '-' ? 'selected' : ''}>Bez piekļuves</option></select>
+      <span class="n">${list.length} objekti</span>${list.length && (A.q || F.v || F.g || F.k) ? `<button class="btn ghost" id="oBulk" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">Mainīt vadītāju visiem ${list.length}</button>` : ''}</div>
+      <div class="plist">${list.slice(0, 300).map(o => `<button class="prow" data-o="${o.i}"><div class="nm"><b>${esc(o.adrese)}</b>
       <div class="chips">${o.grupa ? `<span class="chip">${esc(o.grupa)}</span>` : ''}${o.vaditajs ? `<span class="chip a">${esc(o.vaditajs)}</span>` : ''}${o.piekluve ? '<span class="chip">🔑 piekļuve</span>' : ''}</div></div>${CHEV}</button>`).join('') || empty()}
       ${list.length > 300 ? `<p class="copy">Rāda 300 no ${list.length} — sašauriniet meklēšanu</p>` : ''}</div>`, 'Objekts');
     $('pAdd').onclick = () => editObject(-1);
-    s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-o]'); if (r) editObject(+r.dataset.o); };
+    s.querySelector('#oF').onchange = (e) => { const el = e.target.closest('[data-f]'); if (!el) return; A.f[el.dataset.f] = el.value; A.onlyList = true; drawAdmin(); A.onlyList = false; };
+    const bk = s.querySelector('#oBulk'); if (bk) bk.onclick = () => bulkMgr(list.map(o => o.i));
+    s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-o]'); if (r) { remember(); editObject(+r.dataset.o); } };
   }
   if (A.tab === 'groups') {
     const G = (A.M.groups || []).map((g, i) => Object.assign({ i }, g)).filter(g => qm(g.name));
     const s = adminShell(`<p class="copy" style="text-align:left;margin:0 0 10px">Grupu var izvēlēties Aizvietošanā (darbs katrai mājai, progress kopā) un Personālā (darba vieta).</p><div class="plist">${G.map(g => `<button class="prow" data-g="${g.i}"><div class="nm"><b>🏘 ${esc(g.name)}</b>
       <div class="chips"><span class="chip a">${g.adreses.length} objekti</span>${g.rule ? `<span class="chip">automātiski: «${esc(g.rule)}…»</span>` : ''}</div></div>${CHEV}</button>`).join('') || empty()}</div>`, 'Grupa');
     $('pAdd').onclick = () => editGroup(-1);
-    s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-g]'); if (r) editGroup(+r.dataset.g); };
+    s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-g]'); if (r) { remember(); editGroup(+r.dataset.g); } };
   }
   if (A.tab === 'companies') {
     const list = A.M.companies.map((c, i) => Object.assign({ i }, c)).filter(c => qm(c.name));
@@ -640,7 +664,7 @@ function drawAdmin() {
     const s = adminShell(`<h3 class="ah">Darbu izpildītāji <small>${doers.length}</small></h3><p class="copy" style="text-align:left;margin:0 0 10px">Ienāk portālā ar SIA paroli un redz tikai projektus, kuriem dota pilnvara.</p><div class="plist">${doers.map(row).join('') || empty()}</div>
       <h3 class="ah">Darba devēji <small>${emp.length}</small></h3><div class="plist">${emp.map(row).join('') || empty()}</div>`, 'Uzņēmums');
     $('pAdd').onclick = () => editCompany(-1);
-    s.querySelectorAll('.plist').forEach(l => l.onclick = (e) => { const r = e.target.closest('[data-c]'); if (r) editCompany(+r.dataset.c); });
+    s.querySelectorAll('.plist').forEach(l => l.onclick = (e) => { const r = e.target.closest('[data-c]'); if (r) { remember(); editCompany(+r.dataset.c); } });
   }
   if (A.tab === 'lists') {
     const vals = (k) => k === 'types' ? A.M.types.map(t => t.name + (t.group ? ' · ' + t.group : '')) : (A.M.lists[k] || []);
@@ -699,18 +723,26 @@ function subSheet(title, body, onSave, onDel) {
 const fld = (id, label, v, ph, type) => `<div class="f"><label for="${id}">${label}</label><input type="${type || 'text'}" id="${id}" value="${esc(v || '')}" placeholder="${esc(ph || '')}" autocomplete="off"></div>`;
 function editObject(i) {
   const o = i >= 0 ? Object.assign({}, A.M.objects[i]) : { adrese: '', vaditajs: '', grupa: 'SH objekti', piekluve: '' };
-  const mgrs = S.people.filter(p => p.active && p.perms.aizv === 'vaditajs').map(p => p.name);
+  const mgrs = mgrNames(); if (o.vaditajs && mgrs.indexOf(o.vaditajs) === -1) mgrs.unshift(o.vaditajs);
   const groups = [...new Set(A.M.objects.map(x => x.grupa).filter(Boolean))];
   subSheet(i >= 0 ? o.adrese : 'Jauns objekts', fld('oA', 'Adrese', o.adrese, 'Iela māja, Rīga') +
-    `<div class="f"><label>Darbu vadītājs</label><div class="seg" id="oM">${['', ...mgrs].map(m => `<button type="button" data-m="${esc(m)}" class="${o.vaditajs === m ? 'on' : ''}">${m ? esc(m) : 'Nav'}</button>`).join('')}</div></div>` +
+    `<div class="f"><label for="oM">Darbu vadītājs</label><select id="oM" class="fsel">${['', ...mgrs].map(m => `<option value="${esc(m)}" ${o.vaditajs === m ? 'selected' : ''}>${m ? esc(m) : '— nav —'}</option>`).join('')}</select></div>` +
     `<div class="f"><label for="oG">Grupa</label><input type="text" id="oG" list="oGl" value="${esc(o.grupa)}"><datalist id="oGl">${groups.map(g => `<option value="${esc(g)}">`).join('')}</datalist></div>` +
     `<div class="f"><label for="oP">Piekļuve (vārti, kodi — redz izvedējs)</label><textarea id="oP" rows="3" style="width:100%;border-radius:12px;border:1px solid var(--line-2);background:var(--surface-2);padding:10px 14px;font:inherit;font-weight:600">${esc(o.piekluve)}</textarea></div>`,
-    () => { const list = A.M.objects.slice(); const n = { adrese: $('oA').value.trim(), vaditajs: (document.querySelector('#oM .on') || {}).dataset ? document.querySelector('#oM .on').dataset.m : '', grupa: $('oG').value.trim(), piekluve: $('oP').value.trim() };
+    () => { const list = A.M.objects.slice(); const n = { adrese: $('oA').value.trim(), vaditajs: $('oM').value, grupa: $('oG').value.trim(), piekluve: $('oP').value.trim() };
       if (!n.adrese) return toast('Ierakstiet adresi', 'err');
       if (list.some((x, j) => j !== i && x.adrese.toLowerCase() === n.adrese.toLowerCase())) return toast('Šāda adrese jau ir', 'err');
       if (i >= 0) list[i] = n; else list.unshift(n); saveM('saveObjects', { objects: list }, () => sheet('')); },
     i >= 0 ? () => { const list = A.M.objects.slice(); list.splice(i, 1); saveM('saveObjects', { objects: list }, () => sheet('')); } : null);
-  $('oM').onclick = (e) => { const b = e.target.closest('[data-m]'); if (b) $('oM').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
+}
+function bulkMgr(idx) {
+  const mgrs = mgrNames();
+  subSheet('Vadītājs ' + idx.length + ' objektiem', `<p style="font-weight:700;color:var(--ink-2);margin:0 0 12px">Mainīs darbu vadītāju visiem ${idx.length} objektiem, kas tagad redzami sarakstā (pēc meklēšanas un filtriem).</p>
+    <div class="f"><label for="bM">Jaunais vadītājs</label><select id="bM" class="fsel">${['', ...mgrs].map(m => `<option value="${esc(m)}">${m ? esc(m) : '— noņemt vadītāju —'}</option>`).join('')}</select></div>
+    <div class="glist" style="max-height:220px">${idx.slice(0, 60).map(i => `<div class="gpick"><span>${esc(A.M.objects[i].adrese)}${A.M.objects[i].vaditajs ? `<small>${esc(A.M.objects[i].vaditajs)}</small>` : ''}</span></div>`).join('')}${idx.length > 60 ? `<p class="copy">… un vēl ${idx.length - 60}</p>` : ''}</div>`,
+    () => { const m = $('bM').value; if (!confirm((m ? 'Iestatīt vadītāju «' + m + '»' : 'Noņemt vadītāju') + ' ' + idx.length + ' objektiem?')) return;
+      const set = new Set(idx), list = A.M.objects.map((o, i) => set.has(i) ? Object.assign({}, o, { vaditajs: m }) : o);
+      saveM('saveObjects', { objects: list }, () => sheet('')); }, null);
 }
 function editGroup(i) {
   const g = i >= 0 ? JSON.parse(JSON.stringify(A.M.groups[i])) : { id: '', name: '', rule: '', members: [], adreses: [] };
