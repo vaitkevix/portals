@@ -132,6 +132,8 @@ export async function plausana(request, env, X) {
   const db = env.DB;
   let me = await personByPin(db, b.pin);
   if (!me && b.pin) { const c = await companyBy(db, 'pass', b.pin); if (c && c.perms.pl) me = c; }   // darbu izpildītājs (SIA) ar pilnvaru pļaušanai
+  const GUEST = !b.pin && ['boot', 'month', 'obj'].indexOf(b.action) !== -1;   // skatīšanās bez ielogošanās (pārvaldniekiem)
+  if (GUEST) me = { name: 'Pārvaldnieks', perms: { pl: 'skatitajs' } };
   const role = me && (me.company ? me.perms.pl : ((me.perms || {}).pl || ((me.perms || {}).portal === 'admin' ? 'admin' : 'skatitajs')));
   if (!me || !role) { await new Promise(r => setTimeout(r, 700)); return out({ ok: false, error: 'Nepareizs PIN vai nav piekļuves pļaušanai', code: 'auth' }); }
   const need = (r) => { if ((ROLE_W[role] || 0) < ROLE_W[r]) throw new Error('Jums ir tikai skatīšanās tiesības'); };

@@ -312,7 +312,7 @@ button{cursor:pointer}
     <div class="err" id="loginErr"></div>
     <button class="btn" id="loginBtn" type="submit">Ienākt</button>
     <button class="btn ghost" id="guestBtn" type="button" style="margin-top:8px">Tikai skatīties (pārvaldniekiem)</button>
-    <p class="copy" style="margin-top:6px">Bez PIN: Izvešanas un Kaisāmmateriāla pieteikumi, statuss, statistika</p>
+    <p class="copy" style="margin-top:6px">Bez PIN: visu darbu grafiki, pieteikumi un izpilde (bez piekļuves kodiem)</p>
     <p class="copy">© VAITKEVIX, SIA</p>
   </form>
 </section>
@@ -454,8 +454,8 @@ const gRole = (k) => S.me && !S.me.company ? (S.me.perms[k] || (S.me.perms.porta
 const plRole = () => gRole('pl');
 const hasApp = (k) => !!(S.me && (S.me.guest ? GUEST.indexOf(k) !== -1 : (S.me.perms[k] || (GRAF.indexOf(k) !== -1 && gRole(k)))));
 /* Skatīšanās bez ielogošanās (pārvaldniekiem): tikai lietotnes, kuru saraksti ir publiski redzami */
-const GUEST = ['izv', 'kais'];
-function guest() { ['shx_izv_user', 'shx_kais_user', 'carrierPin', 'carrierUser', 'shx_kais_courier'].forEach(ls.del); ls.set('sh_guest', '1'); S.me = { name: 'Pārvaldnieks', guest: true, perms: { izv: 'skatitajs', kais: 'skatitajs' }, color: '' }; S.dash = {}; home(); }
+const GUEST = ['aizv', 'izv', 'kais', 'pl', 'logi', 'sniegs', 'darz', 'stav'];   // Personāls un Budžets — tikai ar PIN (personas dati, cenas)
+function guest() { ['shx_izv_user', 'shx_kais_user', 'carrierPin', 'carrierUser', 'shx_kais_courier', 'darbi_pin', 'shd_pin', 'plausana_pin', 'personals_pin', 'budzets_pin'].forEach(ls.del); ls.set('sh_guest', '1'); S.me = { name: 'Pārvaldnieks', guest: true, perms: Object.fromEntries(GUEST.map(k => [k, 'skatitajs'])), color: '' }; S.dash = {}; home(); }
 function apps() { return ORDER.filter(hasApp); }
 const COLOR = { aizv: 'c-aizv', izv: 'c-izv', kais: 'c-kais', pers: 'c-pers', budz: 'c-budz', pl: 'c-aizv', logi: 'c-kais', sniegs: 'c-budz', darz: 'c-aizv', stav: 'c-izv' };
 const ARROW = '<span class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg></span>';
