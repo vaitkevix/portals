@@ -50,7 +50,7 @@ async function ensureSeed(db) {
   if (!us.length) return;
   await db.batch([...peopleStmts(db, seedFrom(us)), db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('peopleDirty', '1')")]);
 }
-async function session(env, t) {
+export async function session(env, t) {
   if (!t) return null;
   const r = await env.DB.prepare('SELECT v FROM kv WHERE k = ?').bind('sess:' + await h(t)).first();
   const s = r && parse(r.v); if (!s || !(s.name || s.company) || s.exp < Date.now()) return null;

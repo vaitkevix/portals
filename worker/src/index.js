@@ -5,7 +5,7 @@
  * © VAITKEVIX, SIA
  */
 
-import { portal, people, personByPin, seedFrom, peopleStmts, usersStmts } from './portal.js';
+import { portal, people, personByPin, seedFrom, peopleStmts, usersStmts, session } from './portal.js';
 import { plausana, plCron } from './plausana.js';
 import * as logi from './logi.js';
 import * as sniegs from './sniegs.js';
@@ -42,7 +42,7 @@ export default {
       if (url.pathname.startsWith(base + '/') && url.pathname !== base + '/api') {
         // Viena saite: lietotnes atveras tikai portālā (rāmī). Tieša atvēršana → vaitkevix.cloud/sh/
         const rest = url.pathname.slice(base.length);
-        if (base !== '/sh' && SITE_KEY[base] && (rest === '/' || rest === '/index.html') && request.headers.get('Sec-Fetch-Dest') === 'document')
+        if (base !== '/sh' && SITE_KEY[base] && (rest === '/' || rest === '/index.html') && request.headers.get('Sec-Fetch-Dest') === 'document' && !(base === '/shaizvietosana' && url.searchParams.get('k')))
           return Response.redirect(url.origin + '/sh/#' + SITE_KEY[base], 302);
         return site(request, url, base);
       }
@@ -55,7 +55,8 @@ export default {
       if (req.action === 'import') return json(Object.assign({ ok: true }, await importAll(X, req)));
       if (req.action === 'syncConfig') { checkKey(env, req.key); return json(Object.assign({ ok: true }, await syncConfig(X))); }
       if (req.action === 'export') return json(Object.assign({ ok: true }, await exportTable(X, req)));
-      if (req.action === 'teamView') return json(Object.assign({ ok: true }, await teamView(X, req)));
+      if (req.action === 'teamView') return json(Object.assign({ ok: true }, await teamView(X, req, await teamOk(X, req))));
+      if (/^team(Done|Cant|Problem)$/.test(req.action) && !(await teamOk(X, req))) return json({ ok: false, error: 'Lai atzīmētu, vajag brigādes saiti no vadītāja vai PIN', code: 'teamkey' });
       if (req.action === 'teamDone') return json(Object.assign({ ok: true }, await teamDone(X, req)));
       if (req.action === 'teamCant') return json(Object.assign({ ok: true }, await teamCant(X, req)));
       if (req.action === 'teamProblem') return json(Object.assign({ ok: true }, await teamProblem(X, req)));
@@ -72,6 +73,7 @@ export default {
   /** Cron: lietotāji, darbu veidi un objekti no Google tabulas */
   async scheduled(event, env, ctx) {
     if (event.cron !== '*/5 * * * *') ctx.waitUntil(syncConfig(new Ctx(env, ctx)).catch(e => console.error('syncConfig', e)));
+    if (event.cron !== '*/5 * * * *') return;   // :00 un :30 nostrādā abi trigeri — pārējais tikai vienreiz (*/5)
     ctx.waitUntil(izvDrain(env, ctx, 60000).catch(e => console.error('izvDrain', e)));
     ctx.waitUntil(plCron(env).catch(e => console.error('plCron', e)));
     ctx.waitUntil((async () => { await wxCron(env).catch(e => console.error('wx', e)); for (const k in GRAF) await GRAF[k].cron(env).catch(e => console.error('cron ' + k, e)); })());
@@ -86,14 +88,14 @@ const APPS = {
   izv: { gas: 'IZV_GAS_URL', reads: ['getBoot', 'getTasks', 'getInitialData'], boot: 'getBoot',
     fns: ['getBoot', 'getTasks', 'getInitialData', 'saveTask', 'updateTask', 'setTaskCancelled', 'getAccess', 'checkCarrierPin', 'completeTask', 'reportProblem', 'reportPdf',
       'geocodeAddresses', 'aiParseMessage', 'aiCheckPhoto', 'aiCompare', 'aiAsk', 'aiMonthSummary', 'saveFileToDrive'],
-    async: ['saveTask', 'completeTask', 'reportProblem', 'updateTask', 'setTaskCancelled'], pinFns: ['completeTask', 'reportProblem'], idRe: /^TASK-\d{10,}$/, idPrefix: 'TASK-' },
+    async: ['saveTask', 'completeTask', 'reportProblem', 'updateTask', 'setTaskCancelled'], open: ['getBoot', 'getTasks', 'getInitialData', 'reportPdf', 'checkCarrierPin'], pinFns: ['completeTask', 'reportProblem'], idRe: /^TASK-\d{10,}$/, idPrefix: 'TASK-' },
   kais: { gas: 'KAIS_GAS_URL', reads: ['getTasks', 'getInitialData'], boot: null,
     fns: ['getTasks', 'getInitialData', 'saveTask', 'completeTask', 'saveFileToDrive'],
-    async: ['saveTask', 'completeTask'], pinFns: [], idRe: /^KM-\d{10,}$/, idPrefix: 'KM-' }
+    async: ['saveTask', 'completeTask'], open: ['getTasks', 'getInitialData'], pinFns: [], idRe: /^KM-\d{10,}$/, idPrefix: 'KM-' }
 };
 const IZV_FRESH_MS = 20000;
 /* Bildes no Google Drive caur Cloudflare kešatmiņu: pirmā reize ~1 s, pēc tam ~0,1 s */
-const IMG_SIZES = ['w300', 'w600', 'w1600'];
+const IMG_SIZES = ['w300', 'w400', 'w600', 'w1600'];
 function imgKey(id, sz) { return new Request('https://img.cache/' + id + '/' + sz); }
 async function imgFetch(id, sz, ctx) {
   const cache = caches.default, key = imgKey(id, sz);
@@ -274,6 +276,12 @@ async function izv(request, url, env, ctx, app) {
       }
       return new Response(v, { headers: H });
     }
+    /* Mainīt (pieteikt, izvest, atzīmēt, AI, faili) — tikai ar portāla sesiju; skatīties var visi */
+    if (A.open.indexOf(fn) === -1) {
+      const me = await session(env, url.searchParams.get('t') || '');
+      if (!me || !((me.perms || {})[app] || (me.perms || {}).portal === 'admin')) throw Object.assign(new Error('Lai pieteiktu vai atzīmētu, ienāciet portālā vaitkevix.cloud/sh'), { code: 'login' });
+      if (/^ai/.test(fn) && !((me.perms || {})[app] === 'admin' || (me.perms || {}).portal === 'admin' || (me.perms || {})[app] === 'pieteicejs')) throw new Error('Nav atļauts');
+    }
     const body = await request.text();
     if (A.async.indexOf(fn) !== -1) {
       let a; try { a = JSON.parse(body); } catch (e) { a = null; }
@@ -307,7 +315,7 @@ async function izv(request, url, env, ctx, app) {
     if (!/^(getAccess|checkCarrierPin|reportPdf|geocodeAddresses|ai)/.test(fn)) ctx.waitUntil(Promise.all(A.reads.filter(f => f !== 'getInitialData').map(f => appRefresh(env, app, f, ctx).catch(() => 0))));
     return new Response(t, { headers: H });
   } catch (e) {
-    return new Response(JSON.stringify({ ok: false, error: String((e && e.message) || e) }), { headers: H });
+    return new Response(JSON.stringify({ ok: false, error: String((e && e.message) || e), code: (e && e.code) || '' }), { headers: H });
   }
 }
 
@@ -686,7 +694,7 @@ const ACTIONS = {
     await ensureStanding(X, r.date);
     const [jobs, units, staff, probs, stand] = await Promise.all([visibleJobs(X, u, r.date), X.units(r.date), X.staff(), problems(X, u), standingFor(X, u)]);
     const crews = {}; units.forEach(x => crews[x.name] = x.persons);
-    return { jobs, units, crews, staff, teamLink: u.role === 'admin' ? (X.env.APP_URL || '') : '', problems: probs, standing: stand };
+    return { jobs, units, crews, staff, teamLink: u.role === 'admin' && X.env.APP_URL ? X.env.APP_URL + '?k=' + await teamKey(X) : '', problems: probs, standing: stand };
   },
 
   setUnit: async (X, u, r) => {
@@ -984,7 +992,14 @@ const ACTIONS = {
 
 /* ---------------- Brigāžu skats (bez PIN) ---------------- */
 
-async function teamView(X, r) {
+/* Brigāžu saite: ?k=<atslēga> (kv teamKey). Bez tās — tikai skatīšanās, bez piekļuves kodiem. */
+async function teamKey(X) {
+  const r = await X.first("SELECT v FROM kv WHERE k = 'teamKey'"); if (r && r.v) return r.v;
+  const k = crypto.randomUUID().replace(/-/g, '').slice(0, 20); await X.run("INSERT OR IGNORE INTO kv (k, v) VALUES ('teamKey', ?)", k);
+  return (await X.first("SELECT v FROM kv WHERE k = 'teamKey'")).v;
+}
+async function teamOk(X, r) { if (r.key && r.key === await teamKey(X)) return true; return !!(r.pin && await X.auth(r.pin)); }
+async function teamView(X, r, full) {
   const date = String(r.date || '');
   if (!isDate(date)) throw new Error('Nav datuma');
   await ensureStanding(X, date);
@@ -993,7 +1008,7 @@ async function teamView(X, r) {
     brigade: j.brigade, statuss: j.statuss, lidz: j.lidz, prombutne: j.prombutne, foto: j.foto, komentars: j.komentars, iemesls: j.iemesls, izpildits: j.izpildits,
     steidzami: j.steidzami, laiks: j.laiks, parbaude: j.parbaude, parbKom: j.parbKom }));
   const addrs = new Set(jobs.map(j => norm(j.adrese)));
-  return { date, units, jobs, meta: { objects: objs.filter(o => addrs.has(norm(o.adrese))), managers: users.filter(x => x.role === 'vaditajs').map(x => ({ name: x.name, color: x.color })), jobTypes: types } };
+  return { date, units, jobs, canEdit: !!full, meta: { objects: objs.filter(o => addrs.has(norm(o.adrese))).map(o => full ? o : Object.assign({}, o, { piekluve: '' })), managers: users.filter(x => x.role === 'vaditajs').map(x => ({ name: x.name, color: x.color })), jobTypes: types } };
 }
 
 async function teamDone(X, r) {
