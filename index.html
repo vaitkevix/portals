@@ -389,10 +389,14 @@ const GRAF = ['pl', 'logi', 'sniegs', 'darz', 'stav'], DARBI = ['logi', 'sniegs'
 const GLY = {aizv: '<path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M3.5 11V9.5A3.5 3.5 0 0 1 7 6h13.5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M20.5 13v1.5A3.5 3.5 0 0 1 17 18H3.5"/>', izv: '<path d="M14 16.5V6H2.5v10.5h2"/><path d="M14 9.5h4l3.5 4v3h-2"/><path d="M9.3 16.5h5.4"/><circle cx="7" cy="16.8" r="2.3"/><circle cx="17" cy="16.8" r="2.3"/>', kais: '<path d="M12.00 12.00L12.00 2.50M12.00 7.25L9.88 5.13M12.00 7.25L14.12 5.13M12.00 12.00L3.77 7.25M7.89 9.62L4.99 10.40M7.89 9.62L7.11 6.73M12.00 12.00L3.77 16.75M7.89 14.38L7.11 17.27M7.89 14.38L4.99 13.60M12.00 12.00L12.00 21.50M12.00 16.75L14.12 18.87M12.00 16.75L9.88 18.87M12.00 12.00L20.23 16.75M16.11 14.38L19.01 13.60M16.11 14.38L16.89 17.27M12.00 12.00L20.23 7.25M16.11 9.62L16.89 6.73M16.11 9.62L19.01 10.40"/>', pers: '<circle cx="9.5" cy="8" r="4"/><path d="M2.5 21a7 7 0 0 1 14 0"/><path d="M19.5 8v6M16.5 11h6"/>', budz: '<path d="M5.5 2.5h13v19l-3.2-2.1-3.3 2.1-3.3-2.1-3.2 2.1z"/><path d="M9 8h6M9 12h6M9 16h3.5"/>', pl: '<path d="M3 20h18"/><path d="M6 20c0-5 1-9 3-12M10 20c0-4 1-7 3-9M14 20c0-3 1-6 4-8"/>', logi: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v18M4 12h16"/>', sniegs: '<path d="M5 17V10h7l2 3h5v4"/><path d="M12 10V6h3l2 7"/><circle cx="8" cy="17.5" r="2"/><circle cx="16.5" cy="17.5" r="2"/><path d="M10 17.5h4.5"/><path d="M2.5 9.5v9"/>', darz: '<path d="M12 21v-8"/><path d="M12 13c0-4 3-7 8-7 0 5-3 7-8 7z"/><path d="M12 15.5c0-3-2.5-5-7-5 0 4 2.5 5 7 5z"/>', stav: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9.5 17V7h3.5a3 3 0 0 1 0 6H9.5"/>'};
 const gl = (k, n) => `<svg class="gl" width="${n || 22}" height="${n || 22}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLY[k]}</svg>`;
 const ib = (k, n) => `<span class="ib ${COLOR[k] || 'c-' + k}">${gl(k, n)}</span>`;
-const RL = { admin: 'Administrators', vaditajs: 'Darbu vadītājs', izpilditajs: 'Izpildītājs', skatitajs: 'Skatītājs', pieteicejs: 'Pieteicējs', 'gatavotājs': 'Gatavotājs', 'vadība': 'Darbu vadītājs' };
+const RL = { admin: 'Administrators', vaditajs: 'Pieteicējs', izpilditajs: 'Izpildītājs', skatitajs: 'Skatītājs', pieteicejs: 'Pieteicējs', 'gatavotājs': 'Izpildītājs', 'vadība': 'Pieteicējs' };
 /* Lomu secība visās lietotnēs vienāda: nav / skatītājs → darbinieks → vadītājs → administrators */
-const RORD = ['', 'skatitajs', 'pieteicejs', 'izpilditajs', 'gatavotājs', 'vaditajs', 'vadība', 'admin'];
-const rsort = (L) => L.slice().sort((a, b) => RORD.indexOf(a) - RORD.indexOf(b));
+/* Vienāda lomu kārtība visās lietotnēs: Nav piekļuves · Skatītājs · Pieteicējs · Izpildītājs · Administrators.
+   Katras lietotnes lomas atslēga kolonnā (pieteicējs = agrākais «darbu vadītājs»; Budžetā vadība apstiprina, gatavotājs sagatavo) */
+const RCOL = [['', 'Nav piekļuves'], ['skatitajs', 'Skatītājs'], ['P', 'Pieteicējs'], ['I', 'Izpildītājs'], ['admin', 'Administrators']];
+const RKEY = { P: ['pieteicejs', 'vaditajs', 'vadība'], I: ['izpilditajs', 'gatavotājs'] };
+const RNO = { aizv: 'Aizvietošanā darbus izpilda brigādes ar brigāžu saiti', izv: 'Izvedēji ir uzņēmumi (SIA) ar savu paroli', kais: 'Kurjeri ir uzņēmumi (SIA) ar savu paroli', pers: 'Personālā nav izpildītāja lomas' };
+const rcol = (k, c) => { const L = S.roles[k] || []; return RKEY[c] ? RKEY[c].find(r => L.indexOf(r) !== -1) : (L.indexOf(c) !== -1 ? c : null); };
 const COLORS = ['#0f6b5c', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#475569'];
 
 function toast(m, type) { const t = document.createElement('div'); t.className = 'toast' + (type === 'err' ? ' err' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 3200); }
@@ -453,7 +457,7 @@ async function logout() {
 
 /* ---------- Sākums ---------- */
 /* Zāles pļaušanu redz visi portāla cilvēki (skatīšanās); tiesības pl dod labošanu */
-const gRole = (k) => S.me && !S.me.company ? (S.me.perms[k] || (S.me.perms.portal === 'admin' ? 'admin' : 'skatitajs')) : '';
+const gRole = (k) => S.me && !S.me.company ? (S.me.perms[k] || (S.me.perms.portal === 'admin' ? 'admin' : '')) : '';
 const plRole = () => gRole('pl');
 const hasApp = (k) => !!(S.me && (S.me.guest ? GUEST.indexOf(k) !== -1 : (S.me.perms[k] || (GRAF.indexOf(k) !== -1 && gRole(k)))));
 /* Skatīšanās bez ielogošanās (pārvaldniekiem): tikai lietotnes, kuru saraksti ir publiski redzami */
@@ -911,7 +915,7 @@ function editPerson(p) {
       <label class="tog">Aktīvs<input type="checkbox" id="pAct" ${p.active ? 'checked' : ''}></label>
       <label class="tog">Portāla administrators (maina pilnvaras)<input type="checkbox" id="pAdm" ${p.perms.portal === 'admin' ? 'checked' : ''}></label>
       ${ORDER.map(k => `<div class="perm"><div class="pt">${ib(k, 16)}${APPS[k].name}</div><div class="seg" data-k="${k}">
-        ${rsort(S.roles[k]).map(r => `<button type="button" data-r="${esc(r)}" class="${(p.perms[k] || '') === r ? 'on' : ''}">${r ? esc(RL[r] || r) : GRAF.indexOf(k) !== -1 ? 'Skatītājs' : 'Nav piekļuves'}</button>`).join('')}</div></div>`).join('')}
+        ${RCOL.map(([c, l]) => { const r = rcol(k, c); return r == null ? `<button type="button" disabled title="${esc(RNO[k] || 'Šajā lietotnē nav šīs lomas')}" style="opacity:.35">${l}</button>` : `<button type="button" data-r="${esc(r)}" class="${(p.perms[k] || '') === r ? 'on' : ''}">${l}</button>`; }).join('')}</div></div>`).join('')}
       <div class="acts">${isNew ? '' : '<button class="btn red" id="pDel" type="button">Dzēst</button>'}<button class="btn" id="pSave" type="button">Saglabāt</button></div>`;
     $('pBack').onclick = () => drawAdminSheet();
     $('pGen').onclick = () => { p.name = $('pName').value; p.phone = $('pTel').value; p.email = $('pMail').value; p.pin = genPin(); draw(); };

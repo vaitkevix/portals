@@ -9,11 +9,11 @@ export const ROLES = {
   kais: ['', 'admin', 'pieteicejs', 'skatitajs'],
   pers: ['', 'admin', 'vaditajs', 'skatitajs'],
   budz: ['', 'admin', 'gatavotājs', 'vadība', 'skatitajs'],
-  pl: ['', 'admin', 'vaditajs', 'izpilditajs'],
-  logi: ['', 'admin', 'vaditajs', 'izpilditajs'],
-  sniegs: ['', 'admin', 'vaditajs', 'izpilditajs'],
-  darz: ['', 'admin', 'vaditajs', 'izpilditajs'],
-  stav: ['', 'admin', 'vaditajs', 'izpilditajs']
+  pl: ['', 'skatitajs', 'admin', 'vaditajs', 'izpilditajs'],
+  logi: ['', 'skatitajs', 'admin', 'vaditajs', 'izpilditajs'],
+  sniegs: ['', 'skatitajs', 'admin', 'vaditajs', 'izpilditajs'],
+  darz: ['', 'skatitajs', 'admin', 'vaditajs', 'izpilditajs'],
+  stav: ['', 'skatitajs', 'admin', 'vaditajs', 'izpilditajs']
 };
 const P_CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
 const pj = (o) => new Response(JSON.stringify(o), { headers: Object.assign({ 'Content-Type': 'application/json;charset=utf-8' }, P_CORS) });
