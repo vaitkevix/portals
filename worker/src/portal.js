@@ -5,8 +5,8 @@ export const APPS_P = ['aizv', 'izv', 'kais', 'pers', 'budz'];
 export const ROLES = {
   portal: ['', 'admin'],
   aizv: ['', 'admin', 'vaditajs'],
-  izv: ['', 'admin', 'pieteicejs'],
-  kais: ['', 'admin', 'pieteicejs'],
+  izv: ['', 'admin', 'pieteicejs', 'skatitajs'],
+  kais: ['', 'admin', 'pieteicejs', 'skatitajs'],
   pers: ['', 'admin', 'vaditajs'],
   budz: ['', 'admin', 'gatavotājs', 'vadība'],
   pl: ['', 'admin', 'vaditajs', 'izpilditajs'],

@@ -136,6 +136,7 @@ async function who(request, env) {
   if (pp) {
     const r = pp.perms[app] || '';
     if (!r) { await new Promise(r => setTimeout(r, 400)); return json({ ok: false, error: 'Jums nav piekļuves šai lietotnei' }); }
+    if (r === 'skatitajs') return json({ ok: false, error: 'Jums ir tikai skatīšanās tiesības' });
     return json({ ok: true, user: { name: pp.name, role: r, kind: r === 'admin' ? 'admin' : 'pieteicejs', kindLabel: r === 'admin' ? 'Administrators' : 'Pieteicējs' } });
   }
   try {
@@ -281,6 +282,7 @@ async function izv(request, url, env, ctx, app) {
     if (A.open.indexOf(fn) === -1) {
       const me = await session(env, url.searchParams.get('t') || '');
       if (!me || !((me.perms || {})[app] || (me.perms || {}).portal === 'admin')) throw Object.assign(new Error('Lai pieteiktu vai atzīmētu, ienāciet portālā vaitkevix.cloud/sh'), { code: 'login' });
+      if ((me.perms || {})[app] === 'skatitajs' && (me.perms || {}).portal !== 'admin') throw new Error('Jums ir tikai skatīšanās tiesības');
       if (/^ai/.test(fn) && !((me.perms || {})[app] === 'admin' || (me.perms || {}).portal === 'admin' || (me.perms || {})[app] === 'pieteicejs')) throw new Error('Nav atļauts');
     }
     const body = await request.text();
