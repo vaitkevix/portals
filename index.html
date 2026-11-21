@@ -157,10 +157,12 @@ button{cursor:pointer}
 .shell{display:flex;min-height:100vh}
 .rail{display:none}
 @media(min-width:900px){
-  .rail{display:flex;flex-direction:column;align-items:center;gap:14px;width:96px;flex:none;padding:28px 0;background:var(--surface);border-right:1px solid var(--line);position:sticky;top:0;height:100vh}
-  .rail .rlogo{width:48px;height:48px;border-radius:14px;margin-bottom:28px}
-  .rbtns{display:flex;flex-direction:column;gap:12px;flex:1}
-  .rb{width:56px;height:56px;border-radius:50%;border:0;background:transparent;color:var(--ink-2);display:grid;place-items:center;padding:0}
+  .rail{display:flex;flex-direction:column;align-items:center;gap:10px;width:88px;flex:none;padding:20px 0;background:var(--surface);border-right:1px solid var(--line);position:sticky;top:0;height:100vh}
+  .rail .rlogo{width:44px;height:44px;border-radius:13px;margin-bottom:8px;flex:none}
+  .rbtns{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;padding:2px 0}
+  .rbtns::-webkit-scrollbar{display:none}
+  .rsep{display:block;width:32px;height:1px;background:var(--line-2);margin:6px 0;flex:none}
+  .rb{flex:none;width:46px;height:46px;border-radius:50%;border:0;background:transparent;color:var(--ink-2);display:grid;place-items:center;padding:0}
   .rb img{width:30px;height:30px;border-radius:9px}
   .rb.on{background:var(--ink-strong);color:var(--bg)}
   .rb:hover:not(.on){background:var(--surface-2)}
@@ -195,7 +197,8 @@ button{cursor:pointer}
 .ib .gl{display:block}
 :root[data-theme="dark"] .ib{color:var(--ink-strong)}
 .ac .atop .ib{width:42px;height:42px;border-radius:50%;background:var(--pill)}
-.rb .ib{width:40px;height:40px;border-radius:12px}
+.rb .ib{width:38px;height:38px;border-radius:12px}
+.rb.on .ib{box-shadow:0 0 0 2px var(--ink-strong)}
 .sw .ib{width:100%;height:100%;border-radius:8px}
 .perm .pt .ib{width:26px;height:26px;border-radius:8px}
 .ni i,.wide .t1 i{color:#16201b}:root[data-theme="dark"] .ni i{color:var(--ink-strong)}
@@ -371,7 +374,7 @@ const ORDER = ['aizv', 'izv', 'kais', 'pers', 'budz', 'pl', 'logi', 'sniegs', 'd
 const GRAF = ['pl', 'logi', 'sniegs', 'darz', 'stav'], DARBI = ['logi', 'sniegs', 'darz', 'stav'];
 const GLY = {aizv: '<path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M3.5 11V9.5A3.5 3.5 0 0 1 7 6h13.5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M20.5 13v1.5A3.5 3.5 0 0 1 17 18H3.5"/>', izv: '<path d="M14 16.5V6H2.5v10.5h2"/><path d="M14 9.5h4l3.5 4v3h-2"/><path d="M9.3 16.5h5.4"/><circle cx="7" cy="16.8" r="2.3"/><circle cx="17" cy="16.8" r="2.3"/>', kais: '<path d="M12.00 12.00L12.00 2.50M12.00 7.25L9.88 5.13M12.00 7.25L14.12 5.13M12.00 12.00L3.77 7.25M7.89 9.62L4.99 10.40M7.89 9.62L7.11 6.73M12.00 12.00L3.77 16.75M7.89 14.38L7.11 17.27M7.89 14.38L4.99 13.60M12.00 12.00L12.00 21.50M12.00 16.75L14.12 18.87M12.00 16.75L9.88 18.87M12.00 12.00L20.23 16.75M16.11 14.38L19.01 13.60M16.11 14.38L16.89 17.27M12.00 12.00L20.23 7.25M16.11 9.62L16.89 6.73M16.11 9.62L19.01 10.40"/>', pers: '<circle cx="9.5" cy="8" r="4"/><path d="M2.5 21a7 7 0 0 1 14 0"/><path d="M19.5 8v6M16.5 11h6"/>', budz: '<path d="M5.5 2.5h13v19l-3.2-2.1-3.3 2.1-3.3-2.1-3.2 2.1z"/><path d="M9 8h6M9 12h6M9 16h3.5"/>', pl: '<path d="M3 20h18"/><path d="M6 20c0-5 1-9 3-12M10 20c0-4 1-7 3-9M14 20c0-3 1-6 4-8"/>', logi: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v18M4 12h16"/>', sniegs: '<path d="M5 17V10h7l2 3h5v4"/><path d="M12 10V6h3l2 7"/><circle cx="8" cy="17.5" r="2"/><circle cx="16.5" cy="17.5" r="2"/><path d="M10 17.5h4.5"/><path d="M2.5 9.5v9"/>', darz: '<path d="M12 21v-8"/><path d="M12 13c0-4 3-7 8-7 0 5-3 7-8 7z"/><path d="M12 15.5c0-3-2.5-5-7-5 0 4 2.5 5 7 5z"/>', stav: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9.5 17V7h3.5a3 3 0 0 1 0 6H9.5"/>'};
 const gl = (k, n) => `<svg class="gl" width="${n || 22}" height="${n || 22}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLY[k]}</svg>`;
-const ib = (k, n) => `<span class="ib c-${k}">${gl(k, n)}</span>`;
+const ib = (k, n) => `<span class="ib ${COLOR[k] || 'c-' + k}">${gl(k, n)}</span>`;
 const RL = { admin: 'Administrators', vaditajs: 'Darbu vadītājs', izpilditajs: 'Izpildītājs', skatitajs: 'Skatītājs', pieteicejs: 'Pieteicējs', 'gatavotājs': 'Gatavotājs', 'vadība': 'Vadība' };
 const COLORS = ['#0f6b5c', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#475569'];
 
@@ -464,7 +467,9 @@ function home() {
   $('avatarTxt').textContent = me.name.replace(/^SIA\s+/i, '').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
   $('menuBtn').style.background = me.color || '';
   const list = apps();
-  $('railBtns').innerHTML = `<button class="rb on" title="Sākums">${GRID}</button>` + list.map(k => `<button class="rb" data-app="${k}" title="${APPS[k].name}">${ib(k, 20)}</button>`).join('') + (me.admin ? `<button class="rb" data-adm title="Administrēšana">${SHIELD}</button>` : '');
+  const rbtn = (k) => `<button class="rb" data-app="${k}" title="${APPS[k].name}" aria-label="${APPS[k].name}">${ib(k, 20)}</button>`;
+  const core = list.filter(k => GRAF.indexOf(k) === -1), graf = list.filter(k => GRAF.indexOf(k) !== -1);   // pamatlietotnes | grafika darbi | administrēšana
+  $('railBtns').innerHTML = `<button class="rb on" title="Sākums">${GRID}</button><i class="rsep"></i>` + core.map(rbtn).join('') + (graf.length ? '<i class="rsep"></i>' + graf.map(rbtn).join('') : '') + (me.admin ? `<i class="rsep"></i><button class="rb" data-adm title="Administrēšana" aria-label="Administrēšana">${SHIELD}</button>` : '');
   const n = (D.aizv ? D.aizv.open || 0 : 0) + (D.izv ? (D.izv.mine != null ? D.izv.mine : D.izv.open) || 0 : 0) + (D.kais ? D.kais.open || 0 : 0);
   $('todayN').textContent = n ? '(' + n + ')' : '';
   $('tiles').innerHTML = list.map(k => `<button class="ac ${COLOR[k]}" data-app="${k}" data-q="${esc(APPS[k].name)}">
