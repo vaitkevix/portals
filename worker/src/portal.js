@@ -99,6 +99,22 @@ async function dash(env, me) {
   }
   if (P.pers) out.pers = {};
   if (P.budz) out.budz = {};
+  /* Grafika lietotnes: šodien, izdarīti, nokavēti, steidzami, dienas kalendāram, tuvākie. Cilvēki redz visas (skatīšanās), SIA — tikai pilnvarotās un savus darbus */
+  const G = [['pl', 'pl_visit', false], ['logi', 'logi_visit', true], ['sniegs', 'sniegs_visit', true], ['darz', 'darz_visit', true], ['stav', 'stav_visit', true]];
+  const d0 = td.slice(0, 8) + '01', d1 = fmt.format(new Date(Date.now() + 62 * 864e5));
+  for (const [k, T, hasSt] of G) {
+    if (me.company ? !P[k] : false) continue;
+    const mine = me.company ? ' AND brigade = ?' : '', ar = me.company ? [me.name] : [];
+    try {
+      const c = await env.DB.prepare(`SELECT SUM(CASE WHEN datums = ? THEN 1 ELSE 0 END) today, SUM(CASE WHEN datums = ? AND statuss = 'done' THEN 1 ELSE 0 END) done,
+        SUM(CASE WHEN datums < ? AND statuss = 'plan' THEN 1 ELSE 0 END) late, SUM(CASE WHEN statuss = 'cant' AND datums >= ? THEN 1 ELSE 0 END) cant,
+        ${hasSt ? "SUM(CASE WHEN steidzami = 1 AND statuss = 'plan' THEN 1 ELSE 0 END)" : '0'} urgent FROM ${T} WHERE datums >= ?${mine}`).bind(td, td, td, fmt.format(new Date(Date.now() - 7 * 864e5)), fmt.format(new Date(Date.now() - 120 * 864e5)), ...ar).first();
+      const rows = (await env.DB.prepare(`SELECT datums, COUNT(*) n, SUM(CASE WHEN statuss = 'done' THEN 1 ELSE 0 END) d FROM ${T} WHERE datums >= ? AND datums <= ?${mine} GROUP BY datums`).bind(d0, d1, ...ar).all()).results || [];
+      const next = (await env.DB.prepare(`SELECT datums, adrese, statuss${hasSt ? ', steidzami' : ''} FROM ${T} WHERE datums >= ? AND statuss = 'plan'${mine} ORDER BY ${hasSt ? 'steidzami DESC, ' : ''}datums LIMIT 3`).bind(td, ...ar).all()).results || [];
+      const days = {}; rows.forEach(r => days[r.datums] = [r.n, r.d]);
+      out[k] = { today: c.today || 0, done: c.done || 0, late: k === 'sniegs' ? 0 : c.late || 0, cant: c.cant || 0, urgent: c.urgent || 0, days, next };
+    } catch (e) { /* tabula vēl nav — izlaiž */ }
+  }
   return out;
 }
 

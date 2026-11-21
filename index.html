@@ -216,7 +216,7 @@ button{cursor:pointer}
 :root[data-theme="dark"] .ac{color:var(--ink)}
 :root[data-theme="dark"] .ac .chip,:root[data-theme="dark"] .arrow{background:var(--surface);color:var(--ink)}
 .c-adm .arrow{background:#2b3732;color:#fff}.c-adm small{opacity:.7}
-.stats3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.stats3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,45%),1fr));gap:12px}
 @media(max-width:520px){.ac{min-height:136px;padding:14px;border-radius:24px}.ac b{font-size:17px;padding-right:0;margin-top:12px}.ac small{padding-right:0;font-size:12px}.ac .arrow{width:38px;height:38px;right:10px;bottom:auto;top:10px}.ac .atop .ib{width:36px;height:36px}.ac .chip{display:none}}
 .sx{position:relative;padding:16px 16px 18px;border-radius:24px;min-height:118px;border:0;text-align:left;color:#17201c}
 :root[data-theme="dark"] .sx{color:var(--ink)}
@@ -243,6 +243,7 @@ button{cursor:pointer}
 .cal .dd.today{background:var(--ink-strong);color:var(--bg)}
 .cal .dd.sel{outline:2px dashed var(--ink-3);outline-offset:-3px}
 .cal .dd small{position:absolute;bottom:2px;font-size:9px;font-weight:800;opacity:.7}
+.cal .dd .dots{position:absolute;top:3px;right:3px;display:flex;gap:2px}.cal .dd .dots i{width:6px;height:6px;border-radius:50%;box-shadow:0 0 0 1px var(--surface)}
 .nextl{display:grid;gap:10px;margin:14px 0 24px}
 .ni{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:24px;background:var(--mint);border:0;text-align:left;color:#17201c;width:100%}
 :root[data-theme="dark"] .ni{color:var(--ink)}
@@ -461,12 +462,14 @@ function appSub(k) {
   if (k === 'aizv') return D.open != null ? `${D.open} šodien neizpildīti · rīt ${D.tomorrow}` : APPS[k].sub;
   if (k === 'izv') return D.open != null ? (C ? `${D.open} jāizved` : `${D.open} gaida izvešanu`) : APPS[k].sub;
   if (k === 'kais') return D.open != null ? (C ? `${D.open} jāpiegādā` : `${D.open} gaida piegādi`) : APPS[k].sub;
+  if (GRAF.indexOf(k) !== -1 && D.today != null) return D.today ? `Šodien ${D.done}/${D.today}${D.late ? ' · nokavēti ' + D.late : ''}` : D.late ? `Nokavēti ${D.late}` : D.next && D.next.length ? 'Nākamais ' + fmtD(D.next[0].datums) : APPS[k].sub;
   return APPS[k].sub;
 }
 function appChip(k) {
   const D = (S.dash || {})[k] || {};
   if (k === 'izv' && D.urgent) return `<span class="chip w">● ${D.urgent} steidzami</span>`;
   if (k === 'aizv' && D.unassigned) return `<span class="chip w">● ${D.unassigned} bez brigādes</span>`;
+  if (GRAF.indexOf(k) !== -1 && (D.urgent || D.cant || D.late)) return `<span class="chip w">● ${D.urgent ? D.urgent + ' steidzami' : D.cant ? D.cant + ' nevar' : D.late + ' nokavēti'}</span>`;
   const r = S.me.perms[k] || (GRAF.indexOf(k) !== -1 ? gRole(k) : ''); return r ? `<span class="chip">${esc(RL[r] || (r === 'izvedejs' ? 'Izvedējs' : r === 'kurjers' ? 'Kurjers' : r))}</span>` : '';
 }
 function home() {
@@ -480,7 +483,7 @@ function home() {
   const rbtn = (k) => `<button class="rb" data-app="${k}" title="${APPS[k].name}" aria-label="${APPS[k].name}">${ib(k, 20)}</button>`;
   const core = list.filter(k => GRAF.indexOf(k) === -1), graf = list.filter(k => GRAF.indexOf(k) !== -1);   // pamatlietotnes | grafika darbi | administrēšana
   $('railBtns').innerHTML = `<button class="rb on" title="Sākums">${GRID}</button><i class="rsep"></i>` + core.map(rbtn).join('') + (graf.length ? '<i class="rsep"></i>' + graf.map(rbtn).join('') : '') + (me.admin ? `<i class="rsep"></i><button class="rb" data-adm title="Administrēšana" aria-label="Administrēšana">${SHIELD}</button>` : '');
-  const n = (D.aizv ? D.aizv.open || 0 : 0) + (D.izv ? (D.izv.mine != null ? D.izv.mine : D.izv.open) || 0 : 0) + (D.kais ? D.kais.open || 0 : 0);
+  const n = (D.aizv ? D.aizv.open || 0 : 0) + (D.izv ? (D.izv.mine != null ? D.izv.mine : D.izv.open) || 0 : 0) + (D.kais ? D.kais.open || 0 : 0) + GRAF.reduce((a, k) => a + (D[k] && hasApp(k) ? (D[k].today - D[k].done) + D[k].late : 0), 0);
   $('todayN').textContent = n ? '(' + n + ')' : '';
   $('tiles').innerHTML = list.map(k => `<button class="ac ${COLOR[k]}" data-app="${k}" data-q="${esc(APPS[k].name)}">
       <div class="atop"><span class="ib">${gl(k, 20)}</span>${appChip(k)}</div>
@@ -492,8 +495,12 @@ function home() {
   if (D.aizv) sx.push(['aizv', 'Šodien neizpildīti', D.aizv.open, 'c-aizv']);
   if (D.izv) sx.push(['izv', me.company ? 'Jāizved' : D.izv.mine != null ? 'Jūsu gaida' : 'Gaida izvešanu', D.izv.mine != null ? D.izv.mine : D.izv.open, 'c-izv']);
   if (D.kais) sx.push(['kais', me.company ? 'Jāpiegādā' : 'Gaida piegādi', D.kais.open, 'c-kais']);
+  const gt = GRAF.filter(k => D[k] && hasApp(k)), gTod = gt.reduce((a, k) => a + D[k].today - D[k].done, 0), gLate = gt.reduce((a, k) => a + D[k].late + D[k].cant, 0);
+  if (gt.length) { const top = gt.slice().sort((a, b) => (D[b].today - D[b].done + D[b].late) - (D[a].today - D[a].done + D[a].late))[0];
+    sx.push([top, 'Grafikos šodien', gTod, COLOR[top]]); if (gLate) sx.push([gt.find(k => D[k].late || D[k].cant) || top, 'Nokavēti / nevar', gLate, 'c-pers']); }
   if (D.aizv && sx.length < 3) sx.push(['aizv', 'Rīt darbi', D.aizv.tomorrow, 'c-lilac']);
-  $('stats').innerHTML = sx.slice(0, 3).map(([k, l, v, c]) => `<button class="sx ${c === 'c-lilac' ? 'c-budz' : c}" data-app="${k}"><span>${l}</span><b>${v == null ? '—' : v}</b>${ARROW}</button>`).join('');
+  const pri = (x) => ['Šodien neizpildīti', 'Grafikos šodien', 'Nokavēti / nevar'].indexOf(x[1]) !== -1 ? 0 : 1; sx.sort((a, b) => pri(a) - pri(b));
+  $('stats').innerHTML = sx.slice(0, 4).map(([k, l, v, c]) => `<button class="sx ${c === 'c-lilac' ? 'c-budz' : c}" data-app="${k}"><span>${l}</span><b>${v == null ? '—' : v}</b>${ARROW}</button>`).join('');
   $('stats').previousElementSibling.hidden = $('stats').hidden = !sx.length;
   // Plašā kartīte: šodienas progress
   if (D.aizv && D.aizv.today) {
@@ -508,21 +515,28 @@ function home() {
   ((D.aizv && D.aizv.next) || []).forEach(j => items.push(`<button class="ni" data-app="aizv" data-q="${esc(j.adrese)}"><i>${gl('aizv')}</i><div><b>${esc(j.adrese)}</b><small>${esc(fmtD(j.datums))} · ${esc(j.tips || 'Darbs')}${j.brigade ? ' · ' + esc(j.brigade) : ' · bez brigādes'}</small></div></button>`));
   ((D.izv && D.izv.top) || []).forEach(x => items.push(`<button class="ni ${x.u ? 'u' : 'u'}" data-app="izv" data-q="${esc(x.a)}"><i>${gl('izv')}</i><div><b>${esc(x.a)}</b><small>Izvešana${x.u ? ' · steidzami' : ''}${x.d ? ' · līdz ' + esc(x.d) : ''}</small></div></button>`));
   ((D.kais && D.kais.top) || []).forEach(x => items.push(`<button class="ni k" data-app="kais" data-q="${esc(x.a)}"><i>${gl('kais')}</i><div><b>${esc(x.a)}</b><small>Kaisāmmateriāls${x.m ? ' · ' + esc(x.m) : ''}</small></div></button>`));
+  GRAF.filter(k => D[k] && hasApp(k)).forEach(k => (D[k].next || []).slice(0, 2).forEach(x => items.push(`<button class="ni" data-app="${k}" data-q="${esc(x.adrese)}"><i>${gl(k)}</i><div><b>${esc(x.adrese)}</b><small>${esc(fmtD(x.datums))} · ${esc(APPS[k].name)}${x.steidzami ? ' · steidzami' : ''}</small></div></button>`)));
   $('nextList').innerHTML = items.length ? items.join('') : '<div class="card" style="padding:18px;text-align:center;font-weight:700;color:var(--ink-3)">Nav gaidošu darbu ✓</div>';
   filterQ();
 }
+const DOTC = { aizv: 'var(--mint)', pl: '#7fd3b0', logi: '#7fbcf2', sniegs: '#b49ff5', darz: '#9ccf7a', stav: '#f6cc55' };
 function drawCal() {
-  const D = (S.dash && S.dash.aizv && S.dash.aizv.days) || {}, y = CAL.y, m = CAL.m, first = new Date(y, m, 1), td = ymd(new Date());
+  const SD = S.dash || {}, D = {}, AP = {}, y = CAL.y, m = CAL.m, first = new Date(y, m, 1), td = ymd(new Date());
+  ['aizv'].concat(GRAF).forEach(k => { if (!SD[k] || !SD[k].days || !hasApp(k)) return; for (const d in SD[k].days) { const v = SD[k].days[d]; D[d] = [(D[d] ? D[d][0] : 0) + v[0], (D[d] ? D[d][1] : 0) + v[1]]; (AP[d] = AP[d] || []).push(k); } });
   const start = new Date(y, m, 1 - ((first.getDay() + 6) % 7));
   let cells = '';
   for (let i = 0; i < 42; i++) { const d = new Date(start); d.setDate(start.getDate() + i); const k = ymd(d), v = D[k];
     if (i >= 35 && d.getMonth() !== m) break;
-    cells += `<button class="dd ${d.getMonth() !== m ? 'o' : ''} ${v ? 'has' : ''} ${k === td ? 'today' : ''}" data-day="${k}" title="${v ? v[0] + ' darbi, ' + v[1] + ' izpildīti' : ''}">${d.getDate()}${v && k !== td ? `<small>${v[0]}</small>` : ''}</button>`; }
+    cells += `<button class="dd ${d.getMonth() !== m ? 'o' : ''} ${v ? 'has' : ''} ${k === td ? 'today' : ''}" data-day="${k}" title="${v ? v[0] + ' darbi, ' + v[1] + ' izpildīti · ' + AP[k].map(a => APPS[a].name).join(', ') : ''}">${d.getDate()}${v && k !== td ? `<small>${v[0]}</small>` : ''}${v ? `<span class="dots">${AP[k].slice(0, 4).map(a => `<i style="background:${DOTC[a]}"></i>`).join('')}</span>` : ''}</button>`; }
   $('cal').innerHTML = `<div class="ch"><b>${(m => m[0].toUpperCase() + m.slice(1))(first.toLocaleDateString('lv-LV', { month: 'long' }))} ${y}</b><span><button data-cm="-1" aria-label="Iepriekšējais">‹</button><button data-cm="1" aria-label="Nākamais">›</button></span></div>
     <div class="g">${['P', 'O', 'T', 'C', 'Pk', 'S', 'Sv'].map(w => `<div class="wd">${w}</div>`).join('')}${cells}</div>`;
 }
 $('cal').onclick = (e) => { const b = e.target.closest('[data-cm]'); if (b) { CAL.m += +b.dataset.cm; if (CAL.m < 0) { CAL.m = 11; CAL.y--; } if (CAL.m > 11) { CAL.m = 0; CAL.y++; } drawCal(); return; }
-  const d = e.target.closest('[data-day]'); if (d && S.me && S.me.perms.aizv) openApp('aizv'); };
+  const d = e.target.closest('[data-day]'); if (!d) return; const SD = S.dash || {}, ks = ['aizv'].concat(GRAF).filter(k => SD[k] && SD[k].days && SD[k].days[d.dataset.day] && hasApp(k));
+  if (ks.length === 1) return openApp(ks[0]);
+  if (ks.length > 1) { const s = sheet(`<div class="hd"><h3>${esc(fmtD(d.dataset.day))}</h3>${X}</div><div class="plist">${ks.map(k => `<button class="prow" data-app="${k}">${ib(k, 18)}<div class="nm"><b>${APPS[k].name}</b><div class="chips"><span class="chip">${SD[k].days[d.dataset.day][0]} darbi · ${SD[k].days[d.dataset.day][1]} izdarīti</span></div></div>${CHEV}</button>`).join('')}</div>`);
+    s.onclick = (ev) => { const b = ev.target.closest('[data-app]'); if (b) { closeSheet(); openApp(b.dataset.app); } }; return; }
+  if (S.me && S.me.perms.aizv) openApp('aizv'); };
 function filterQ() {
   const q = ($('q').value || '').trim().toLowerCase();
   document.querySelectorAll('#tiles [data-q], #nextList [data-q]').forEach(el => el.classList.toggle('hidden-q', !!q && !el.dataset.q.toLowerCase().includes(q) && !el.textContent.toLowerCase().includes(q)));
