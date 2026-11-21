@@ -3,6 +3,7 @@
  * Objekti un grupas — no portāla (objects, groups); savas tabulas darz_obj, darz_visit, darz_log. Laikapstākļi — kopīgi (kv wx, sk. wx.js). */
 import { personByPin, companyBy } from './portal.js';
 import { groupsOf } from './master.js';
+import { notify, managers, personNames } from './webpush.js';
 import { today, addDays, dow, nowStr, uid, anorm, lvD, kv, kvSet, geoQuery, CORS, out } from './util.js';
 
 export const KEY = 'darz', NAME = 'Dārzniecība', KIND = 'darznieks';
@@ -19,6 +20,7 @@ function cleanObj(d) { return {}; }
 function cleanDone(d) { d = d || {}; return { darbi: darbi(d.darbi), materiali: mats(d.materiali), cilveki: int(d.cilveki, 1, 30), stundas: Math.max(0, Math.min(24, Math.round((+d.stundas || 0) * 4) / 4)) }; }
 
 async function cfgOf(db) { return Object.assign({}, DEF_CFG, (await kv(db, 'darz:cfg')) || {}); }
+const push = (X, env, p) => { const run = (async () => { try { await p(); } catch (e) { console.error('push', e); } })(); if (X && X.bg) X.bg(run); else return run; };
 const log = (db, t) => db.prepare('INSERT INTO darz_log (laiks, teksts) VALUES (?, ?)').bind(nowStr(), String(t).slice(0, 300));
 
 /* Diena nederīga laikapstākļu dēļ. wx: { datums: { r: mm, s: cm sniega, t: min °C } } */
@@ -165,6 +167,7 @@ export async function api(request, env, X, fetchWx) {
       await db.batch([db.prepare("INSERT INTO darz_visit (id, anorm, adrese, datums, brigade, avots, termins, steidzami, apraksts, dati, prio, pieteica, laiks_no, laiks_lidz, izveidots) VALUES (?, ?, ?, ?, ?, 'pieteikums', ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(id, k, o.adrese, d, String(b.brigade || '').slice(0, 80), term, b.steidzami ? 1 : 0, String(b.apraksts || '').slice(0, 500), JSON.stringify(cleanReq(b.dati)), b.steidzami ? 1 : 0, me.name, String(b.laiksNo || C.laiksNo || '').slice(0, 5), String(b.laiksLidz || C.laiksLidz || '').slice(0, 5), nowStr()),
         log(db, me.name + ' pieteica: ' + o.adrese + ' (' + lvD(d) + (b.steidzami ? ', steidzami' : '') + ')')]);
+      if (b.steidzami) push(X, env, async () => { const who = await personNames(env, [String(b.brigade || '')]); await notify(env, who.length ? who.concat(await managers(env, KEY)) : await managers(env, KEY), { title: '⚡ Steidzami · ' + NAME, body: o.adrese + (b.apraksts ? ' — ' + String(b.apraksts).slice(0, 80) : '') + ' (' + me.name + ')', url: '/sh/#darz', urgent: true }); });
       return out({ ok: true, id });
     }
     if (a === 'editReq') {   // pieteikuma vai izbraukuma datums, laiks, izpildītājs
@@ -211,6 +214,7 @@ export async function api(request, env, X, fetchWx) {
         const d = nextDay(addDays(v.datums > today() ? v.datums : today(), 1), C, wx);
         await db.batch([db.prepare('UPDATE darz_visit SET datums = ?, prio = 1, parcelts = parcelts + 1, iemesls = ?, izpilditajs = ? WHERE id = ?').bind(d, why, me.name, v.id),
           log(db, v.adrese + ' → ' + lvD(d) + ' (' + why.toLowerCase() + ', ' + me.name + ')')]);
+        push(X, env, async () => notify(env, (await managers(env, KEY)).filter(n => n !== me.name), { title: NAME + ' · nevar', body: v.adrese + ': ' + why + ' (' + me.name + ') → ' + lvD(d), url: '/sh/#darz' }));
       }
       return out(Object.assign({ ok: true }, await schedule(db)));
     }

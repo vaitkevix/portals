@@ -4,6 +4,7 @@
  * Tabulas: sniegs_obj (traktorists, secība), sniegs_call (izsaukumi), sniegs_visit (adrese izsaukumā), sniegs_log. Laikapstākļi — kv 'wx' (wx.js). */
 import { personByPin, companyBy } from './portal.js';
 import { groupsOf } from './master.js';
+import { notify, managers, personNames } from './webpush.js';
 import { today, addDays, nowStr, uid, anorm, lvD, kv, kvSet, geoQuery, CORS, out } from './util.js';
 
 export const KEY = 'sniegs', NAME = 'Sniega tīrīšana', KIND = 'traktorists';
@@ -21,6 +22,11 @@ async function cfgOf(db) { return Object.assign({}, DEF_CFG, (await kv(db, 'snie
 const log = (db, t) => db.prepare('INSERT INTO sniegs_log (laiks, teksts) VALUES (?, ?)').bind(nowStr(), String(t).slice(0, 300));
 
 /* Izsaukuma adreses — visi aktīvie objekti ar savu traktoristu un secību */
+/* Traktoristiem (cilvēkiem) — maršruts gatavs */
+async function pushCrews(env, call, txt) {
+  const names = ((await env.DB.prepare("SELECT DISTINCT brigade FROM sniegs_visit WHERE izs = ? AND brigade != ''").bind(call.id).all()).results || []).map(r => r.brigade);
+  await notify(env, await personNames(env, names), { title: '❄ Sniega tīrīšana · ' + lvD(call.datums), body: txt, url: '/sh/#sniegs', urgent: true });
+}
 async function callVisits(db, call) {
   const objs = (await db.prepare('SELECT s.anorm, o.adrese, s.brigade, s.seq FROM sniegs_obj s JOIN objects o ON o.anorm = s.anorm WHERE s.aktivs = 1 ORDER BY s.brigade, s.seq, o.adrese').all()).results || [];
   const have = new Set(((await db.prepare('SELECT anorm FROM sniegs_visit WHERE izs = ?').bind(call.id).all()).results || []).map(r => r.anorm));
@@ -30,7 +36,7 @@ async function callVisits(db, call) {
   return st.length;
 }
 /* Prognoze ≥ slieksnis šodien / rīt → izsaukums (gaida apstiprinājumu vai uzreiz aktīvs) */
-export async function snowCheck(db) {
+export async function snowCheck(db, env) {
   const C = await cfgOf(db), wx = (await kv(db, 'wx')) || {}, t = today(); let made = 0;
   if (!C.auto) return 0;
   for (const d of [t, addDays(t, 1)]) {
@@ -40,6 +46,10 @@ export async function snowCheck(db) {
     await db.batch([db.prepare('INSERT INTO sniegs_call (id, datums, statuss, cm, avots, izveidots) VALUES (?, ?, ?, ?, ?, ?)').bind(call.id, d, call.statuss, cm, 'prognoze', nowStr()),
       log(db, 'Prognoze ' + cm.toFixed(1) + ' cm ' + lvD(d) + ' → izsaukums ' + (C.approve ? 'gaida apstiprinājumu' : 'aktīvs'))]);
     if (call.statuss === 'aktivs') await callVisits(db, call);
+    if (env) { try {
+      if (call.statuss === 'gaida') await notify(env, await managers(env, KEY), { title: '❄ Sniegs ' + cm.toFixed(1) + ' cm · ' + lvD(d), body: 'Izsaukums gaida apstiprinājumu — atveriet Sniega tīrīšanu', url: '/sh/#sniegs', urgent: true });
+      else await pushCrews(env, call, 'Prognoze ' + cm.toFixed(1) + ' cm — jūsu maršruts gatavs');
+    } catch (e) { console.error('push', e); } }
     made++;
   }
   return made;
@@ -64,7 +74,7 @@ export async function geocode(db, max) {
 /* Cron ik 30 min: sniega pārbaude (prognozi atjauno wx.js); koordinātas reizi dienā */
 export async function cron(env) {
   const db = env.DB, t = today();
-  await snowCheck(db);
+  await snowCheck(db, env);
   if ((await kv(db, 'sniegs:ran')) === t) return;
   await db.batch([kvSet(db, 'sniegs:ran', t)]);
   await geocode(db, 5).catch(() => 0);
@@ -123,12 +133,13 @@ export async function api(request, env, X, fetchWx) {
       let c = await db.prepare("SELECT * FROM sniegs_call WHERE datums = ? AND statuss IN ('gaida', 'aktivs')").bind(d).first();
       if (!c) { c = { id: uid(), datums: d }; await db.batch([db.prepare("INSERT INTO sniegs_call (id, datums, statuss, cm, avots, izveidots, apstiprinaja) VALUES (?, ?, 'aktivs', ?, 'vaditajs', ?, ?)").bind(c.id, d, +((((await kv(db, 'wx')) || {})[d] || {}).s || 0), nowStr(), me.name), log(db, me.name + ' izsauca tīrīšanu ' + lvD(d))]); }
       else await db.batch([db.prepare("UPDATE sniegs_call SET statuss = 'aktivs', apstiprinaja = ? WHERE id = ?").bind(me.name, c.id)]);
-      return out({ ok: true, added: await callVisits(db, c) });
+      const added = await callVisits(db, c); X.bg && X.bg(pushCrews(env, c, me.name + ' izsauca tīrīšanu — jūsu maršruts gatavs').catch(() => 0));
+      return out({ ok: true, added });
     }
     if (a === 'approve' || a === 'cancel' || a === 'finish') {
       need('vaditajs');
       const c = await db.prepare('SELECT * FROM sniegs_call WHERE id = ?').bind(String(b.id || '')).first(); if (!c) throw new Error('Izsaukums nav atrasts');
-      if (a === 'approve') { await db.batch([db.prepare("UPDATE sniegs_call SET statuss = 'aktivs', apstiprinaja = ? WHERE id = ?").bind(me.name, c.id), log(db, me.name + ' apstiprināja izsaukumu ' + lvD(c.datums))]); return out({ ok: true, added: await callVisits(db, c) }); }
+      if (a === 'approve') { await db.batch([db.prepare("UPDATE sniegs_call SET statuss = 'aktivs', apstiprinaja = ? WHERE id = ?").bind(me.name, c.id), log(db, me.name + ' apstiprināja izsaukumu ' + lvD(c.datums))]); const added = await callVisits(db, c); X.bg && X.bg(pushCrews(env, c, 'Apstiprināts — jūsu maršruts gatavs').catch(() => 0)); return out({ ok: true, added }); }
       if (a === 'cancel') { await db.batch([db.prepare("UPDATE sniegs_call SET statuss = 'atcelts', beigts = ? WHERE id = ?").bind(nowStr(), c.id), db.prepare("DELETE FROM sniegs_visit WHERE izs = ? AND statuss = 'plan' AND sakums = ''").bind(c.id), log(db, me.name + ' atcēla izsaukumu ' + lvD(c.datums))]); return out({ ok: true }); }
       await db.batch([db.prepare("UPDATE sniegs_call SET statuss = 'beigts', beigts = ? WHERE id = ?").bind(nowStr(), c.id), log(db, me.name + ' pabeidza izsaukumu ' + lvD(c.datums))]);
       return out({ ok: true });
@@ -149,6 +160,7 @@ export async function api(request, env, X, fetchWx) {
       } else {
         const why = String(b.iemesls || 'Nevar').slice(0, 60);
         await db.batch([db.prepare("UPDATE sniegs_visit SET statuss = 'cant', iemesls = ?, izpilditajs = ?, laiks = ? WHERE id = ?").bind(why, me.name, nowStr().slice(11), v.id), log(db, v.adrese + ': ' + why.toLowerCase() + ' (' + me.name + ')')]);
+        X.bg && X.bg(managers(env, KEY).then(m => notify(env, m.filter(n => n !== me.name), { title: 'Sniega tīrīšana · nevar', body: v.adrese + ': ' + why + ' (' + me.name + ')', url: '/sh/#sniegs' })).catch(() => 0));
       }
       return out({ ok: true });
     }
@@ -157,6 +169,8 @@ export async function api(request, env, X, fetchWx) {
       const k = anorm(b.adrese); const o = k && await db.prepare('SELECT adrese FROM objects WHERE anorm = ?').bind(k).first(); if (!o) throw new Error('Izvēlieties adresi no saraksta');
       const t = today(), d = /^\d{4}-\d{2}-\d{2}$/.test(b.datums || '') && b.datums >= t ? b.datums : t;
       const so = await db.prepare('SELECT brigade FROM sniegs_obj WHERE anorm = ?').bind(k).first(), id = uid();
+      const br = String(b.brigade || (so && so.brigade) || '');
+      if (b.steidzami && X.bg) X.bg((async () => { const who = await personNames(env, [br]); await notify(env, who.length ? who : await managers(env, KEY), { title: '⚡ Steidzami · Sniega tīrīšana', body: o.adrese + (b.apraksts ? ' — ' + String(b.apraksts).slice(0, 80) : ''), url: '/sh/#sniegs', urgent: true }); })().catch(() => 0));
       await db.batch([db.prepare("INSERT INTO sniegs_visit (id, izs, anorm, adrese, datums, brigade, avots, steidzami, apraksts, dati, pieteica, izveidots) VALUES (?, '', ?, ?, ?, ?, 'pieteikums', ?, ?, ?, ?, ?)")
         .bind(id, k, o.adrese, d, String(b.brigade || (so && so.brigade) || '').slice(0, 80), b.steidzami ? 1 : 0, String(b.apraksts || '').slice(0, 500), JSON.stringify(cleanReq(b.dati)), me.name, nowStr()),
         log(db, me.name + ' pieteica: ' + o.adrese + (b.steidzami ? ' (steidzami)' : ''))]);
@@ -181,7 +195,7 @@ export async function api(request, env, X, fetchWx) {
       await db.batch([kvSet(db, 'sniegs:cfg', n)]);
       return out({ ok: true, cfg: n });
     }
-    if (a === 'replan') { need('vaditajs'); await fetchWx(db).catch(() => 0); return out({ ok: true, added: await snowCheck(db), moved: 0 }); }
+    if (a === 'replan') { need('vaditajs'); await fetchWx(db).catch(() => 0); return out({ ok: true, added: await snowCheck(db, env), moved: 0 }); }
     return out({ ok: false, error: 'Nezināma darbība' });
   } catch (e) { return out({ ok: false, error: e.message || String(e) }); }
 }

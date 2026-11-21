@@ -590,6 +590,7 @@ $('menuBtn').onclick = () => {
       <button data-m="tour"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5h.01"/></svg>Pamācība — soli pa solim</button>
       ${S.me.admin ? '<button data-m="adm"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3Z"/></svg>Administrēšana</button>' : ''}
       <button data-m="theme"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>${dark ? 'Gaišais režīms' : 'Tumšais režīms'}</button>
+      <button data-m="push"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>Paziņojumi</button>
       <button data-m="a2hs"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 8v6M9 11h6"/></svg>Pievienot sākuma ekrānam</button>
       <button data-m="out" class="red"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h3"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>Iziet</button>
     </div><p class="copy">© VAITKEVIX, SIA</p>`);
@@ -600,6 +601,7 @@ $('menuBtn').onclick = () => {
     if (a === 'adm') openAdmin();
     if (a === 'theme') { setTheme(dark ? 'light' : 'dark'); closeSheet(); }
     if (a === 'a2hs') { closeSheet(); SHXR.a2hs(); }
+    if (a === 'push') { pushSheet(); }
     if (a === 'out') logout();
   };
 };
@@ -837,6 +839,36 @@ function editPerson(p) {
   draw();
 }
 function drawAdminSheet() { sheet(''); drawAdmin(); }
+
+/* ---------- Push paziņojumi (Web Push, bez trešās puses) ---------- */
+const u8 = (b64) => { const s = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((b64.length + 3) % 4)); return Uint8Array.from(s, c => c.charCodeAt(0)); };
+async function pushState() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return { ok: false, why: isIOSnoPWA() ? 'iphone' : 'nav' };
+  const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+  return { ok: true, on: !!sub && Notification.permission === 'granted', reg, sub, perm: Notification.permission };
+}
+function isIOSnoPWA() { return /iphone|ipad/i.test(navigator.userAgent) && !(window.navigator.standalone || matchMedia('(display-mode: standalone)').matches); }
+async function pushSheet() {
+  const s = sheet(`<div class="hd"><h3>Paziņojumi</h3>${X}</div><div class="skel"></div>`);
+  const st = await pushState().catch(() => ({ ok: false, why: 'nav' }));
+  const what = '<ul style="margin:0 0 14px;padding-left:18px;font-weight:600;line-height:1.6;color:var(--ink-2)"><li>sniega izsaukums un jūsu maršruts</li><li>steidzami pieteikumi</li><li>«nevar izpildīt» jūsu lietotnēs</li><li>stāvvietām — jāpaziņo iedzīvotājiem</li><li>Aizvietošanas darbi</li></ul>';
+  if (!st.ok) { s.innerHTML = `<div class="hd"><h3>Paziņojumi</h3>${X}</div><p style="font-weight:700">${st.why === 'iphone' ? 'iPhone paziņojumi strādā tikai no sākuma ekrāna ikonas: Safari → Kopīgot → «Pievienot sākuma ekrānam», tad atveriet portālu no ikonas un nāciet šeit.' : 'Šī pārlūkprogramma neatbalsta paziņojumus.'}</p>`; return; }
+  s.innerHTML = `<div class="hd"><h3>Paziņojumi</h3>${X}</div><p style="margin:0 0 8px;font-weight:700">Šajā ierīcē: <b>${st.on ? 'ieslēgti ✓' : st.perm === 'denied' ? 'aizliegti iestatījumos' : 'izslēgti'}</b></p>${what}
+    <div class="acts" style="grid-template-columns:1fr 1fr">${st.on ? '<button class="btn ghost" id="pOff">Izslēgt</button><button class="btn" id="pTest">Sūtīt testu</button>' : '<button class="btn" id="pOn" style="grid-column:1/-1">Ieslēgt paziņojumus</button>'}</div>
+    ${st.perm === 'denied' ? '<p class="copy" style="text-align:left">Atļaujiet paziņojumus ierīces iestatījumos (iPhone: Iestatījumi → Paziņojumi → SH Portāls).</p>' : ''}`;
+  const on = $('pOn'), off = $('pOff'), te = $('pTest');
+  if (on) on.onclick = async () => { on.disabled = true; on.textContent = '…';
+    try { if ((await Notification.requestPermission()) !== 'granted') throw new Error('Paziņojumi nav atļauti');
+      const k = await api('pushKey'); if (!k.key || !k.on) throw new Error('Serverī paziņojumi vēl nav ieslēgti — sazinieties ar administratoru');
+      const sub = await st.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: u8(k.key) });
+      await api('pushSub', { sub: sub.toJSON(), device: (navigator.userAgent || '').slice(0, 120) });
+      toast('Paziņojumi ieslēgti', 'ok'); pushSheet(); }
+    catch (e) { toast(netMsg(e), 'err'); on.disabled = false; on.textContent = 'Ieslēgt paziņojumus'; } };
+  if (off) off.onclick = async () => { try { await api('pushOff', { endpoint: st.sub.endpoint }); await st.sub.unsubscribe(); toast('Izslēgti'); pushSheet(); } catch (e) { toast(netMsg(e), 'err'); } };
+  if (te) te.onclick = async () => { try { const r = await api('pushTest'); toast(r.sent ? 'Nosūtīts — pēc brīža parādīsies' : 'Netika nosūtīts', r.sent ? 'ok' : 'err'); } catch (e) { toast(netMsg(e), 'err'); } };
+}
+/* Pieskaroties paziņojumam: sw.js atver /sh/#lietotne → atver lietotni */
+addEventListener('hashchange', () => { const k = location.hash.slice(1); if (S.me && APPS[k] && hasApp(k)) openApp(k); });
 
 /* ---------- Starts ---------- */
 (async function boot() {

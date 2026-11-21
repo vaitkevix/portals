@@ -1,3 +1,4 @@
+import { notify } from './webpush.js';
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
 export const APPS_P = ['aizv', 'izv', 'kais', 'pers', 'budz'];
 export const ROLES = {
@@ -140,6 +141,17 @@ export async function portal(request, env, ctx, hooks) {
     const me = await session(env, b.t);
     if (!me) return pj({ ok: false, error: 'SESIJA', code: 'auth' });
     if (a === 'me') return pj({ ok: true, me: pub(me), dash: await dash(env, me) });
+    /* Push paziņojumi šai ierīcei (Web Push) */
+    if (a === 'pushKey') return pj({ ok: true, key: env.VAPID_PUBLIC || '', on: !!env.VAPID_PRIVATE });
+    if (a === 'pushSub') {
+      const sb = b.sub || {}, k = sb.keys || {};
+      if (!/^https:\/\//.test(String(sb.endpoint || '')) || !k.p256dh || !k.auth) throw new Error('Nederīgs abonements');
+      await env.DB.prepare('INSERT INTO push_subs (endpoint, name, p256dh, auth, device, created) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET name = excluded.name, p256dh = excluded.p256dh, auth = excluded.auth, device = excluded.device')
+        .bind(String(sb.endpoint).slice(0, 800), me.name, String(k.p256dh).slice(0, 200), String(k.auth).slice(0, 100), String(b.device || '').slice(0, 120), new Date().toISOString()).run();
+      return pj({ ok: true });
+    }
+    if (a === 'pushOff') { await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(String(b.endpoint || '')).run(); return pj({ ok: true }); }
+    if (a === 'pushTest') return pj({ ok: true, sent: await notify(env, [me.name], { title: 'SH | Portāls', body: 'Paziņojumi strādā ✓', url: '/sh/' }) });
     if (a === 'logout') { await env.DB.prepare('DELETE FROM kv WHERE k = ?').bind('sess:' + await h(b.t)).run(); return pj({ ok: true }); }
     if (me.perms.portal !== 'admin') return pj({ ok: false, error: 'Tikai administratoram' });
     if (a === 'people') return pj({ ok: true, people: await people(env.DB), roles: ROLES });

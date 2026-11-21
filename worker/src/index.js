@@ -12,6 +12,7 @@ import * as sniegs from './sniegs.js';
 import * as darznieciba from './darznieciba.js';
 import * as stavvietas from './stavvietas.js';
 import { fetchWx, wxCron } from './wx.js';
+import { notify as wpNotify } from './webpush.js';
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
 const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas };
 import { master, importAll as importMaster, legacyPayload, publicLists, objectsStmts, companiesStmts, listsStmts, typesStmts, kvGet, kvSet, resolveReview, clearInfoReview, autoMergePrefixed, groupsOf, groupsStmts } from './master.js';
@@ -541,6 +542,7 @@ class Ctx {
   /** Push paziņojums (fonā — atbildi nebremzē) */
   notify(names, title, body) {
     names = (names || []).filter(Boolean); if (!names.length) return;
+    this.bg(wpNotify(this.env, names, { title, body, url: '/sh/#aizv' }));   // Web Push (portāls)
     this.bg((async () => {
       const ph = names.map(() => '?').join(',');
       const toks = (await this.all(`SELECT token FROM tokens WHERE name IN (${ph})`, ...names)).map(r => r.token);
