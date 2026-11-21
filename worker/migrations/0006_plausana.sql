@@ -1,0 +1,9 @@
+-- SH | Zāles pļaušana: objektu pļaušanas iestatījumi, izbraukumi (grafiks + izpilde), žurnāls. © VAITKEVIX, SIA
+CREATE TABLE IF NOT EXISTS pl_obj (anorm TEXT PRIMARY KEY, m2 REAL NOT NULL DEFAULT 0, intervals INTEGER NOT NULL DEFAULT 10, aktivs INTEGER NOT NULL DEFAULT 1,
+  brigade TEXT NOT NULL DEFAULT '', piezime TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS pl_visit (id TEXT PRIMARY KEY, anorm TEXT NOT NULL, adrese TEXT NOT NULL, datums TEXT NOT NULL, statuss TEXT NOT NULL DEFAULT 'plan',
+  prio INTEGER NOT NULL DEFAULT 0, brigade TEXT NOT NULL DEFAULT '', izpilditajs TEXT NOT NULL DEFAULT '', laiks TEXT NOT NULL DEFAULT '', foto TEXT NOT NULL DEFAULT '',
+  iemesls TEXT NOT NULL DEFAULT '', piezime TEXT NOT NULL DEFAULT '', parcelts INTEGER NOT NULL DEFAULT 0, izveidots TEXT NOT NULL DEFAULT '');
+CREATE INDEX IF NOT EXISTS pl_visit_d ON pl_visit (datums);
+CREATE INDEX IF NOT EXISTS pl_visit_a ON pl_visit (anorm);
+CREATE TABLE IF NOT EXISTS pl_log (id INTEGER PRIMARY KEY AUTOINCREMENT, laiks TEXT NOT NULL, teksts TEXT NOT NULL);

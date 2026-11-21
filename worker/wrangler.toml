@@ -1,0 +1,31 @@
+# SH | Aizvietošana — Cloudflare Worker (© VAITKEVIX, SIA) — v28
+name = "aizvietosana-api"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+account_id = "81cd66c1dae0179ceb25a6b75302a07d"
+
+[vars]
+APP_URL = "https://vaitkevix.cloud/shaizvietosana/"
+# Esošais Apps Script (tilts: bildes Google Drive, AI, push paziņojumi, tabulas kopija)
+GAS_URL = "https://script.google.com/macros/s/AKfycbzFlItt2WRyL3skDuKzmMOFP11uL5vTOqR3dN2pK-O812eDIih2nyEL2UEUk_ubcDADiA/exec"
+# Izvešanas pieteikumi (Apps Script)
+IZV_GAS_URL = "https://script.google.com/macros/s/AKfycbzI_DKAaqqqVb6LfKqQ2k5Uy4EfaEuZz79NI8olYUIWcutqj30YuhYHhuh2GBKYcRt2/exec"
+# Kaisāmmateriāls (Apps Script)
+KAIS_GAS_URL = "https://script.google.com/macros/s/AKfycbyEttChYy6oM5bejr0bHFJMNGbWe7NxYONc5fMflWXwGGrs-NqTUhseD0hOZO5lvdd7/exec"
+# Personāls (Apps Script)
+PERS_GAS_URL = "https://script.google.com/macros/s/AKfycbwuh3jTL8tJGuGAI8Z0_vKyxhQ0wdyuxKBgfMbIX8y09PUyJwPIy36y_gS8cwvOkZ3wkg/exec"
+# Budžets (Apps Script)
+BUDZ_GAS_URL = "https://script.google.com/macros/s/AKfycbxsdZh9P7sf5NOIGawHkwZeBiIvs_elyHZ3sb0xmV9knDfCxSPJTzZfD5dxAgLsIpw_/exec"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "aizvietosana"
+database_id = "cee4976e-af1a-4cf6-ba3f-59d7a332eeb4"
+migrations_dir = "migrations"
+
+[triggers]
+# lietotāji, darbu veidi un objekti no Google tabulas — ik pēc 30 min
+crons = ["*/30 * * * *", "*/5 * * * *"]
+
+# BRIDGE_KEY — slepenā atslēga (GitHub Secrets → tiek ielikta automātiski, kodā to neglabā)

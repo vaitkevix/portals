@@ -1,0 +1,20 @@
+# SH | Cloudflare Worker «aizvietosana-api» — portāla un visu lietotņu API + vaitkevix.cloud/sh* (© VAITKEVIX, SIA)
+# Vajadzīgs GitHub Secret: CLOUDFLARE_API_TOKEN. Worker noslēpumi (BRIDGE_KEY u.c.) jau ir Cloudflare — deploy tos nemaina.
+name: Cloudflare Worker
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**', '.github/workflows/worker.yml']
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: worker
+          command: |
+            d1 migrations apply aizvietosana --remote
+            deploy

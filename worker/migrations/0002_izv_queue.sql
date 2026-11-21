@@ -1,0 +1,3 @@
+-- Izvešana: saglabāšana fonā (rinda, līdz Google apstiprina)
+CREATE TABLE IF NOT EXISTS izv_q (qid TEXT NOT NULL, part INTEGER NOT NULL, fn TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '', patch TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL DEFAULT 0, tries INTEGER NOT NULL DEFAULT 0, lock INTEGER NOT NULL DEFAULT 0, err TEXT NOT NULL DEFAULT '', PRIMARY KEY (qid, part));
