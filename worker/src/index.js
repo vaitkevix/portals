@@ -364,6 +364,7 @@ async function pers(request, env, ctx) {
       return new Response(t, { headers: H });
     }
     // iesniegšana — uzreiz uz Google; pēc tam visiem saraksti/kalendārs tiek atjaunoti fonā
+    { const pp = await personByPin(env.DB, req.pin); if (pp && pp.perms.pers === 'skatitajs') throw new Error('Jums ir tikai skatīšanās tiesības'); }
     const t = await persGas(env, body); ctx.waitUntil(remember(t) || Promise.resolve());
     if (t.startsWith('{"ok":true')) ctx.waitUntil(env.DB.prepare("DELETE FROM kv WHERE k LIKE 'perst:%'").run());
     return new Response(t, { headers: H });
@@ -436,6 +437,7 @@ async function budz(request, env, ctx) {
       if (action === 'login') { try { const o = JSON.parse(t); if (o.ok && o.user) { user = o.user; await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind(ph, JSON.stringify({ user: o.user, t: Date.now() })).run(); } } catch (e) {} }
       if (/"error":"Nepareizs PIN"/.test(t)) await env.DB.prepare('DELETE FROM kv WHERE k = ?').bind(ph).run();
     };
+    if (BUDZ_READS.indexOf(action) === -1) { const pp = await personByPin(env.DB, req.pin); if (pp && pp.perms.budz === 'skatitajs') throw new Error('Jums ir tikai skatīšanās tiesības'); }
     if (BUDZ_READS.indexOf(action) !== -1) {
       if (!user) { const t = await budzGas(env, body); await remember(t); if (user && t.startsWith('{"ok":true')) await budzStore(env, budzCk(user.name, req), t); return new Response(t, { headers: H }); }
       const ck = budzCk(user.name, req);

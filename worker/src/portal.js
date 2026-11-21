@@ -4,11 +4,11 @@ import { notify } from './webpush.js';
 export const APPS_P = ['aizv', 'izv', 'kais', 'pers', 'budz'];
 export const ROLES = {
   portal: ['', 'admin'],
-  aizv: ['', 'admin', 'vaditajs'],
+  aizv: ['', 'admin', 'vaditajs', 'skatitajs'],
   izv: ['', 'admin', 'pieteicejs', 'skatitajs'],
   kais: ['', 'admin', 'pieteicejs', 'skatitajs'],
-  pers: ['', 'admin', 'vaditajs'],
-  budz: ['', 'admin', 'gatavotājs', 'vadība'],
+  pers: ['', 'admin', 'vaditajs', 'skatitajs'],
+  budz: ['', 'admin', 'gatavotājs', 'vadība', 'skatitajs'],
   pl: ['', 'admin', 'vaditajs', 'izpilditajs'],
   logi: ['', 'admin', 'vaditajs', 'izpilditajs'],
   sniegs: ['', 'admin', 'vaditajs', 'izpilditajs'],
@@ -79,7 +79,7 @@ async function dash(env, me) {
   const out = {}, P = me.perms, kv = async (k) => { const r = await env.DB.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? parse(r.v) : null; };
   const fmt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Riga' }), td = fmt.format(new Date()), tm = fmt.format(new Date(Date.now() + 864e5));
   if (P.aizv) {
-    const mine = P.aizv === 'admin' ? '' : ' AND vaditajs = ?', args = P.aizv === 'admin' ? [] : [me.name];
+    const all = P.aizv === 'admin' || P.aizv === 'skatitajs', mine = all ? '' : ' AND vaditajs = ?', args = all ? [] : [me.name];
     const q = async (d, extra) => (await env.DB.prepare('SELECT COUNT(*) n FROM jobs WHERE datums = ?' + mine + (extra || '')).bind(d, ...args).first()).n;
     out.aizv = { today: await q(td), open: await q(td, " AND statuss NOT IN ('izpildīts')"), tomorrow: await q(tm), unassigned: P.aizv === 'admin' ? await q(tm, " AND brigade = ''") : null };
     const d0 = td.slice(0, 8) + '01', d1 = fmt.format(new Date(Date.now() + 62 * 864e5));
@@ -137,7 +137,8 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'check') {   // Personāls / Budžets pārbauda vienoto PIN
       const me = await personByPin(env.DB, b.pin), app = String(b.app || '');
       if (!me) return pj({ ok: true, known: false });
-      return pj({ ok: true, known: true, name: me.name, role: me.perms[app] || '' });
+      const r = me.perms[app] || '';
+      return pj({ ok: true, known: true, name: me.name, role: r === 'skatitajs' ? 'admin' : r, viewer: r === 'skatitajs' });   // skatītājs: redz visu, saglabāt neļauj Worker (pers/budz)
     }
     const me = await session(env, b.t);
     if (!me) return pj({ ok: false, error: 'SESIJA', code: 'auth' });

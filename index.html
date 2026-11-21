@@ -433,7 +433,7 @@ function sso(pin) {
     if (DARBI.some(k => P[k])) ls.set('shd_pin', c.pass);
     return;
   }
-  if (P.aizv) ls.set('darbi_pin', pin);
+  if (P.aizv && P.aizv !== 'skatitajs') ls.set('darbi_pin', pin); else ls.del('darbi_pin');   // skatītājs — brigāžu plāns bez labošanas
   ['izv', 'kais'].forEach(k => {
     if (P[k] && P[k] !== 'skatitajs') ls.set('shx_' + k + '_user', JSON.stringify({ name: S.me.name, role: P[k], kind: P[k] === 'admin' ? 'admin' : 'pieteicejs', kindLabel: P[k] === 'admin' ? 'Administrators' : 'Pieteicējs' }));
     else ls.del('shx_' + k + '_user');
