@@ -88,7 +88,6 @@ export default {
 
   /** Cron: lietotāji, darbu veidi un objekti no Google tabulas */
   async scheduled(event, env, ctx) {
-    if (event.cron === '* * * * *') return ctx.waitUntil(foto.migrateDrive(env, 40).catch(e => console.error('foto', e)));   // pagaidu: vecās Drive bildes → R2 ātrāk
     if (event.cron !== '*/5 * * * *') ctx.waitUntil(syncConfig(new Ctx(env, ctx)).catch(e => console.error('syncConfig', e)));
     if (event.cron !== '*/5 * * * *') ctx.waitUntil(mirrorSheets(new Ctx(env, ctx)).catch(e => console.error('mirror', e)));
     if (event.cron !== '*/5 * * * *') return;   // :00 un :30 nostrādā abi trigeri — pārējais tikai vienreiz (*/5)
