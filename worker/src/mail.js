@@ -11,8 +11,11 @@ export const valid = (a) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(a || '').tr
 /** Viens e-pasts katram adresātam. Atgriež { sent:[...], failed:[{to, error}] } */
 export async function send(env, { to, subject, html, fromName, attachments, replyTo }) {
   if (!env.MAIL) throw new Error('E-pasts nav iestatīts');
-  const list = [...new Set((Array.isArray(to) ? to : String(to || '').split(/[,;\s]+/)).map(x => String(x).trim()).filter(valid))].slice(0, 20);
+  let list = [...new Set((Array.isArray(to) ? to : String(to || '').split(/[,;\s]+/)).map(x => String(x).trim()).filter(valid))].slice(0, 20);
   if (!list.length) throw new Error('Nav e-pasta adreses');
+  // Pagaidu novirzīšana (kv «mail:override» = adrese): visas vēstules uz vienu adresi, tēmā — kam bija domāta
+  const ov = env.DB && await env.DB.prepare("SELECT v FROM kv WHERE k = 'mail:override'").first().catch(() => null);
+  if (ov && valid(ov.v)) { subject = '[→ ' + list.join(', ') + '] ' + (subject || ''); list = [ov.v.trim()]; }
   const sent = [], failed = [];
   for (const addr of list) {
     const bnd = 'sh' + crypto.randomUUID().replace(/-/g, ''), host = FROM.split('@')[1];
