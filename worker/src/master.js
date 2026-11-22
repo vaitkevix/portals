@@ -27,11 +27,25 @@ export async function master(db) {
 }
 
 /* ---------- Saglabāšana ---------- */
-export function objectsStmts(db, list) {
+/* Vadītāja vārds objektā = vārds, kā saglabāts Pilnvarās («Rostislavs» → «Rostislavs F.»).
+   Salīdzina: precīzi, bez garumzīmēm/burtu lieluma, «Vārds Uzvārds» = «Vārds U.», tikai vārds. Ja vairāki — priekšroka tiem, kam ir Aizvietošanas loma. */
+const pKey = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\./g, '').replace(/\s+/g, ' ').trim();
+const pShort = (x) => { const w = pKey(x).split(' '); return w.length > 1 ? w[0] + ' ' + w[w.length - 1][0] : w[0]; };
+export function personCanonFrom(list) {
+  const ppl = (list || []).filter(p => p && p.name && p.active !== false && p.active !== 0).map(p => { let pr = p.perms || {}; if (typeof pr === 'string') { try { pr = JSON.parse(pr); } catch (e) { pr = {}; } } return { name: p.name, aizv: !!pr.aizv }; });
+  return (raw) => {
+    const v = String(raw || '').trim(); if (!v) return '';
+    const pick = (f) => { const m = ppl.filter(f); if (!m.length) return null; if (m.length === 1) return m[0].name; const a = m.filter(x => x.aizv); return a.length === 1 ? a[0].name : null; };
+    return pick(p => p.name === v) || pick(p => pKey(p.name) === pKey(v)) || (pKey(v).includes(' ') ? pick(p => pShort(p.name) === pShort(v)) : null) || pick(p => pKey(p.name).split(' ')[0] === pKey(v)) || v;
+  };
+}
+export async function personCanon(db) { try { return personCanonFrom((await db.prepare('SELECT name, active, perms FROM people').all()).results || []); } catch (e) { return (x) => x; } }
+export function objectsStmts(db, list, canon) {
+  canon = canon || ((x) => x);
   const st = [db.prepare('DELETE FROM objects')];
   const seen = new Set();
   list.forEach((o, i) => { const a = String(o.adrese || '').replace(/\s+/g, ' ').trim(); const k = anorm(a); if (!a || seen.has(k)) return; seen.add(k);
-    st.push(db.prepare('INSERT INTO objects (anorm, adrese, vaditajs, grupa, piekluve, ord) VALUES (?, ?, ?, ?, ?, ?)').bind(k, a, o.vaditajs || '', o.grupa || 'SH objekti', o.piekluve || '', i)); });
+    st.push(db.prepare('INSERT INTO objects (anorm, adrese, vaditajs, grupa, piekluve, ord) VALUES (?, ?, ?, ?, ?, ?)').bind(k, a, canon(o.vaditajs || ''), o.grupa || 'SH objekti', o.piekluve || '', i)); });
   return st;
 }
 export function companiesStmts(db, list) {
@@ -124,7 +138,7 @@ export async function importAll(db, src) {
   addL('bankas', pers.bankas); addL('atv_veidi', pers.veidi); addL('amati', pers.amati); addL('tel_kodi', pers.kodi);
 
   objs.forEach(o => delete o._from);
-  await db.batch([...objectsStmts(db, objs), ...peopleStmts(db, ppl), ...usersStmts(db, ppl), ...companiesStmts(db, comps), ...listsStmts(db, L),
+  await db.batch([...objectsStmts(db, objs, personCanonFrom(ppl)), ...peopleStmts(db, ppl), ...usersStmts(db, ppl), ...companiesStmts(db, comps), ...listsStmts(db, L),
     kvSet(db, 'masterReview', JSON.stringify(review)), kvSet(db, 'masterMode', '1'), kvSet(db, 'masterDirty', '1'), kvSet(db, 'peopleDirty', '1')]);
   return { objects: objs.length, people: ppl.length, companies: comps.length, review: review.length };
 }

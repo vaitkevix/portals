@@ -16,7 +16,7 @@ import { fetchWx, wxCron } from './wx.js';
 import { notify as wpNotify } from './webpush.js';
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
 const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas, dl: darbalaiks };
-import { master, importAll as importMaster, legacyPayload, publicLists, objectsStmts, companiesStmts, listsStmts, typesStmts, kvGet, kvSet, resolveReview, clearInfoReview, autoMergePrefixed, groupsOf, groupsStmts } from './master.js';
+import { master, importAll as importMaster, legacyPayload, publicLists, objectsStmts, personCanon, companiesStmts, listsStmts, typesStmts, kvGet, kvSet, resolveReview, clearInfoReview, autoMergePrefixed, groupsOf, groupsStmts } from './master.js';
 const TZ = 'Europe/Riga';
 const PROMBUTNE = ['Atvaļinājums', 'DNL', 'Vakance'];
 const STAND_PROMB = ['DNL', 'Vakance'];
@@ -520,9 +520,9 @@ class Ctx {
   async groupOf(name) { const t = (await this.types()).find(x => x.name === name); return t ? t.group : (name === 'Papilddarbs' ? 'Papilddarbs' : 'Aizvietošana'); }
   async objects() {
     if (this.c.objects) return this.c.objects;
-    const canon = {}; (await this.users()).filter(x => x.role === 'vaditajs').forEach(m => canon[norm(m.name)] = m.name);
+    const canon = await personCanon(this.db);
     return (this.c.objects = (await this.all('SELECT adrese, vaditajs, grupa, piekluve FROM objects ORDER BY ord, adrese'))
-      .map(o => ({ adrese: o.adrese, vaditajs: canon[norm(o.vaditajs)] || o.vaditajs, grupa: o.grupa || 'SH objekti', piekluve: o.piekluve })));
+      .map(o => ({ adrese: o.adrese, vaditajs: canon(o.vaditajs), grupa: o.grupa || 'SH objekti', piekluve: o.piekluve })));
   }
   async objMgr() { const out = {}; (await this.objects()).forEach(o => { if (o.vaditajs) out[norm(o.adrese)] = o.vaditajs; }); return out; }
   async units(date) { return (await this.all('SELECT name, persons FROM crew WHERE datums = ? ORDER BY id', date)).map(r => ({ name: r.name, persons: split(r.persons) })); }
@@ -748,9 +748,9 @@ const ACTIONS = {
     requireAdmin(u);
     const cur = await X.all('SELECT anorm, adrese, vaditajs, grupa, piekluve FROM objects');
     const idx = {}; cur.forEach(o => idx[o.anorm] = o);
-    let added = 0, updated = 0; const st = [], rows = [];
+    let added = 0, updated = 0; const st = [], rows = [], canon = await personCanon(X.db);
     (r.rows || []).forEach(x => {
-      const a = String(x[0] || '').trim(); if (!a) return;
+      const a = String(x[0] || '').trim(); if (!a) return; x[1] = canon(x[1]);
       const k = norm(a), c = idx[k];
       if (c) { c.grupa = x[2] || c.grupa; c.piekluve = x[3] || c.piekluve; if (x[1]) c.vaditajs = x[1]; updated++;
         st.push(X.st('UPDATE objects SET vaditajs = ?, grupa = ?, piekluve = ? WHERE anorm = ?', c.vaditajs, c.grupa, c.piekluve, k)); rows.push([c.adrese, c.vaditajs, c.grupa, c.piekluve]); }
@@ -1083,7 +1083,7 @@ async function masterAdmin(X, a, b, me) {
   if (a === 'master') return Object.assign({ ok: true }, await master(db));
   if (a === 'import') { const r = await masterImport(X); X.bg(pushMaster(X)); X.bg(pushPeople(X, await people(db))); return Object.assign({ ok: true, imported: r }, await master(db)); }
   if (a === 'saveObjects') { const list = (b.objects || []).filter(o => o && String(o.adrese || '').trim()); if (!list.length) return { ok: false, error: 'Saraksts ir tukšs' };
-    await db.batch(objectsStmts(db, list)); X.c = {}; masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
+    await db.batch(objectsStmts(db, list, await personCanon(db))); X.c = {}; masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
   if (a === 'saveCompanies') { const list = (b.companies || []).filter(c => c && String(c.name || '').trim());
     const had = (await master(db)).companies.length; if (had && (!list.length || (had >= 10 && list.length < had * 0.5))) return { ok: false, error: 'Uzņēmumu saraksts sarucis no ' + had + ' uz ' + list.length + ' — nesaglabāju. Atjaunojiet lapu un mēģiniet vēlreiz.' };
     const pw = list.filter(c => c.pass).map(c => String(c.pass).trim().toUpperCase()); if (new Set(pw).size !== pw.length) return { ok: false, error: 'Divām firmām ir vienāda parole' };
