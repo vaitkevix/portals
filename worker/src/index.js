@@ -19,6 +19,8 @@ import * as gsheets from './sheets.js';
 import * as ai from './ai.js';
 import * as foto from './foto.js';
 import * as kais from './kaisammaterials.js';
+/** kv «noGoogle» = '1': sistēma strādā tikai Cloudflare — Worker vairs nelasa/neraksta «SH | Dati» (2026-11-22). © VAITKEVIX, SIA */
+const noGoogle = async (db) => (await kvGet(db, 'noGoogle')) === '1';
 const GS_OPS = new Set(['config', 'people', 'master', 'addObjects', 'importObjects']);
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
 const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas, dl: darbalaiks };
@@ -561,6 +563,7 @@ class Ctx {
 
   /** Apps Script tilts */
   async bridge(op, data, timeoutMs) {
+    if (GS_OPS.has(op) && await noGoogle(this.db)) return { ok: true, skipped: 'noGoogle' };   // tikai Cloudflare — tabulā neraksta
     if (this.env.GOOGLE_SA && GS_OPS.has(op)) {   // tabulas darbības tieši caur Google Sheets API; ja neizdodas — vecais Apps Script
       try { const r = await gsheets.bridgeOp(this.env, op, data || {}); if (r) return Object.assign({ ok: true }, r); }
       catch (e) { console.error('sheets ' + op, e); await this.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('sheetsApi', ?)", 'kļūda ' + now() + ' · ' + op + ': ' + String(e.message || e)).catch(() => 0); }
@@ -1195,6 +1198,7 @@ async function sheetObjects(X, rows) {
 
 /** Lietotāji, darbu veidi un objekti — galvenais saraksts paliek tabulā */
 async function syncConfig(X) {
+  if (await noGoogle(X.db)) return { skipped: 'noGoogle' };
   const r = await X.bridge('config', {}, 60000);
   // Lietotāji un pilnvaras: galvenais saraksts ir portālā (D1). Pirmo reizi ņem no tabulas.
   let ppl = await people(X.db);
@@ -1231,7 +1235,7 @@ const MIRROR = [['jobs', 'Aizvietošana · Darbi', ['ID', 'Datums', 'Adrese', 'T
   ['problems', 'Aizvietošana · Problēmas', ['ID', 'Laiks', 'Adrese', 'Vaditajs', 'Vieniba', 'Apraksts', 'Foto', 'Statuss', 'Atrisinats']],
   ['standing', 'Aizvietošana · Pastāvīgie', ['ID', 'Adrese', 'Tips', 'Apraksts', 'Vaditajs', 'Prombutne', 'No', 'Beigas', 'Brivdienas', 'Steidzami', 'Laiks', 'Foto', 'Izlaistas', 'Izveidots']]];
 async function mirrorSheets(X, force) {
-  if (!X.env.GOOGLE_SA) return;
+  if (!X.env.GOOGLE_SA || await noGoogle(X.db)) return;
   const t = now(), day = t.slice(0, 10);
   if (!force && (t.slice(11, 13) < '02' || (await kvGet(X.db, 'mirrorDay')) === day)) return;
   await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('mirrorDay', ?)", day);

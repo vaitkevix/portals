@@ -76,7 +76,7 @@ export async function completeTask(env, ctx, gas, d) {
 
 /** Nesinhronizētās rindas → tabula (jaunas pieliek beigās ar kg formulām, esošās atjauno pēc ID kolonnā A) */
 export async function pushSheet(env) {
-  if (!env.GOOGLE_SA) return;
+  if (!env.GOOGLE_SA || (await kvGet(env.DB, 'noGoogle')) === '1') return;
   const db = env.DB, list = await all(db, 'SELECT * FROM kais_task WHERE sheet = 0 ORDER BY row LIMIT 50');
   if (!list.length) return;
   const ids = (await G.read(env, TAB, 'A:A')).map(r => String(r[0] || ''));
