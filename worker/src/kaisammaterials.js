@@ -111,3 +111,13 @@ export async function handle(env, ctx, fn, args, gas) {
   if (fn === 'saveFileToDrive') return await savePhoto(env, gas, a[0], a[1] || 'bilde.jpg');
   return undefined;
 }
+
+/** Pārslēgšana uz D1: kv «kais:switch» = '1' → (kad vecā rinda tukša) imports no tabulas → kais:native = '1'. Rezultāts kv «kais:switchLog». */
+export async function maybeSwitch(env) {
+  const db = env.DB;
+  if ((await kvGet(db, 'kais:switch')) !== '1' || await isNative(env) || !env.GOOGLE_SA) return;
+  const q = await db.prepare("SELECT COUNT(*) n FROM izv_q WHERE part = 0 AND fn LIKE 'kais|%' AND err = ''").first();
+  if (q && q.n) { await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('kais:switchLog', ?)").bind('gaida rindu: ' + q.n).run(); return; }
+  const r = await imports(env);
+  await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('kais:native', '1'), ('kais:switch', 'done'), ('kais:switchLog', ?)").bind(new Date().toISOString() + ' ' + JSON.stringify(r)).run();
+}

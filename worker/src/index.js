@@ -85,7 +85,7 @@ export default {
     if (event.cron !== '*/5 * * * *') return;   // :00 un :30 nostrādā abi trigeri — pārējais tikai vienreiz (*/5)
     ctx.waitUntil(izvDrain(env, ctx, 60000).catch(e => console.error('izvDrain', e)));
     ctx.waitUntil(plCron(env).catch(e => console.error('plCron', e)));
-    ctx.waitUntil(kais.pushSheet(env).catch(e => console.error('kais sheet', e)));
+    ctx.waitUntil(kais.maybeSwitch(env).then(() => kais.pushSheet(env)).catch(e => console.error('kais', e)));
     ctx.waitUntil((async () => { await wxCron(env).catch(e => console.error('wx', e)); for (const k in GRAF) await GRAF[k].cron(env).catch(e => console.error('cron ' + k, e)); })());
   }
 };
