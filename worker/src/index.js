@@ -63,7 +63,7 @@ export default {
         return site(request, url, base);
       }
     }
-    if (request.method === 'GET') return json({ ok: true, app: 'SH | Aizvietošana', time: new Date().toISOString(), ai: !!env.ANTHROPIC_API_KEY, foto: !!env.FOTO });
+    if (request.method === 'GET') return json({ ok: true, app: 'SH | sh-portals', time: new Date().toISOString(), ai: !!env.ANTHROPIC_API_KEY, foto: !!env.FOTO });
     let req;
     try { req = JSON.parse(await request.text()); } catch (e) { return json({ ok: false, error: 'Nederīgs pieprasījums' }); }
     const X = new Ctx(env, ctx);

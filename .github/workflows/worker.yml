@@ -1,4 +1,4 @@
-# SH | Cloudflare Worker «aizvietosana-api» — portāla un visu lietotņu API + vaitkevix.cloud/sh* (© VAITKEVIX, SIA)
+# SH | Cloudflare Worker «sh-portals» — portāla un visu lietotņu API (vaitkevix.cloud/sh/api) + vaitkevix.cloud/sh* (© VAITKEVIX, SIA)
 # Vajadzīgs GitHub Secret: CLOUDFLARE_API_TOKEN. Worker noslēpumi (BRIDGE_KEY u.c.) jau ir Cloudflare — deploy tos nemaina.
 name: Cloudflare Worker
 on:
