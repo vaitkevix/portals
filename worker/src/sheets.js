@@ -170,3 +170,13 @@ export async function appendUser(env, tab, rows, ss) {
   const m = /!A(\d+)/.exec((j.updates && j.updates.updatedRange) || '');
   return m ? +m[1] : 0;
 }
+
+/** Vienreizēja nolasīšana pārnešanai (kv «peek» = A1 diapazons) → kv «peekOut» (formulas un vērtības) */
+export async function peek(env, db) {
+  const r = await db.prepare("SELECT v FROM kv WHERE k = 'peek'").first();
+  if (!r || !r.v || !env.GOOGLE_SA) return;
+  const [tab, rng] = r.v.split('!');
+  const f = await call(env, env.DATA_SS + '/values/' + q(tabA1(tab, rng)) + '?valueRenderOption=FORMULA');
+  const v = await call(env, env.DATA_SS + '/values/' + q(tabA1(tab, rng)) + '?valueRenderOption=FORMATTED_VALUE');
+  await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('peekOut', ?), ('peek', '')").bind(JSON.stringify({ f: f.values || [], v: v.values || [] })).run();
+}

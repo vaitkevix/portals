@@ -60,3 +60,29 @@ export async function aiParse(env, r) {
   }));
   return { datums: /^\d{4}-\d{2}-\d{2}$/.test(data.datums || '') ? data.datums : '', vaditajs: mgrs.indexOf(data.vaditajs) !== -1 ? data.vaditajs : '', rows };
 }
+
+/** Saturs var būt teksts vai masīvs (bildes + teksts). Tas pats ķermenis, ko lietoja Izvešanas GAS. */
+export async function aiContent(env, content, maxTokens, system) {
+  if (!env.ANTHROPIC_API_KEY) throw new Error('AI nav ieslēgts');
+  const body = { model: env.AI_MODEL || 'claude-haiku-5-5', max_tokens: maxTokens || 1500, messages: [{ role: 'user', content }], thinking: { type: 'disabled' }, output_config: { effort: 'low' } };
+  if (system) body.system = system;
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error('AI kļūda ' + r.status + (j.error && j.error.message ? ': ' + j.error.message : ''));
+  const text = (j.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+  if (!text) throw new Error(j.stop_reason === 'max_tokens' ? 'AI atbilde bija par garu — mēģiniet vēlreiz' : 'AI neatbildēja');
+  return text;
+}
+export const aiJson = (t) => { const m = /\{[\s\S]*\}/.exec(String(t || '')); if (!m) return null; try { return JSON.parse(m[0]); } catch (e) { return null; } };
+export function imgPart(dataUrl) {
+  const m = /^data:(image\/(?:jpeg|png|webp|gif));base64,(.+)$/s.exec(String(dataUrl || ''));
+  if (!m) throw new Error('Nav bildes');
+  return { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } };
+}
+/** Dienas limits (kv ai:<app>:<yyyymmdd>) */
+export async function aiLimit(db, app, max) {
+  const d = new Date().toISOString().slice(0, 10).replace(/-/g, ''), k = 'ai:' + app + ':' + d;
+  const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(), n = +(r && r.v || 0);
+  if (n >= max) throw new Error('Šodienas AI limits ir sasniegts');
+  await db.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind(k, String(n + 1)).run();
+}
