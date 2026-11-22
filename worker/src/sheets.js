@@ -70,3 +70,73 @@ export async function objekti(env) {
   const v = await read(env, 'Objekti', 'A1:D');
   return v.slice(1).filter(r => String(r[0] || '').trim()).map(r => ({ adrese: String(r[0]).trim(), vaditajs: String(r[1] || '').trim(), grupa: String(r[2] || 'SH objekti').trim(), piekluve: String(r[3] || '').trim() }));
 }
+
+/* ---------- Aizvietošanas «tilta» tabulas darbības bez Apps Script (tie paši formāti, ko GAS peopleWrite_/masterWrite_/config) ---------- */
+const T = { users: '⚙ Lietotāji (Aizvietošana)', types: 'Darbu veidi', obj: 'Objekti', ppl: 'Pilnvaras', comp: 'Uzņēmumi', lists: 'Saraksti', rev: 'Pārbaudīt' };
+const col = (n) => { let s = ''; for (n = n || 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + (n - 1) % 26) + s; return s; };
+const str = (rows) => rows.map(r => r.map(v => v == null ? '' : String(v)));
+
+/** Izveido lapu, ja tās nav */
+async function ensure(env, title) {
+  const t = await tabs(env);
+  if (t.tabs.indexOf(title) !== -1) return;
+  await call(env, env.DATA_SS + ':batchUpdate', { method: 'POST', body: JSON.stringify({ requests: [{ addSheet: { properties: { title, hidden: /^⚙/.test(title) } } }] }) });
+}
+async function batchRead(env, ranges) {
+  const j = await call(env, env.DATA_SS + '/values:batchGet?valueRenderOption=FORMATTED_VALUE&' + ranges.map(r => 'ranges=' + q(r)).join('&'));
+  return (j.valueRanges || []).map(v => v.values || []);
+}
+/** Virsraksts + rindas; keep = citas kolonnas neaiztiek (Objekti, Darbu veidi) */
+async function put(env, tab, head, rows, keep) {
+  await ensure(env, tab);
+  await clear(env, tab, 'A2:' + (keep ? col(head.length) : 'ZZ'));
+  await write(env, tab, 'A1', str([head, ...rows.map(x => head.map((_, i) => x[i]))]));
+}
+
+export async function bridgeOp(env, op, r) {
+  if (op === 'config') {
+    const [u, t, o] = await batchRead(env, [tabA1(T.users, 'A1:D'), tabA1(T.types, 'A1:B'), tabA1(T.obj, 'A1:D')]);
+    return {
+      users: u.slice(1).filter(x => String(x[0] || '').trim()).map(x => ({ name: String(x[0]).trim(), role: String(x[1] || '').trim().toLowerCase(), pin: String(x[2] || '').trim(), color: String(x[3] || '').trim() })),
+      types: t.slice(1).filter(x => String(x[0] || '').trim()).map(x => ({ name: String(x[0]).trim(), group: String(x[1] || 'Papilddarbs').trim() })),
+      objects: o.slice(1).filter(x => String(x[0] || '').trim()).map(x => ({ adrese: String(x[0]).trim(), vaditajs: String(x[1] || '').trim(), grupa: String(x[2] || 'SH objekti').trim(), piekluve: String(x[3] || '').trim() }))
+    };
+  }
+  if (op === 'people') {
+    const R = { '': '—', admin: 'Administrators', vaditajs: 'Darbu vadītājs', pieteicejs: 'Pieteicējs', 'gatavotājs': 'Gatavotājs', 'vadība': 'Vadība' };
+    const head = ['Vārds', 'PIN', 'Krāsa', 'Aktīvs', 'Portāla admins', 'Aizvietošana', 'Izvešana', 'Kaisāmmateriāls', 'Personāls', 'Budžets'];
+    const list = r.people || [];
+    const rows = list.map(p => { const x = p.perms || {}; return [p.name, String(p.pin), p.color || '', p.active ? 'Jā' : 'Nē', x.portal === 'admin' ? 'Jā' : '',
+      R[x.aizv || ''] || x.aizv, R[x.izv || ''] || x.izv, R[x.kais || ''] || x.kais, R[x.pers || ''] || x.pers, R[x.budz || ''] || x.budz]; });
+    await ensure(env, T.ppl);
+    await clear(env, T.ppl, 'A1:ZZ');
+    await write(env, T.ppl, 'A1', str([head, ...rows, [], ['Mainīt tikai portālā vaitkevix.cloud/sh (Administrēšana). Šī lapa tiek pārrakstīta automātiski. © VAITKEVIX, SIA']]));
+    const ur = list.filter(p => p.active && p.perms && p.perms.aizv).map(p => [p.name, p.perms.aizv, String(p.pin), p.color || '']);
+    await ensure(env, T.users);
+    await clear(env, T.users, 'A2:D');
+    if (ur.length) await write(env, T.users, 'A2', str(ur));
+    return { written: rows.length };
+  }
+  if (op === 'master') {
+    if (r.objects) await put(env, T.obj, ['Adrese', 'Vaditajs', 'Grupa', 'Piekluve'], r.objects, true);
+    if (r.types) await put(env, T.types, ['Darbs', 'Grupa'], r.types, true);
+    if (r.companies) await put(env, T.comp, ['Uzņēmums', 'Veids', 'Parole', 'Tālrunis', 'Aktīvs'], r.companies);
+    if (r.lists) await put(env, T.lists, ['Saraksts', 'Vērtība'], r.lists);
+    if (r.review) await put(env, T.rev, ['Kas', 'Ieraksts', 'Ko darīju', 'Jāpārbauda'], r.review);
+    return { ok: 1 };
+  }
+  if (op === 'addObjects' || op === 'importObjects') {
+    const nk = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const cur = (await read(env, T.obj, 'A2:D')).map(x => [0, 1, 2, 3].map(i => x[i] == null ? '' : String(x[i])));
+    const idx = {}; cur.forEach((x, i) => { if (x[0]) idx[nk(x[0])] = i; });
+    if (op === 'addObjects') {
+      const add = []; (r.rows || []).forEach(x => { const k = nk(x[0]); if (x[0] && idx[k] === undefined) { idx[k] = -1; add.push(x); } });
+      if (add.length) await append(env, T.obj, str(add));
+    } else {
+      (r.rows || []).forEach(x => { const k = nk(x[0]); if (idx[k] !== undefined) cur[idx[k]] = x; else { idx[k] = cur.length; cur.push(x); } });
+      if (cur.length) await write(env, T.obj, 'A2', str(cur));
+    }
+    return {};
+  }
+  return null;   // citas darbības (bildes, AI, push) — vēl caur Apps Script
+}

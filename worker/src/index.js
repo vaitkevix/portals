@@ -16,6 +16,7 @@ import { fetchWx, wxCron } from './wx.js';
 import { notify as wpNotify } from './webpush.js';
 import { cleanAddr } from './util.js';
 import * as gsheets from './sheets.js';
+const GS_OPS = new Set(['config', 'people', 'master', 'addObjects', 'importObjects']);
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
 const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas, dl: darbalaiks };
 import { master, importAll as importMaster, legacyPayload, publicLists, objectsStmts, personCanon, companiesStmts, listsStmts, typesStmts, kvGet, kvSet, resolveReview, clearInfoReview, autoMergePrefixed, groupsOf, groupsStmts } from './master.js';
@@ -537,6 +538,10 @@ class Ctx {
 
   /** Apps Script tilts */
   async bridge(op, data, timeoutMs) {
+    if (this.env.GOOGLE_SA && GS_OPS.has(op)) {   // tabulas darbības tieši caur Google Sheets API; ja neizdodas — vecais Apps Script
+      try { const r = await gsheets.bridgeOp(this.env, op, data || {}); if (r) return Object.assign({ ok: true }, r); }
+      catch (e) { console.error('sheets ' + op, e); await this.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('sheetsApi', ?)", 'kļūda ' + now() + ' · ' + op + ': ' + String(e.message || e)).catch(() => 0); }
+    }
     if (!this.env.GAS_URL || !this.env.BRIDGE_KEY) throw new Error('Tilts uz Google nav iestatīts');
     const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), timeoutMs || 60000);
     try {
