@@ -9,6 +9,8 @@ export const nowStr = () => fmtT.format(new Date()).replace(',', '').slice(0, 16
 export const addDays = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 export const dow = (d) => { const w = new Date(d + 'T12:00:00Z').getUTCDay(); return w === 0 ? 7 : w; };   // 1 = P … 7 = Sv
 export const uid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 10);
+/* Adrese bez liekā: «iela», «, Rīga, Latvija, LV1014» */
+export const cleanAddr = (a) => { let b = String(a || '').replace(/(\S)\s+iela\b/gi, '$1'); for (let i = 0; i < 4; i++) b = b.replace(/,\s*(Latvija|LV-?\s?\d{4}|Rīga|Riga)\s*$/i, '').trim(); return b.replace(/\s+/g, ' ').trim(); };
 export const anorm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 export const lvD = (d) => { const [, m, dd] = d.split('-'); return +dd + '.' + m + '.'; };
 export async function kv(db, k) { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); try { return r ? JSON.parse(r.v) : null; } catch (e) { return null; } }

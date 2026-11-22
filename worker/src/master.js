@@ -1,6 +1,7 @@
 /* SH | Pamatdati — viens saraksts visām lietotnēm: objekti, cilvēki, uzņēmumi, saraksti. © VAITKEVIX, SIA
  * Galvenais ir portāls (D1). Vecās lietotņu lapas (Adreses, Cilveki, SIA, Pasutitaji, Kurjeri, Materiali, Objekti, DarbuVeidi)
  * tiek atjaunotas automātiski, lai lietotnes strādā kā līdz šim. */
+import { cleanAddr } from './util.js';
 import { people, peopleStmts, usersStmts, cleanPerms } from './portal.js';
 
 export const LIST_KINDS = { materiali: 'Materiāli', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
@@ -44,7 +45,7 @@ export function objectsStmts(db, list, canon) {
   canon = canon || ((x) => x);
   const st = [db.prepare('DELETE FROM objects')];
   const seen = new Set();
-  list.forEach((o, i) => { const a = String(o.adrese || '').replace(/\s+/g, ' ').trim(); const k = anorm(a); if (!a || seen.has(k)) return; seen.add(k);
+  list.forEach((o, i) => { const a = cleanAddr(o.adrese); const k = anorm(a); if (!a || seen.has(k)) return; seen.add(k);
     st.push(db.prepare('INSERT INTO objects (anorm, adrese, vaditajs, grupa, piekluve, ord) VALUES (?, ?, ?, ?, ?, ?)').bind(k, a, canon(o.vaditajs || ''), o.grupa || 'SH objekti', o.piekluve || '', i)); });
   return st;
 }

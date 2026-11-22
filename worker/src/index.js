@@ -14,6 +14,7 @@ import * as stavvietas from './stavvietas.js';
 import * as darbalaiks from './darbalaiks.js';
 import { fetchWx, wxCron } from './wx.js';
 import { notify as wpNotify } from './webpush.js';
+import { cleanAddr } from './util.js';
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
 const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas, dl: darbalaiks };
 import { master, importAll as importMaster, legacyPayload, publicLists, objectsStmts, personCanon, companiesStmts, listsStmts, typesStmts, kvGet, kvSet, resolveReview, clearInfoReview, autoMergePrefixed, groupsOf, groupsStmts } from './master.js';
@@ -750,7 +751,7 @@ const ACTIONS = {
     const idx = {}; cur.forEach(o => idx[o.anorm] = o);
     let added = 0, updated = 0; const st = [], rows = [], canon = await personCanon(X.db);
     (r.rows || []).forEach(x => {
-      const a = String(x[0] || '').trim(); if (!a) return; x[1] = canon(x[1]);
+      const a = cleanAddr(x[0]); if (!a) return; x[1] = canon(x[1]);
       const k = norm(a), c = idx[k];
       if (c) { c.grupa = x[2] || c.grupa; c.piekluve = x[3] || c.piekluve; if (x[1]) c.vaditajs = x[1]; updated++;
         st.push(X.st('UPDATE objects SET vaditajs = ?, grupa = ?, piekluve = ? WHERE anorm = ?', c.vaditajs, c.grupa, c.piekluve, k)); rows.push([c.adrese, c.vaditajs, c.grupa, c.piekluve]); }
@@ -781,7 +782,7 @@ const ACTIONS = {
       const job = await X.job(j.id);
       if (!job) throw new Error('Darbs nav atrasts');
       if (u.role !== 'admin' && (job.vaditajs !== u.name || job.brigade)) throw new Error('Darbu, kas jau piešķirts vienībai, var mainīt tikai admins');
-      job.datums = j.datums; job.adrese = String(j.adrese).trim(); job.tips = j.tips || job.tips; job.apraksts = j.apraksts || '';
+      job.datums = j.datums; job.adrese = cleanAddr(j.adrese); job.tips = j.tips || job.tips; job.apraksts = j.apraksts || '';
       if (j.vaditajs && u.role === 'admin') job.vaditajs = String(j.vaditajs);
       if (j.prombutne !== undefined) job.prombutne = PROMBUTNE.indexOf(j.prombutne) !== -1 ? j.prombutne : '';
       if (j.steidzami !== undefined) job.steidzami = j.steidzami ? '1' : '';
@@ -790,7 +791,7 @@ const ACTIONS = {
       await addObjects(X, [job.adrese], job.vaditajs);
       return { job };
     }
-    const job = { id: uid(), datums: j.datums, adrese: String(j.adrese).trim(), tips: j.tips || 'Sētnieks', apraksts: j.apraksts || '', vaditajs: j.vaditajs || u.name,
+    const job = { id: uid(), datums: j.datums, adrese: cleanAddr(j.adrese), tips: j.tips || 'Sētnieks', apraksts: j.apraksts || '', vaditajs: j.vaditajs || u.name,
       brigade: j.brigade || '', statuss: j.brigade ? 'piešķirts' : 'jauns', izveidots: now() };
     await insJob(X, job).run();
     if (u.role !== 'admin') X.notify(await X.names('admin'), 'Jauns darbs · ' + lvDate(job.datums), job.adrese + ' — ' + u.name);
@@ -817,7 +818,7 @@ const ACTIONS = {
       const dates = seriesDates(r.date, j.lidz, j.brivdienas);
       let serija = dates.length > 1 ? uid() : '';
       const mgr = u.role === 'admin' ? String(j.vaditajs || objMgr[norm(j.adrese)] || r.vaditajs || u.name) : u.name;
-      const adrese = String(j.adrese).trim(), grp = await X.groupOf(j.tips);
+      const adrese = cleanAddr(j.adrese), grp = await X.groupOf(j.tips);
       if (!j.lidz && !j.vienaDiena && STAND_PROMB.indexOf(j.prombutne) !== -1 && grp === 'Aizvietošana') {
         serija = uid();
         st.push(X.st('INSERT INTO standing (id, adrese, tips, apraksts, vaditajs, prombutne, no, beigas, brivdienas, steidzami, laiks, foto, izlaistas, izveidots, seq) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -828,7 +829,7 @@ const ACTIONS = {
         steidzami: j.steidzami ? '1' : '', laiks: cleanTime(j.laiks), grupa: String(j.grupa || '').slice(0, 120) })); });
     }
     await X.db.batch(st);
-    await addObjects(X, list.map(j => String(j.adrese).trim()), u.role === 'admin' ? String(r.vaditajs || '') : u.name);
+    await addObjects(X, list.map(j => cleanAddr(j.adrese)), u.role === 'admin' ? String(r.vaditajs || '') : u.name);
     if (u.role !== 'admin') {
       X.notify(await X.names('admin'), 'Jauni darbi · ' + lvDate(r.date) + ' · ' + u.name,
         list.length === 1 ? list[0].adrese + ' — ' + list[0].tips + (list[0].lidz ? ' (atvaļinājums līdz ' + lvDate(list[0].lidz) + ')' : '')
