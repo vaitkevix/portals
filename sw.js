@@ -4,7 +4,7 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', () => {});
 self.addEventListener('push', (e) => {
   let m = {}; try { m = e.data ? e.data.json() : {}; } catch (err) { m = { title: 'SH | Portāls', body: e.data ? e.data.text() : '' }; }
-  e.waitUntil(self.registration.showNotification(m.title || 'SH | Portāls', { body: m.body || '', icon: 'icon-192.png?v=2', badge: 'favicon-32.png?v=2', tag: m.tag || undefined, data: { url: m.url || '/sh/' } }));
+  e.waitUntil(self.registration.showNotification(m.title || 'SH | Portāls', { body: m.body || '', icon: 'icon-192.png?v=3', badge: 'favicon-32.png?v=3', tag: m.tag || undefined, data: { url: m.url || '/sh/' } }));
 });
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
