@@ -21,6 +21,8 @@ import * as foto from './foto.js';
 import * as mail from './mail.js';
 import * as kais from './kaisammaterials.js';
 import * as izvN from './izvesana.js';
+import * as persN from './personals.js';
+import * as budzN from './budzets.js';
 /** kv «noGoogle» = '1': sistēma strādā tikai Cloudflare — Worker vairs nelasa/neraksta «SH | Dati» (2026-11-22). © VAITKEVIX, SIA */
 const noGoogle = async (db) => (await kvGet(db, 'noGoogle')) === '1';
 const GS_OPS = new Set(['config', 'people', 'master', 'addObjects', 'importObjects']);
@@ -94,6 +96,8 @@ export default {
     ctx.waitUntil(gsheets.peek(env, env.DB).catch(e => console.error('peek', e)));
     ctx.waitUntil(mail.selfTest(env).catch(e => console.error('mail', e)));
     ctx.waitUntil(izvN.maybeSwitch(env).catch(e => console.error('izv', e)));
+    ctx.waitUntil(persN.maybeSwitch(env).catch(e => console.error('pers', e)));
+    ctx.waitUntil(budzN.maybeSwitch(env).catch(e => console.error('budz', e)));
     ctx.waitUntil(kais.maybeSwitch(env).then(() => kais.pushSheet(env)).catch(e => console.error('kais', e)));
     ctx.waitUntil((async () => { await wxCron(env).catch(e => console.error('wx', e)); for (const k in GRAF) await GRAF[k].cron(env).catch(e => console.error('cron ' + k, e)); })());
   }
@@ -392,6 +396,10 @@ async function persGas(env, body) {
 async function pers(request, env, ctx) {
   const H = Object.assign({ 'Content-Type': 'application/json;charset=utf-8', 'Cache-Control': 'no-store' }, CORS);
   try {
+    if (await persN.isNative(env)) {   // bez Google: D1 (personals.js); skatītājam saglabāt neļauj modulis
+      let rq; try { rq = JSON.parse(await request.text()); } catch (e) { throw new Error('Nederīgs pieprasījums'); }
+      return new Response(JSON.stringify(await persN.api(env, rq || {})), { headers: H });
+    }
     if (!env.PERS_GAS_URL) throw new Error('Serveris nav iestatīts');
     const body = await request.text();
     let req; try { req = JSON.parse(body); } catch (e) { throw new Error('Nederīgs pieprasījums'); }
@@ -481,6 +489,10 @@ function budzApply(action, req, o, pend) {
 async function budz(request, env, ctx) {
   const H = Object.assign({ 'Content-Type': 'application/json;charset=utf-8', 'Cache-Control': 'no-store' }, CORS);
   try {
+    if (await budzN.isNative(env)) {   // bez Apps Script (D1, e-pasts Cloudflare)
+      let req = {}; try { req = JSON.parse(await request.text()); } catch (e) { throw new Error('Nederīgs pieprasījums'); }
+      return new Response(JSON.stringify(await budzN.handle(env, req)), { headers: H });
+    }
     if (!env.BUDZ_GAS_URL) throw new Error('Serveris nav iestatīts');
     const body = await request.text();
     let req; try { req = JSON.parse(body); } catch (e) { throw new Error('Nederīgs pieprasījums'); }

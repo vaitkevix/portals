@@ -180,3 +180,14 @@ export async function peek(env, db) {
   const v = await call(env, env.DATA_SS + '/values/' + q(tabA1(tab, rng)) + '?valueRenderOption=FORMATTED_VALUE');
   await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('peekOut', ?), ('peek', '')").bind(JSON.stringify({ f: f.values || [], v: v.values || [] })).run();
 }
+
+/** Neformatētas vērtības (skaitļi kā skaitļi, datumi kā sērijas numuri) — pārnešanai uz D1 */
+export async function readRaw(env, tab, rng, ss) {
+  const j = await call(env, (ss || env.DATA_SS) + '/values/' + q(tabA1(tab, rng)) + '?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER');
+  return j.values || [];
+}
+/** Sheets sērijas numurs (dienas kopš 30.12.1899, lokālais laiks) → { y, m, d, H, M } */
+export function serial(n) {
+  const ms = Math.round((Number(n) - 25569) * 864e5), d = new Date(ms);
+  return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate(), H: d.getUTCHours(), M: d.getUTCMinutes(), S: d.getUTCSeconds() };
+}
