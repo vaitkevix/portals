@@ -1071,21 +1071,24 @@ async function masterImport(X) {
 }
 async function pushMaster(X) {
   const env = X.env, M = await master(X.db), pl = legacyPayload(M);
+  const objPush = (await kvGet(X.db, 'objPush')) === '1';   // «SH | Dati» → Objekti ir galvenā: pārraksta tikai pēc labojuma portālā
+  if (!objPush) delete pl.aizv.objects;
   await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('masterDirty', '0')");
+  if (objPush) await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('objPush', '0')");
   try {
     await X.bridge('master', pl.aizv, 90000);
     for (const app of ['izv', 'kais']) { const t = JSON.parse(await appGas(env, app, 'setLists', JSON.stringify([pl[app]]))); if (!t.ok) throw new Error(app + ': ' + t.error); }
-  } catch (e) { await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('masterDirty', '1')"); throw e; }
+  } catch (e) { await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('masterDirty', '1')"); if (objPush) await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('objPush', '1')"); throw e; }
   await Promise.all([appRefresh(env, 'izv', 'getBoot').catch(() => 0), appRefresh(env, 'kais', 'getInitialData').catch(() => 0)]);
 }
-const masterDirty = (X) => { X.bg((async () => { await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('masterDirty', '1')"); await pushMaster(X); })()); };
+const masterDirty = (X, obj) => { X.bg((async () => { if (obj) await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('objPush', '1')"); await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('masterDirty', '1')"); await pushMaster(X); })()); };
 /** Portāla administrēšana: pamatdati */
 async function masterAdmin(X, a, b, me) {
   const db = X.db;
   if (a === 'master') return Object.assign({ ok: true }, await master(db));
   if (a === 'import') { const r = await masterImport(X); X.bg(pushMaster(X)); X.bg(pushPeople(X, await people(db))); return Object.assign({ ok: true, imported: r }, await master(db)); }
   if (a === 'saveObjects') { const list = (b.objects || []).filter(o => o && String(o.adrese || '').trim()); if (!list.length) return { ok: false, error: 'Saraksts ir tukšs' };
-    await db.batch(objectsStmts(db, list, await personCanon(db))); X.c = {}; masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
+    await db.batch(objectsStmts(db, list, await personCanon(db))); X.c = {}; masterDirty(X, 1); return Object.assign({ ok: true }, await master(db)); }
   if (a === 'saveCompanies') { const list = (b.companies || []).filter(c => c && String(c.name || '').trim());
     const had = (await master(db)).companies.length; if (had && (!list.length || (had >= 10 && list.length < had * 0.5))) return { ok: false, error: 'Uzņēmumu saraksts sarucis no ' + had + ' uz ' + list.length + ' — nesaglabāju. Atjaunojiet lapu un mēģiniet vēlreiz.' };
     const pw = list.filter(c => c.pass).map(c => String(c.pass).trim().toUpperCase()); if (new Set(pw).size !== pw.length) return { ok: false, error: 'Divām firmām ir vienāda parole' };
@@ -1096,10 +1099,10 @@ async function masterAdmin(X, a, b, me) {
   if (a === 'saveTypes') { const list = (b.types || []).filter(t => t && t.name); if (!list.length) return { ok: false, error: 'Saraksts ir tukšs' };
     await db.batch(typesStmts(db, list)); X.c = {}; masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
   if (a === 'reviewResolve') { const r = await resolveReview(db, +b.i, b.keep === 0 || b.keep === 1 ? b.keep : -1); if (!r.ok) return r;
-    X.c = {}; if (r.people) await peopleSaved(X, await people(db)); masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
+    X.c = {}; if (r.people) await peopleSaved(X, await people(db)); masterDirty(X, !r.people); return Object.assign({ ok: true }, await master(db)); }
   if (a === 'saveGroups') { const list = (b.groups || []).filter(g => g && String(g.name || '').trim());
     await db.batch(groupsStmts(db, list)); X.c = {}; masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
-  if (a === 'reviewAutoPrefix') { const r = await autoMergePrefixed(db); X.c = {}; masterDirty(X); return Object.assign({ ok: true }, r, await master(db)); }
+  if (a === 'reviewAutoPrefix') { const r = await autoMergePrefixed(db); X.c = {}; masterDirty(X, 1); return Object.assign({ ok: true }, r, await master(db)); }
   if (a === 'reviewClearInfo') { const n = await clearInfoReview(db); masterDirty(X); return Object.assign({ ok: true, cleared: n }, await master(db)); }
   if (a === 'saveReview') { await db.batch([kvSet(db, 'masterReview', JSON.stringify(b.review || []))]); masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
   return null;
@@ -1117,6 +1120,49 @@ async function pushPeople(X, list) {
   await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('peopleDirty', '0')");
 }
 
+/* ---------- «SH | Dati» → Objekti ir galvenais objektu saraksts. © VAITKEVIX, SIA
+   Cron salīdzina tabulu ar D1 un plānu saglabā kv «objPlan». Ja kv «objSheet» = '1', plānu izpilda:
+   pārsauktām adresēm (tā pati adrese bez prefiksa, piem. «AB …», «J | …») pārnes visus saistītos ierakstus; izņemtās adreses
+   pazūd no sarakstiem, bet to vēsture (darbi, apmeklējumi) paliek. ---------- */
+const OBJ_REF = { av: ['jobs', 'problems', 'pl_visit', 'logi_visit', 'darz_visit', 'stav_visit', 'sniegs_visit'], a: ['standing'],
+  n: ['pl_obj', 'logi_obj', 'darz_obj', 'stav_obj', 'sniegs_obj', 'client_obj', 'dl_obj', 'dl_worker', 'dl_mark', 'dl_sms'] };
+const objCore = (s) => norm(String(s || '').replace(/^\s*[A-ZĀČĒĢĪĶĻŅŠŪŽ]{1,4}\s*\|\s*/, '').replace(/^[A-ZĀČĒĢĪĶĻŅŠŪŽ]{2,3}\s+(?=\S)/, '')).replace(/[\s,]+/g, '');
+async function sheetObjects(X, rows) {
+  const canon = await personCanon(X.db), seen = new Set(), list = [];
+  rows.forEach(o => { const a = cleanAddr(o.adrese), k = norm(a); if (!a || seen.has(k)) return; seen.add(k);
+    list.push({ k, adrese: a, vaditajs: canon(o.vaditajs || ''), grupa: o.grupa || 'SH objekti', piekluve: o.piekluve || '' }); });
+  const cur = await X.all('SELECT anorm, adrese, vaditajs, grupa, piekluve FROM objects');
+  const curK = new Set(cur.map(o => o.anorm)), newK = new Set(list.map(o => o.k));
+  const added = list.filter(o => !curK.has(o.k)), gone = cur.filter(o => !newK.has(o.anorm));
+  const changed = list.filter(o => { const c = cur.find(x => x.anorm === o.k); return c && (c.adrese !== o.adrese || c.vaditajs !== o.vaditajs || c.grupa !== o.grupa || c.piekluve !== o.piekluve); }).length;
+  const ren = [], removed = [];
+  gone.forEach(g => { const c = objCore(g.adrese), m = added.filter(a => objCore(a.adrese) === c);
+    if (m.length === 1 && !ren.some(r => r[1] === m[0].adrese)) ren.push([g.adrese, m[0].adrese]); else removed.push(g.adrese); });
+  const plan = { t: now(), sheet: list.length, d1: cur.length, changed, renamed: ren, removed, added: added.filter(a => !ren.some(r => r[1] === a.adrese)).map(a => a.adrese) };
+  const bad = list.length < 10 || list.length < cur.length * 0.5;
+  if (bad) plan.error = 'Tabulā ' + list.length + ' objekti (D1 ' + cur.length + ') — nepārnesu';
+  await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('objPlan', ?)", JSON.stringify(plan));
+  if (bad || (await kvGet(X.db, 'objSheet')) !== '1') return plan;
+  if (!added.length && !gone.length && !changed) return plan;
+  const st = [];
+  ren.forEach(([o, n]) => { const ok = norm(o), nk = norm(n);
+    OBJ_REF.av.forEach(t => st.push(X.st(`UPDATE OR IGNORE ${t} SET adrese = ?, anorm = ? WHERE anorm = ?`, n, nk, ok)));
+    OBJ_REF.a.forEach(t => st.push(X.st(`UPDATE ${t} SET adrese = ? WHERE adrese = ?`, n, o)));
+    OBJ_REF.n.forEach(t => st.push(X.st(`UPDATE OR IGNORE ${t} SET anorm = ? WHERE anorm = ?`, nk, ok))); });
+  const G = await X.all('SELECT id, members FROM groups');
+  G.forEach(g => { let m = []; try { m = JSON.parse(g.members || '[]'); } catch (e) {} let ch = 0;
+    m = m.map(x => { const r = ren.find(y => norm(y[0]) === x); if (r) { ch = 1; return norm(r[1]); } return x; });
+    if (ch) st.push(X.st('UPDATE groups SET members = ? WHERE id = ?', JSON.stringify(m), g.id)); });
+  st.push(X.st('DELETE FROM objects'));
+  list.forEach((o, i) => st.push(X.st('INSERT INTO objects (anorm, adrese, vaditajs, grupa, piekluve, ord) VALUES (?, ?, ?, ?, ?, ?)', o.k, o.adrese, o.vaditajs, o.grupa, o.piekluve, i)));
+  await X.db.batch(st);
+  X.c = {};
+  plan.applied = now();
+  await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('objPlan', ?)", JSON.stringify(plan));
+  if (ren.length || removed.length) await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)", 'objLog:' + plan.applied, JSON.stringify({ renamed: ren, removed, before: cur }));
+  return plan;
+}
+
 /** Lietotāji, darbu veidi un objekti — galvenais saraksts paliek tabulā */
 async function syncConfig(X) {
   const r = await X.bridge('config', {}, 60000);
@@ -1132,6 +1178,7 @@ async function syncConfig(X) {
   }
   if (!(r.users || []).length) throw new Error('Tabulā nav lietotāju — sinhronizācija atcelta');
   await X.db.batch(st);
+  if (mm && (await kvGet(X.db, 'objPush')) !== '1') await sheetObjects(X, r.objects || []).catch(e => console.error('sheetObjects', e));
   await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('configSync', ?)", now());
   const dirty = await X.first("SELECT v FROM kv WHERE k = 'peopleDirty'");
   if (dirty && dirty.v === '1') await pushPeople(X, ppl).catch(e => console.error('pushPeople', e));
