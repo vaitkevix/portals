@@ -104,6 +104,7 @@ button{cursor:pointer}
 .appbar{display:flex;align-items:center;gap:10px;padding:calc(8px + var(--safe-t, env(safe-area-inset-top))) 12px 8px;background:var(--surface);border-bottom:1px solid var(--line)}
 .appbar .t{flex:1;min-width:0;font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .frames{position:relative;flex:1}
+.dlm{display:flex;flex-direction:column;gap:6px;margin-top:10px;padding:10px 12px;border-radius:14px;background:color-mix(in srgb,var(--bg) 55%,transparent);font-size:13px}.dlm b{font-size:12px}.dlm span{display:flex;align-items:center;gap:6px;font-weight:700}.dlm em{font-style:normal;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dlm small{font-size:11px;opacity:.75}.dlp{width:11px;height:11px;border-radius:50%;flex:none}.dlp.g{background:#3f9b62}.dlp.r{background:#d64545}
 html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotnes rāmis beidzas virs tās */
 .frames iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg)}
 .sw{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-left:auto}
@@ -395,7 +396,7 @@ const APPS = {
   sniegs: { name: 'Sniega tīrīšana', sub: 'Traktoristu maršruti', path: '/shsniegs/' },
   darz: { name: 'Dārzniecība', sub: 'Grafiks · izpilde ar bildi', path: '/shdarznieciba/' },
   stav: { name: 'Pazemes stāvvietas', sub: 'Mazgāšana · tīrīšana', path: '/shstavvietas/' },
-  dl: { name: 'Darba laiks', sub: 'Kas tagad strādā', path: '/shdarbalaiks/' }
+  dl: { name: 'Darba laiks', sub: 'Objekti pa adresēm', path: '/shdarbalaiks/' }
 };
 /* #lietotne/papildu → papildu nodod lietotnei rāmī (piem. #budz/kadastrs=…) */
 const HX = (function () { const m = location.hash.match(/^#(\w+)\/(.+)$/); if (!m) return null; history.replaceState(history.state, '', '#' + m[1]); return { k: m[1], x: m[2] }; })();
@@ -411,7 +412,7 @@ const RL = { admin: 'Administrators', vaditajs: 'Pieteicējs', izpilditajs: 'Izp
    Katras lietotnes lomas atslēga kolonnā (pieteicējs = agrākais «darbu vadītājs»; Budžetā vadība apstiprina, gatavotājs sagatavo) */
 const RCOL = [['', 'Nav piekļuves'], ['skatitajs', 'Skatītājs'], ['P', 'Pieteicējs'], ['I', 'Izpildītājs'], ['admin', 'Administrators']];
 const RKEY = { P: ['pieteicejs', 'vaditajs', 'vadība'], I: ['izpilditajs', 'gatavotājs'] };
-const RNO = { dl: 'Darba laiku atzīmē sētnieki un uzkopējas brigāžu saitē', aizv: 'Aizvietošanā darbus izpilda brigādes ar brigāžu saiti', izv: 'Izvedēji ir uzņēmumi (SIA) ar savu paroli', kais: 'Kurjeri ir uzņēmumi (SIA) ar savu paroli', pers: 'Personālā nav izpildītāja lomas' };
+const RNO = { dl: 'Darba laiku sētnieki un uzkopēji atzīmē ar SMS', aizv: 'Aizvietošanā darbus izpilda brigādes ar brigāžu saiti', izv: 'Izvedēji ir uzņēmumi (SIA) ar savu paroli', kais: 'Kurjeri ir uzņēmumi (SIA) ar savu paroli', pers: 'Personālā nav izpildītāja lomas' };
 const rcol = (k, c) => { const L = S.roles[k] || []; return RKEY[c] ? RKEY[c].find(r => L.indexOf(r) !== -1) : (L.indexOf(c) !== -1 ? c : null); };
 const COLORS = ['#0f6b5c', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#475569'];
 
@@ -492,6 +493,7 @@ function appSub(k) {
   if (k === 'aizv') return D.open != null ? `${D.open} šodien neizpildīti · rīt ${D.tomorrow}` : APPS[k].sub;
   if (k === 'izv') return D.open != null ? (C ? `${D.open} jāizved` : `${D.open} gaida izvešanu`) : APPS[k].sub;
   if (k === 'kais') return D.open != null ? (C ? `${D.open} jāpiegādā` : `${D.open} gaida piegādi`) : APPS[k].sub;
+  if (k === 'dl') return D.objekti ? `${D.kartiba} no ${D.objekti} objektiem darbā` : 'Objekti pa adresēm';
   if (GRAF.indexOf(k) !== -1 && D.today != null) return D.today ? `Šodien ${D.done}/${D.today}${D.late ? ' · nokavēti ' + D.late : ''}` : D.late ? `Nokavēti ${D.late}` : D.next && D.next.length ? 'Nākamais ' + fmtD(D.next[0].datums) : APPS[k].sub;
   return APPS[k].sub;
 }
@@ -499,6 +501,7 @@ function appChip(k) {
   const D = (S.dash || {})[k] || {};
   if (k === 'izv' && D.urgent) return `<span class="chip w">● ${D.urgent} steidzami</span>`;
   if (k === 'aizv' && D.unassigned) return `<span class="chip w">● ${D.unassigned} bez brigādes</span>`;
+  if (k === 'dl' && D.trukst && D.darbaDiena) return `<span class="chip w">● ${D.trukst} trūkst</span>`;
   if (GRAF.indexOf(k) !== -1 && (D.urgent || D.cant || D.late)) return `<span class="chip w">● ${D.urgent ? D.urgent + ' steidzami' : D.cant ? D.cant + ' nevar' : D.late + ' nokavēti'}</span>`;
   const r = S.me.perms[k] || (GRAF.indexOf(k) !== -1 ? gRole(k) : ''); return r ? `<span class="chip">${esc(RL[r] || (r === 'izvedejs' ? 'Izvedējs' : r === 'kurjers' ? 'Kurjers' : r))}</span>` : '';
 }
@@ -538,6 +541,13 @@ function home() {
     $('wide').innerHTML = `<button class="wide" data-app="aizv" style="width:100%;border:0;text-align:left;display:block"><div class="t1"><i>${gl('aizv', 20)}</i>Aizvietošana · šodien</div>
       <div class="meta">${done}/${D.aizv.today} darbi izpildīti</div><h3>Rīt ${D.aizv.tomorrow} darbi${D.aizv.unassigned ? ' · ' + D.aizv.unassigned + ' bez brigādes' : ''}</h3><div class="bar"><i style="width:${pc}%"></i></div>${ARROW.replace('class="arrow"', 'class="arrow" style="top:14px;bottom:auto"')}</button>`;
   } else $('wide').innerHTML = '';
+  if (D.dl && D.dl.objekti && hasApp('dl')) {   // Darba laiks: objekti pa adresēm — pirmais punkts uzkopējs, otrais sētnieks
+    const pt = (st) => st === 'nevajag' ? '' : `<span class="dlp ${st === 'nav' ? 'r' : 'g'}" title="${st === 'nav' ? 'nav darbā' : st === 'beidza' ? 'beidza' : 'darbā'}"></span>`;
+    $('wide').insertAdjacentHTML('beforeend', `<button class="wide" data-app="dl" style="width:100%;border:0;text-align:left;display:block;margin-top:12px"><div class="t1"><i>${gl('dl', 20)}</i>Darba laiks · objekti</div>
+      <h3>${D.dl.kartiba} no ${D.dl.objekti} objektiem darbā</h3><div class="meta">${D.dl.darba} darbinieki šobrīd darbā${D.dl.darbaDiena ? '' : ' · brīvdiena'}</div>
+      ${D.dl.trukst && D.dl.darbaDiena ? `<div class="dlm"><b>Trūkst darbinieka · ${D.dl.trukst}</b>${D.dl.truksAdr.map(x => `<span><em>${esc(x.a)}</em>${pt(x.u)}${pt(x.s)}</span>`).join('')}<small>pirmais punkts: uzkopējs · otrais: sētnieks · sarkans = nav darbā</small></div>` : ''}
+      ${ARROW.replace('class="arrow"', 'class="arrow" style="top:14px;bottom:auto"')}</button>`);
+  }
   // Kalendārs + tuvākais
   const t = new Date(); if (!CAL.y) { CAL.y = t.getFullYear(); CAL.m = t.getMonth(); }
   drawCal();

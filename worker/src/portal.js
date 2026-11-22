@@ -1,3 +1,4 @@
+import { summary as dlSummary } from './darbalaiks.js';
 import { clientsData, saveClient, delClient, report } from './klienti.js';
 import { notify } from './webpush.js';
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
@@ -118,6 +119,8 @@ async function dash(env, me) {
       out[k] = { today: c.today || 0, done: c.done || 0, late: k === 'sniegs' ? 0 : c.late || 0, cant: c.cant || 0, urgent: c.urgent || 0, days, next };
     } catch (e) { /* tabula vēl nav — izlaiž */ }
   }
+  /* Darba laiks: objekti pa adresēm (SMS) — cik pilnībā darbā, kur trūkst */
+  if (!me.company && (P.dl || P.portal === 'admin')) { try { const x = await dlSummary(env.DB, td); out.dl = Object.assign({ today: 0, done: 0, late: 0, cant: 0, urgent: 0, days: {}, next: [] }, x); } catch (e) { /* tabulas vēl nav */ } }
   return out;
 }
 
