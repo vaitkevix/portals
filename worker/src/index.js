@@ -18,6 +18,7 @@ import { cleanAddr } from './util.js';
 import * as gsheets from './sheets.js';
 import * as ai from './ai.js';
 import * as foto from './foto.js';
+import * as mail from './mail.js';
 import * as kais from './kaisammaterials.js';
 import * as izvN from './izvesana.js';
 /** kv «noGoogle» = '1': sistēma strādā tikai Cloudflare — Worker vairs nelasa/neraksta «SH | Dati» (2026-11-22). © VAITKEVIX, SIA */
@@ -59,7 +60,7 @@ export default {
         return site(request, url, base);
       }
     }
-    if (request.method === 'GET') return json({ ok: true, app: 'SH | Aizvietošana', time: new Date().toISOString() });
+    if (request.method === 'GET') return json({ ok: true, app: 'SH | Aizvietošana', time: new Date().toISOString(), ai: !!env.ANTHROPIC_API_KEY, foto: !!env.FOTO });
     let req;
     try { req = JSON.parse(await request.text()); } catch (e) { return json({ ok: false, error: 'Nederīgs pieprasījums' }); }
     const X = new Ctx(env, ctx);
@@ -91,6 +92,7 @@ export default {
     ctx.waitUntil(plCron(env).catch(e => console.error('plCron', e)));
     ctx.waitUntil(foto.migrateDrive(env).catch(e => console.error('foto', e)));
     ctx.waitUntil(gsheets.peek(env, env.DB).catch(e => console.error('peek', e)));
+    ctx.waitUntil(mail.selfTest(env).catch(e => console.error('mail', e)));
     ctx.waitUntil(izvN.maybeSwitch(env).catch(e => console.error('izv', e)));
     ctx.waitUntil(kais.maybeSwitch(env).then(() => kais.pushSheet(env)).catch(e => console.error('kais', e)));
     ctx.waitUntil((async () => { await wxCron(env).catch(e => console.error('wx', e)); for (const k in GRAF) await GRAF[k].cron(env).catch(e => console.error('cron ' + k, e)); })());

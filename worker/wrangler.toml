@@ -1,4 +1,4 @@
-# SH | Aizvietošana — Cloudflare Worker (© VAITKEVIX, SIA) — v55
+# SH | Aizvietošana — Cloudflare Worker (© VAITKEVIX, SIA) — v56
 name = "aizvietosana-api"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
@@ -30,6 +30,10 @@ migrations_dir = "migrations"
 [[r2_buckets]]
 binding = "FOTO"
 bucket_name = "sh-foto"
+
+# E-pasts (Cloudflare Email Routing, sūtītājs sistema@vaitkevix.cloud; adresāti jāapstiprina Destination addresses)
+[[send_email]]
+name = "MAIL"
 
 [triggers]
 # lietotāji, darbu veidi un objekti no Google tabulas — ik pēc 30 min
