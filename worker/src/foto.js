@@ -44,13 +44,14 @@ export async function migrateDrive(env, batch) {
   if (st && st.v === '1') return;
   // nokopēto saraksts kv (nevis R2 head katram — Worker saišu limits ~1000 vienā izsaukumā)
   const cr = await db.prepare("SELECT v FROM kv WHERE k = 'foto:copied'").first(), have = new Set(cr && cr.v ? JSON.parse(cr.v) : []);
+  const br = await db.prepare("SELECT v FROM kv WHERE k = 'foto:bad'").first(), bad = br && br.v ? JSON.parse(br.v) : {};   // id → neizdošanās reizes
   const ids = await driveIds(db); let ops = 0, fail = 0;
   for (const id of ids) {
-    if (have.has(id)) continue;
+    if (have.has(id) || (bad[id] || 0) >= 3) continue;   // pēc 3 neizdošanās (Drive failu nav / nav publisks) — izlaiž, saite paliek uz Drive
     if (ops >= (batch || 25)) break; ops++;
-    if (await copyDrive(env, id).catch(() => false)) have.add(id); else fail++;
+    if (await copyDrive(env, id).catch(() => false)) have.add(id); else { fail++; bad[id] = (bad[id] || 0) + 1; }
   }
-  await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('foto:copied', ?)").bind(JSON.stringify([...have])).run();
+  await db.batch([db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('foto:copied', ?)").bind(JSON.stringify([...have])), db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('foto:bad', ?)").bind(JSON.stringify(bad))]);
   const img = (id) => API + '/img?sz=w1600&id=' + id;
   const fix = (v) => String(v || '').split(/\s+/).filter(Boolean).map(u => { const m = /\/d\/([\w-]{20,80})|[?&]id=([\w-]{20,80})/.exec(u), id = m && (m[1] || m[2]);
     return id && /drive\.google\.com/.test(u) && have.has(id) ? img(id) : u; }).join('\n');
@@ -62,7 +63,7 @@ export async function migrateDrive(env, batch) {
       if (a !== r.foto_pirms || b !== r.foto_pec) await db.prepare('UPDATE ' + t + ' SET foto_pirms = ?, foto_pec = ? WHERE id = ?').bind(a, b, r.id).run();
       if (/drive\.google\.com/.test(a + b)) left++; }
   }
-  const done = ids.filter(id => have.has(id)).length;
-  await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('foto:drive', ?)").bind(new Date().toISOString() + ' kopā ' + ids.length + ', R2 ' + done + ', neizdevās ' + fail + ', saites ar Drive ' + left).run();
-  if (done === ids.length && !left) await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('foto:driveDone', '1')").run();
+  const done = ids.filter(id => have.has(id)).length, skipped = ids.filter(id => !have.has(id) && (bad[id] || 0) >= 3).length;
+  await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('foto:drive', ?)").bind(new Date().toISOString() + ' kopā ' + ids.length + ', R2 ' + done + ', neizdevās ' + fail + ', izlaisti ' + skipped + ', saites ar Drive ' + left).run();
+  if (done + skipped === ids.length) await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('foto:driveDone', '1')").run();
 }
