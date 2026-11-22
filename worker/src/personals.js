@@ -341,12 +341,12 @@ function recipients(S, type) {
   const list = [S.ADMIN_EMAIL || '', S[type === 'hire' ? 'EMAIL_PIENEMSANA' : 'EMAIL_ATVALINAJUMI'] || ''].join(',').split(/[,;\s]+/).map(s => s.trim().toLowerCase()).filter(s => /@/.test(s));
   return [...new Set(list)].join(',');
 }
-const webAppUrl = (S) => /^https:\/\/\S+$/.test(String(S.WEB_APP_URL || '').trim()) ? String(S.WEB_APP_URL).trim() : 'https://vaitkevix.github.io/personals/';
+const webAppUrl = (S) => /^https:\/\/\S+$/.test(String(S.WEB_APP_URL || '').trim()) ? String(S.WEB_APP_URL).trim() : 'https://vaitkevix.cloud/sh/#pers';
 async function sendMail(env, S, to, subject, heading, sub, sections, note, accent, recId) {
   if (!to) return 'nav norādīts saņēmējs (Iestatījumi → ADMIN_EMAIL)';
   const e = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const color = accent || '#1f3a5f', base = webAppUrl(S);
-  const url = recId ? base + (base.indexOf('?') < 0 ? '?' : '&') + 'id=' + encodeURIComponent(recId) : base;
+  const url = recId ? (base.indexOf('#') >= 0 ? base : base + (base.indexOf('?') < 0 ? '?' : '&') + 'id=' + encodeURIComponent(recId)) : base;
   let html = '<div style="font-family:Arial,Helvetica,sans-serif;background:#f4f6f9;padding:24px 12px">' +
     '<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e3e7ee">' +
     '<div style="background:' + color + ';color:#fff;padding:18px 22px">' +

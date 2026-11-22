@@ -40,6 +40,7 @@ const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith('/sh/api/')) url.pathname = url.pathname.slice(7);   // API savā domēnā: vaitkevix.cloud/sh/api/… (Worker nosaukums vairs nav adresē)
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     if (url.pathname === '/izv' || url.pathname.endsWith('/izv')) return izv(request, url, env, ctx, 'izv');
     if (url.pathname === '/kais' || url.pathname.endsWith('/kais')) return izv(request, url, env, ctx, 'kais');

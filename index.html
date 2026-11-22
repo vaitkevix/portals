@@ -29,7 +29,7 @@ if (/android/i.test(navigator.userAgent)) document.querySelector('meta[name=view
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=2">
 <link rel="apple-touch-icon" href="icon.png?v=2">
 <link rel="manifest" href="manifest.json">
-<link rel="preconnect" href="https://aizvietosana-api.vaitkevix.workers.dev">
+<link rel="preconnect" href="https://vaitkevix.cloud/sh/api">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script>try{var t=localStorage.getItem('sh_theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
@@ -379,7 +379,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 
 <script>
 /* SH | Portāls — © VAITKEVIX, SIA */
-const API = 'https://aizvietosana-api.vaitkevix.workers.dev/portal';
+const API = 'https://vaitkevix.cloud/sh/api/portal';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ls = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }, del: k => { try { localStorage.removeItem(k); } catch (e) {} } };
@@ -888,7 +888,7 @@ async function reportXlsx(R) {
     [['', 'Kopā bez PVN', '', '', '', '', R.total, '', ''], ['', 'PVN 21%', '', '', '', '', R.pvn, '', ''], ['', 'Kopā ar PVN', '', '', '', '', R.arPvn, '', '']]);
 }
 function reportAkts(R) {
-  const IMGU = 'https://aizvietosana-api.vaitkevix.workers.dev/img?sz=w300&id=', c = R.client || {}, [y, m] = R.ym.split('-').map(Number);
+  const IMGU = 'https://vaitkevix.cloud/sh/api/img?sz=w300&id=', c = R.client || {}, [y, m] = R.ym.split('-').map(Number);
   const mon = new Date(y, m - 1, 1).toLocaleDateString('lv-LV', { month: 'long', year: 'numeric' }), last = new Date(y, m, 0).toLocaleDateString('lv-LV').replace(/\.$/, '');
   const body = `<div class="band" style="background:#d6e8e1"><h1>Izpildes akts</h1><p>${esc(mon[0].toUpperCase() + mon.slice(1))}${c.liguma_nr ? ' · līgums Nr. ' + esc(c.liguma_nr) : ''}</p></div>
     <div class="two"><div class="card"><div class="l">Izpildītājs</div><b>SIA SELECTUM HOME</b></div><div class="card"><div class="l">Pasūtītājs</div><b>${esc(c.name || '—')}</b>${c.regnr ? '<br>Reģ. nr. ' + esc(c.regnr) : ''}${c.adrese ? '<br>' + esc(c.adrese) : ''}</div></div>
