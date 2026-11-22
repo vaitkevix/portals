@@ -14,6 +14,7 @@ if (/android/i.test(navigator.userAgent)) document.querySelector('meta[name=view
     var full = screen.height - window.innerHeight < 24, r = document.documentElement.style;
     r.setProperty('--safe-t', t || !full ? (t + 'px') : '28px');
     r.setProperty('--safe-b', b || !full ? (b + 'px') : '50px');
+    document.documentElement.classList.toggle('andfix', !b && full);
   }
   fix(); addEventListener('resize', fix); addEventListener('load', fix);
 })();</script>
@@ -103,6 +104,7 @@ button{cursor:pointer}
 .appbar{display:flex;align-items:center;gap:10px;padding:calc(8px + var(--safe-t, env(safe-area-inset-top))) 12px 8px;background:var(--surface);border-bottom:1px solid var(--line)}
 .appbar .t{flex:1;min-width:0;font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .frames{position:relative;flex:1}
+html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotnes rāmis beidzas virs tās */
 .frames iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg)}
 .sw{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-left:auto}
 @media(max-width:560px){.appbar .t{display:none}}
