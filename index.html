@@ -178,8 +178,8 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .foot{padding:8px 0 calc(28px + var(--safe-b, env(safe-area-inset-bottom)));text-align:center;font-size:11.5px;font-weight:700;color:var(--ink-3)}
 
 /* ===== Kopskats (koncepts: lieli pasteļkrāsu bloki, SELECTUM HOME zaļais) ===== */
-:root{--mint:#d6e8e1;--sand:#f4e4b4;--sky:#d8e6f2;--rose:#f5dbe3;--lilac:#e2ddf2;--ink-strong:#16201b;--pill:#fff}
-:root[data-theme="dark"]{--mint:#1e3a32;--sand:#3d3520;--sky:#1e2f3d;--rose:#3d2530;--lilac:#2c2840;--ink-strong:#eef2ef;--pill:#1b2521}
+:root{--mint:#d6e8e1;--sand:#f4e4b4;--sky:#d8e6f2;--rose:#f5dbe3;--lilac:#e2ddf2;--lime:#dcecc4;--aqua:#cbe9ef;--frost:#e0e6ec;--olive:#e6e7c6;--peach:#f8dcc6;--mauve:#ecd8ee;--ink-strong:#16201b;--pill:#fff}
+:root[data-theme="dark"]{--mint:#1e3a32;--sand:#3d3520;--sky:#1e2f3d;--rose:#3d2530;--lilac:#2c2840;--lime:#27381c;--aqua:#173a40;--frost:#262d34;--olive:#33341c;--peach:#40291b;--mauve:#382540;--ink-strong:#eef2ef;--pill:#1b2521}
 #vHome{background:var(--bg);min-height:100%}
 .shell{display:flex;min-height:100vh}
 .rail{display:none}
@@ -229,7 +229,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .sw .ib{width:100%;height:100%;border-radius:8px}
 .perm .pt .ib{width:26px;height:26px;border-radius:8px}
 .ni i,.wide .t1 i{color:#16201b}:root[data-theme="dark"] .ni i{color:var(--ink-strong)}
-.c-aizv{background:var(--mint)}.c-izv{background:var(--sand)}.c-kais{background:var(--sky)}.c-pers{background:var(--rose)}.c-budz{background:var(--lilac)}.c-adm{background:#17201c;color:#fff}
+.c-aizv{background:var(--mint)}.c-izv{background:var(--sand)}.c-kais{background:var(--sky)}.c-pers{background:var(--rose)}.c-budz{background:var(--lilac)}.c-pl{background:var(--lime)}.c-logi{background:var(--aqua)}.c-sniegs{background:var(--frost)}.c-darz{background:var(--olive)}.c-stav{background:var(--peach)}.c-dl{background:var(--mauve)}.c-adm{background:#17201c;color:#fff}
 :root[data-theme="dark"] .ac{color:var(--ink)}
 :root[data-theme="dark"] .ac .chip,:root[data-theme="dark"] .arrow{background:var(--surface);color:var(--ink)}
 .c-adm .arrow{background:#2b3732;color:#fff}.c-adm small{opacity:.7}
@@ -481,7 +481,7 @@ const hasApp = (k) => !!(S.me && (S.me.guest ? GUEST.indexOf(k) !== -1 : (S.me.p
 const GUEST = ['aizv', 'izv', 'kais', 'pl', 'logi', 'sniegs', 'darz', 'stav', 'dl'];   // Personāls un Budžets — tikai ar PIN (personas dati, cenas)
 function guest() { ['shx_izv_user', 'shx_kais_user', 'carrierPin', 'carrierUser', 'shx_kais_courier', 'darbi_pin', 'shd_pin', 'plausana_pin', 'personals_pin', 'budzets_pin'].forEach(ls.del); ls.set('sh_guest', '1'); S.me = { name: 'Pārvaldnieks', guest: true, perms: Object.fromEntries(GUEST.map(k => [k, 'skatitajs'])), color: '' }; S.dash = {}; home(); }
 function apps() { return ORDER.filter(hasApp); }
-const COLOR = { aizv: 'c-aizv', izv: 'c-izv', kais: 'c-kais', pers: 'c-pers', budz: 'c-budz', pl: 'c-aizv', logi: 'c-kais', sniegs: 'c-budz', darz: 'c-aizv', stav: 'c-izv', dl: 'c-pers' };
+const COLOR = { aizv: 'c-aizv', izv: 'c-izv', kais: 'c-kais', pers: 'c-pers', budz: 'c-budz', pl: 'c-pl', logi: 'c-logi', sniegs: 'c-sniegs', darz: 'c-darz', stav: 'c-stav', dl: 'c-dl' };
 const ARROW = '<span class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg></span>';
 const GRID = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="7.5" cy="7.5" r="3.5"/><circle cx="16.5" cy="7.5" r="3.5"/><circle cx="7.5" cy="16.5" r="3.5"/><circle cx="16.5" cy="16.5" r="3.5"/></svg>';
 const SHIELD = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3Z"/><path d="M9 12l2 2 4-4"/></svg>';
