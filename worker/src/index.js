@@ -17,6 +17,7 @@ import { notify as wpNotify } from './webpush.js';
 import { cleanAddr } from './util.js';
 import * as gsheets from './sheets.js';
 import * as ai from './ai.js';
+import * as kais from './kaisammaterials.js';
 const GS_OPS = new Set(['config', 'people', 'master', 'addObjects', 'importObjects']);
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
 const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas, dl: darbalaiks };
@@ -84,6 +85,7 @@ export default {
     if (event.cron !== '*/5 * * * *') return;   // :00 un :30 nostrādā abi trigeri — pārējais tikai vienreiz (*/5)
     ctx.waitUntil(izvDrain(env, ctx, 60000).catch(e => console.error('izvDrain', e)));
     ctx.waitUntil(plCron(env).catch(e => console.error('plCron', e)));
+    ctx.waitUntil(kais.pushSheet(env).catch(e => console.error('kais sheet', e)));
     ctx.waitUntil((async () => { await wxCron(env).catch(e => console.error('wx', e)); for (const k in GRAF) await GRAF[k].cron(env).catch(e => console.error('cron ' + k, e)); })());
   }
 };
@@ -147,7 +149,10 @@ async function who(request, env) {
     return json({ ok: true, user: { name: pp.name, role: r, kind: r === 'admin' ? 'admin' : 'pieteicejs', kindLabel: r === 'admin' ? 'Administrators' : 'Pieteicējs' } });
   }
   try {
-    if (app === 'izv' || app === 'kais') {
+    if (app === 'kais' && await kais.isNative(env)) {
+      const c = await kais.courierByPassword(env.DB, pin);
+      if (c) return json({ ok: true, user: { name: c, role: 'kurjers', kind: 'kurjers', kindLabel: WHO_LABEL.kurjers } });
+    } else if (app === 'izv' || app === 'kais') {
       const t = JSON.parse(await appGas(env, app, 'whoByPassword', JSON.stringify([pin])));
       const w = t.ok && t.result;
       if (w && w.kind === 'pieteicejs') return json({ ok: true, user: { name: w.name, role: 'pieteicejs', kind: 'pieteicejs', kindLabel: WHO_LABEL.vaditajs } });
@@ -265,6 +270,16 @@ async function izv(request, url, env, ctx, app) {
   const fn = url.searchParams.get('fn') || '', A = APPS[app];
   try {
     if (A.fns.indexOf(fn) === -1) throw new Error('Nezināma darbība');
+    if (app === 'kais' && await kais.isNative(env)) {   // bez Apps Script (D1 + tabulas kopija)
+      if (A.open.indexOf(fn) === -1) {
+        const me = await session(env, url.searchParams.get('t') || '');
+        if (!me || !((me.perms || {}).kais || (me.perms || {}).portal === 'admin')) throw Object.assign(new Error('Lai pieteiktu vai atzīmētu, ienāciet portālā vaitkevix.cloud/sh'), { code: 'login' });
+        if ((me.perms || {}).kais === 'skatitajs' && (me.perms || {}).portal !== 'admin') throw new Error('Jums ir tikai skatīšanās tiesības');
+      }
+      let a = []; try { a = JSON.parse((await request.text()) || '[]'); } catch (e) {}
+      const r = await kais.handle(env, ctx, fn, a, (f, body) => appGas(env, 'kais', f, body));
+      if (r !== undefined) return new Response(JSON.stringify({ ok: true, result: r }), { headers: H });
+    }
     if (!env[A.gas]) throw new Error('Serveris nav iestatīts');
     if (A.reads.indexOf(fn) !== -1) {
       const rows = (await env.DB.prepare('SELECT k, v FROM kv WHERE k IN (?, ?)').bind(app + ':' + fn, app + 't:' + fn).all()).results || [];
@@ -1085,9 +1100,9 @@ async function pushMaster(X) {
   if (objPush) await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('objPush', '0')");
   try {
     await X.bridge('master', pl.aizv, 90000);
-    for (const app of ['izv', 'kais']) { const t = JSON.parse(await appGas(env, app, 'setLists', JSON.stringify([pl[app]]))); if (!t.ok) throw new Error(app + ': ' + t.error); }
+    for (const app of ['izv', 'kais']) { if (app === 'kais' && await kais.isNative(env)) continue; const t = JSON.parse(await appGas(env, app, 'setLists', JSON.stringify([pl[app]]))); if (!t.ok) throw new Error(app + ': ' + t.error); }
   } catch (e) { await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('masterDirty', '1')"); if (objPush) await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('objPush', '1')"); throw e; }
-  await Promise.all([appRefresh(env, 'izv', 'getBoot').catch(() => 0), appRefresh(env, 'kais', 'getInitialData').catch(() => 0)]);
+  await Promise.all([appRefresh(env, 'izv', 'getBoot').catch(() => 0), (await kais.isNative(env)) ? 0 : appRefresh(env, 'kais', 'getInitialData').catch(() => 0)]);
 }
 const masterDirty = (X, obj) => { X.bg((async () => { if (obj) await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('objPush', '1')"); await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('masterDirty', '1')"); await pushMaster(X); })()); };
 /** Portāla administrēšana: pamatdati */

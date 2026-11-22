@@ -158,3 +158,15 @@ export async function mirror(env, tab, head, rows, day) {
   if (had > rows.length) await clear(env, tab, 'A' + (rows.length + 2) + ':ZZ');
   return { tab, rows: rows.length, had };
 }
+
+/** Kā ievadīts ar roku (datumi, skaitļi, formulas). Teksts, kas sākas ar = + - @, paliek teksts. */
+export const txt = (v) => { v = v == null ? '' : String(v); return /^[=+\-@']/.test(v) ? "'" + v : v; };
+export async function writeUser(env, tab, rng, rows, ss) {
+  return call(env, (ss || env.DATA_SS) + '/values/' + q(tabA1(tab, rng)) + '?valueInputOption=USER_ENTERED', { method: 'PUT', body: JSON.stringify({ values: rows }) });
+}
+/** Pieliek rindu beigās; atgriež tās numuru lapā */
+export async function appendUser(env, tab, rows, ss) {
+  const j = await call(env, (ss || env.DATA_SS) + '/values/' + q(tabA1(tab, 'A1')) + ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS', { method: 'POST', body: JSON.stringify({ values: rows }) });
+  const m = /!A(\d+)/.exec((j.updates && j.updates.updatedRange) || '');
+  return m ? +m[1] : 0;
+}
