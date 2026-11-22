@@ -17,6 +17,7 @@ import { notify as wpNotify } from './webpush.js';
 import { cleanAddr } from './util.js';
 import * as gsheets from './sheets.js';
 import * as ai from './ai.js';
+import * as foto from './foto.js';
 import * as kais from './kaisammaterials.js';
 const GS_OPS = new Set(['config', 'people', 'master', 'addObjects', 'importObjects']);
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
@@ -43,7 +44,7 @@ export default {
     { const sk = url.pathname.replace(/^.*\//, ''); if (GRAF[sk] && !url.pathname.startsWith('/sh')) return GRAF[sk].api(request, env, new Ctx(env, ctx), fetchWx); }
     if (url.pathname === '/who' || url.pathname.endsWith('/who')) return who(request, env);
     if (url.pathname === '/portal' || url.pathname.endsWith('/portal')) { const X = new Ctx(env, ctx); return portal(request, env, ctx, { saved: (list) => peopleSaved(X, list), admin: (a, b, me) => masterAdmin(X, a, b, me), lists: async () => publicLists(await master(env.DB)) }); }
-    if (url.pathname === '/img' || url.pathname.endsWith('/img')) return img(url, ctx);
+    if (url.pathname === '/img' || url.pathname.endsWith('/img')) return img(url, ctx, env);
     // vaitkevix.cloud/shaizvietosana, /shizvesana → lietotnes (GitHub Pages); …/api → šis API
     for (const base in SITES) {
       if (url.pathname === base) return Response.redirect(url.origin + base + '/' + url.search, 301);
@@ -117,9 +118,14 @@ async function imgFetch(id, sz, ctx) {
   ctx.waitUntil(cache.put(key, r.clone()));
   return r;
 }
-async function img(url, ctx) {
+async function img(url, ctx, env) {
   const id = url.searchParams.get('id') || '', sz = url.searchParams.get('sz') || 'w600';
   if (!/^[\w-]{20,80}$/.test(id) || IMG_SIZES.indexOf(sz) === -1) return new Response('Nederīgs', { status: 400, headers: CORS });
+  if (id.startsWith('r2-') && env && env.FOTO) {   // R2 (jaunās bildes) — oriģināls, ilgs kešs
+    const o = await env.FOTO.get(id);
+    if (!o) return new Response('Nav bildes', { status: 404, headers: CORS });
+    return new Response(o.body, { headers: Object.assign({ 'Content-Type': (o.httpMetadata && o.httpMetadata.contentType) || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable' }, CORS) });
+  }
   return imgFetch(id, sz, ctx);
 }
 /** Pēc saraksta atjaunošanas iepriekš ielādē jaunāko pieteikumu bildes (lai arī pirmā atvēršana ir ātra) */
@@ -583,6 +589,7 @@ class Ctx {
   }
   async savePhotos(job, photos) {
     if (!photos || !photos.length) return [];
+    if (this.env.FOTO) return foto.putMany(this.env, photos.slice(0, 4), { adrese: job.adrese || '', datums: job.datums || '' });
     const r = await this.bridge('photos', { datums: job.datums, adrese: job.adrese, photos: photos.slice(0, 4) }, 90000);
     return r.ids || [];
   }

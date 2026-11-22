@@ -1,6 +1,7 @@
 // SH | Kaisāmmateriāls — bez Apps Script: pieteikumi D1 (kais_task), Google tabula «Kaisāmmateriāls · Pieteikumi» = kopija ar tām pašām kolonnām. © VAITKEVIX, SIA
 // Ieslēdz kv «kais:native» = '1' (pēc imports()). Bildes: Drive caur veco GAS (saveFileToDrive), līdz būs R2.
 import * as G from './sheets.js';
+import * as F from './foto.js';
 
 const TAB = 'Kaisāmmateriāls · Pieteikumi';
 const BAG_KG = 25, PENDING = 'Gaida piegādi', DONE = 'Piegādāts';
@@ -42,6 +43,7 @@ const nowLV = () => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-G
 /** photo: data:image → Drive (vecais GAS saveFileToDrive) — līdz R2 */
 async function savePhoto(env, gas, data, name) {
   if (!data || !/^data:image\//.test(data)) return String(data || '');
+  if (env.FOTO) return F.url(await F.put(env, data, { app: 'kais', name }));
   try { const t = JSON.parse(await gas('saveFileToDrive', JSON.stringify([data, name]))); return (t.ok && t.result) || ''; } catch (e) { return ''; }
 }
 

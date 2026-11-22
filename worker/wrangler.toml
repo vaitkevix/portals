@@ -1,4 +1,4 @@
-# SH | Aizvietošana — Cloudflare Worker (© VAITKEVIX, SIA) — v50
+# SH | Aizvietošana — Cloudflare Worker (© VAITKEVIX, SIA) — v51
 name = "aizvietosana-api"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
@@ -25,6 +25,11 @@ binding = "DB"
 database_name = "aizvietosana"
 database_id = "cee4976e-af1a-4cf6-ba3f-59d7a332eeb4"
 migrations_dir = "migrations"
+
+# Bildes (visas lietotnes) — Cloudflare R2, id «r2-…» rāda /img
+[[r2_buckets]]
+binding = "FOTO"
+bucket_name = "sh-foto"
 
 [triggers]
 # lietotāji, darbu veidi un objekti no Google tabulas — ik pēc 30 min
