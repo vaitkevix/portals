@@ -37,6 +37,6 @@ name = "MAIL"
 
 [triggers]
 # lietotāji, darbu veidi un objekti no Google tabulas — ik pēc 30 min
-crons = ["*/30 * * * *", "*/5 * * * *"]
+crons = ["*/30 * * * *", "*/5 * * * *", "* * * * *"]   # * * * * * — pagaidu bilžu pārnešana (noņemt pēc foto:driveDone)
 
 # BRIDGE_KEY — slepenā atslēga (GitHub Secrets → tiek ielikta automātiski, kodā to neglabā)

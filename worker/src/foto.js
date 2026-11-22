@@ -38,7 +38,7 @@ export async function driveIds(db) {
   return [...ids];
 }
 /** Cron: pa daļām nokopē (līdz 25 reizē); kv «foto:drive» = pēdējā atskaite */
-export async function migrateDrive(env) {
+export async function migrateDrive(env, batch) {
   if (!env.FOTO) return;
   const db = env.DB, st = await db.prepare("SELECT v FROM kv WHERE k = 'foto:driveDone'").first();
   if (st && st.v === '1') return;
@@ -47,7 +47,7 @@ export async function migrateDrive(env) {
   const ids = await driveIds(db); let ops = 0, fail = 0;
   for (const id of ids) {
     if (have.has(id)) continue;
-    if (ops >= 25) break; ops++;
+    if (ops >= (batch || 25)) break; ops++;
     if (await copyDrive(env, id).catch(() => false)) have.add(id); else fail++;
   }
   await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('foto:copied', ?)").bind(JSON.stringify([...have])).run();
