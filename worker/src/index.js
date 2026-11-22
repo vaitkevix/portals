@@ -11,10 +11,11 @@ import * as logi from './logi.js';
 import * as sniegs from './sniegs.js';
 import * as darznieciba from './darznieciba.js';
 import * as stavvietas from './stavvietas.js';
+import * as darbalaiks from './darbalaiks.js';
 import { fetchWx, wxCron } from './wx.js';
 import { notify as wpNotify } from './webpush.js';
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
-const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas };
+const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas, dl: darbalaiks };
 import { master, importAll as importMaster, legacyPayload, publicLists, objectsStmts, companiesStmts, listsStmts, typesStmts, kvGet, kvSet, resolveReview, clearInfoReview, autoMergePrefixed, groupsOf, groupsStmts } from './master.js';
 const TZ = 'Europe/Riga';
 const PROMBUTNE = ['Atvaļinājums', 'DNL', 'Vakance'];
@@ -485,8 +486,8 @@ async function budz(request, env, ctx) {
   }
 }
 
-const SITES = { '/shaizvietosana': 'https://vaitkevix.github.io/aizvietosana', '/shizvesana': 'https://vaitkevix.github.io/izvesana', '/shkaisammaterials': 'https://vaitkevix.github.io/kaisammaterials', '/shpersonals': 'https://vaitkevix.github.io/personals', '/shbudzets': 'https://vaitkevix.github.io/budzets', '/shplausana': 'https://vaitkevix.github.io/plausana', '/shlogi': 'https://vaitkevix.github.io/logi', '/shsniegs': 'https://vaitkevix.github.io/sniegs', '/shdarznieciba': 'https://vaitkevix.github.io/darznieciba', '/shstavvietas': 'https://vaitkevix.github.io/stavvietas', '/sh': 'https://vaitkevix.github.io/portals' };
-const SITE_KEY = { '/shaizvietosana': 'aizv', '/shizvesana': 'izv', '/shkaisammaterials': 'kais', '/shpersonals': 'pers', '/shbudzets': 'budz', '/shplausana': 'pl', '/shlogi': 'logi', '/shsniegs': 'sniegs', '/shdarznieciba': 'darz', '/shstavvietas': 'stav' };
+const SITES = { '/shaizvietosana': 'https://vaitkevix.github.io/aizvietosana', '/shizvesana': 'https://vaitkevix.github.io/izvesana', '/shkaisammaterials': 'https://vaitkevix.github.io/kaisammaterials', '/shpersonals': 'https://vaitkevix.github.io/personals', '/shbudzets': 'https://vaitkevix.github.io/budzets', '/shplausana': 'https://vaitkevix.github.io/plausana', '/shlogi': 'https://vaitkevix.github.io/logi', '/shsniegs': 'https://vaitkevix.github.io/sniegs', '/shdarznieciba': 'https://vaitkevix.github.io/darznieciba', '/shstavvietas': 'https://vaitkevix.github.io/stavvietas', '/shdarbalaiks': 'https://vaitkevix.github.io/darbalaiks', '/sh': 'https://vaitkevix.github.io/portals' };
+const SITE_KEY = { '/shaizvietosana': 'aizv', '/shizvesana': 'izv', '/shkaisammaterials': 'kais', '/shpersonals': 'pers', '/shbudzets': 'budz', '/shplausana': 'pl', '/shlogi': 'logi', '/shsniegs': 'sniegs', '/shdarznieciba': 'darz', '/shstavvietas': 'stav', '/shdarbalaiks': 'dl' };
 /** Lietotnes faili no GitHub Pages zem tava domēna */
 async function site(request, url, base) {
   if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
@@ -577,6 +578,7 @@ function isDate(s) { return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')); }
 function addDays(iso, n) { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 function wday(iso) { return new Date(iso + 'T12:00:00Z').getUTCDay(); }
 function requireAdmin(u) { if (u.role !== 'admin') throw new Error('Tikai adminam'); }
+async function peopleColors(X) { try { const r = (await X.all("SELECT name, color FROM people WHERE active = 1 AND color != ''")); const o = {}; r.forEach(x => o[x.name] = x.color); return o; } catch (e) { return {}; } }
 function pubUser(u) { return { name: u.name, role: u.role, color: u.color }; }
 
 function jobOut(r) { const j = {}; JOB_F.forEach(f => j[f] = r[f] == null ? '' : String(r[f])); return j; }
@@ -694,7 +696,7 @@ async function canMark(u, job) {
 /* ---------------- Darbības ar PIN ---------------- */
 
 const ACTIONS = {
-  login: async (X, u) => ({ user: pubUser(u), meta: { managers: (await X.users()).filter(x => x.role === 'vaditajs').map(x => ({ name: x.name, color: x.color })), objects: await X.objects(), groups: await groupsOf(X.db).catch(() => []), jobTypes: await X.types() } }),
+  login: async (X, u) => ({ user: pubUser(u), meta: { managers: (await X.users()).filter(x => x.role === 'vaditajs').map(x => ({ name: x.name, color: x.color })), colors: await peopleColors(X), objects: await X.objects(), groups: await groupsOf(X.db).catch(() => []), jobTypes: await X.types() } }),
 
   jobs: async (X, u, r) => {
     await ensureStanding(X, r.date);
@@ -804,7 +806,7 @@ const ACTIONS = {
     const types = (await X.types()).map(t => t.name);
     for (const j of list) {
       if ((await X.groupOf(j.tips)) === 'Aizvietošana' && PROMBUTNE.indexOf(j.prombutne) === -1) throw new Error('Norādiet aizvietošanas iemeslu adresei ' + j.adrese + ': atvaļinājums, DNL vai vakance');
-      if (j.prombutne === 'Atvaļinājums' && !j.lidz) throw new Error('Norādiet, līdz kuram datumam ilgst atvaļinājums (' + j.adrese + ')');
+      if (j.prombutne === 'Atvaļinājums' && !j.lidz && !j.vienaDiena) throw new Error('Norādiet, līdz kuram datumam ilgst atvaļinājums, vai atzīmējiet «Tikai šai vienai dienai» (' + j.adrese + ')');
       if (types.indexOf(j.tips) === -1) throw new Error('Izvēlies darbu adresei ' + j.adrese);
     }
     // bildes uz Google Drive (tikai, ja pievienotas)
@@ -1014,7 +1016,7 @@ async function teamView(X, r, full) {
     brigade: j.brigade, statuss: j.statuss, lidz: j.lidz, prombutne: j.prombutne, foto: j.foto, komentars: j.komentars, iemesls: j.iemesls, izpildits: j.izpildits,
     steidzami: j.steidzami, laiks: j.laiks, parbaude: j.parbaude, parbKom: j.parbKom }));
   const addrs = new Set(jobs.map(j => norm(j.adrese)));
-  return { date, units, jobs, canEdit: !!full, meta: { objects: objs.filter(o => addrs.has(norm(o.adrese))).map(o => full ? o : Object.assign({}, o, { piekluve: '' })), managers: users.filter(x => x.role === 'vaditajs').map(x => ({ name: x.name, color: x.color })), jobTypes: types } };
+  return { date, units, jobs, canEdit: !!full, meta: { objects: objs.filter(o => addrs.has(norm(o.adrese))).map(o => full ? o : Object.assign({}, o, { piekluve: '' })), managers: users.filter(x => x.role === 'vaditajs').map(x => ({ name: x.name, color: x.color })), colors: await peopleColors(X), jobTypes: types } };
 }
 
 async function teamDone(X, r) {
