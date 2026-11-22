@@ -10,7 +10,7 @@ export const KEY = 'dl';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
 const AM = { uzk: 'uzkopējs', set: 'sētnieks' };
 const SMS_API = 'https://api.sms-gate.app/3rdparty/v1';
-const DEF_CFG = { rits: '07:30', vakars: '20:00', atgadinat: true };
+const DEF_CFG = { rits: '07:30', vakars: '20:00', atgadinat: true, numurs: '' };   // numurs — SMS telefona numurs uzlīmēm
 async function all(db, sql, ...a) { return (await db.prepare(sql).bind(...a).all()).results || []; }
 const hm = () => nowStr().slice(11, 16);
 const mins = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : null; };
@@ -253,6 +253,9 @@ export async function api(request, env, X) {
       const to = (await recipients(db, { kam: 'obj', anorm: o.anorm, amats: am })).map(w => w.phone); if (!to.length) throw new Error('Šim objektam nav ' + (am === 'set' ? 'sētnieka' : 'uzkopēja') + ' ar tālruni');
       return out({ ok: true, nosutits: await sendSms(env, to, 'Atgādinājums: ' + o.adrese + ' — neesi atzīmējies darbā. Darbu sākot sūti SAKU ' + o.kods + '.', o.anorm) }); }
     if (a === 'labot') { need(3);
+      if (b.aizvert) { if (!okT(b.laiks)) throw new Error('Laiks HH:MM'); const m = await db.prepare("SELECT * FROM dl_mark WHERE id = ? AND veids = 'sak'").bind(b.aizvert).first(); if (!m) throw new Error('Atzīme nav atrasta');
+        if (mins(b.laiks) < mins(m.laiks)) throw new Error('Beigas nevar būt pirms sākuma ' + m.laiks);
+        await addMark(db, { datums: m.datums, vards: m.vards, veids: 'beidz', laiks: b.laiks, anorm: m.anorm, amats: m.amats, phone: m.phone, avots: 'labots', kas: me.name }); return out({ ok: true }); }
       if (b.id) { if (b.atcelt) await db.prepare("UPDATE dl_mark SET veids = 'atcelts', kas = ? WHERE id = ?").bind(me.name, b.id).run();
         else { if (!okT(b.laiks)) throw new Error('Laiks HH:MM'); await db.prepare('UPDATE dl_mark SET laiks = ?, kas = ?, avots = ? WHERE id = ?').bind(b.laiks, me.name, 'labots', b.id).run(); }
         return out({ ok: true }); }
@@ -276,7 +279,7 @@ export async function api(request, env, X) {
         .bind(p, String(b.vards || '').trim().slice(0, 80), am, String(b.anorm || ''), b.aktivs === false ? 0 : 1).run();
       return out({ ok: true, phone: p }); }
     if (a === 'saveCfg') { need(3); const c = Object.assign({}, await cfgOf(db));
-      if (okT(b.rits)) c.rits = b.rits; if (okT(b.vakars)) c.vakars = b.vakars; if (typeof b.atgadinat === 'boolean') c.atgadinat = b.atgadinat;
+      if (okT(b.rits)) c.rits = b.rits; if (okT(b.vakars)) c.vakars = b.vakars; if (typeof b.atgadinat === 'boolean') c.atgadinat = b.atgadinat; if (b.numurs != null) c.numurs = normPhone(b.numurs) || '';
       await kvSet(db, 'dl:cfg', c).run(); return out({ ok: true, cfg: c }); }
     if (a === 'registerHook') { need(3);
       if (!env.SMS_USER || !env.SMS_PASS || !env.DL_HOOK_KEY) throw new Error('Worker noslēpumi SMS_USER, SMS_PASS, DL_HOOK_KEY nav iestatīti');
