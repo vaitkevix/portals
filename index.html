@@ -4,6 +4,19 @@
 <meta charset="utf-8">
 <script>/*SH viena saite*/(function(){if(location.hostname!=='vaitkevix.cloud'&&/github\.io$/.test(location.hostname))location.replace('https://vaitkevix.cloud/sh/'+location.hash)})()</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>/* Android (piem. Samsung): lapa var zīmēties zem sistēmas joslām, bet atstarpes nepasaka — tad pieliek tās pats. iPhone neskar. */
+if (/android/i.test(navigator.userAgent)) document.querySelector('meta[name=viewport]').setAttribute('content', 'width=device-width, initial-scale=1');
+(function () {
+  if (!/android/i.test(navigator.userAgent)) return;
+  function fix() {
+    var p = document.createElement('div'); p.style.cssText = 'position:fixed;top:0;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);visibility:hidden';
+    document.documentElement.appendChild(p); var cs = getComputedStyle(p), t = parseFloat(cs.paddingTop) || 0, b = parseFloat(cs.paddingBottom) || 0; p.remove();
+    var full = screen.height - window.innerHeight < 24, r = document.documentElement.style;
+    r.setProperty('--safe-t', t || !full ? (t + 'px') : '28px');
+    r.setProperty('--safe-b', b || !full ? (b + 'px') : '50px');
+  }
+  fix(); addEventListener('resize', fix); addEventListener('load', fix);
+})();</script>
 <title>SH | Portāls</title>
 <meta name="theme-color" content="#0f6b5c">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -33,7 +46,7 @@ button{cursor:pointer}
 .wrap{max-width:980px;margin:0 auto;padding:0 16px}
 
 /* Augšjosla */
-.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);padding-top:env(safe-area-inset-top)}
+.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);padding-top:var(--safe-t, env(safe-area-inset-top))}
 .top .wrap{display:flex;align-items:center;gap:12px;height:62px}
 .logo{width:38px;height:38px;border-radius:11px;flex:none;display:block}
 .brand{flex:1;min-width:0}
@@ -44,7 +57,7 @@ button{cursor:pointer}
 .back{display:flex;align-items:center;gap:6px;height:40px;padding:0 14px 0 10px;border-radius:20px;border:1px solid var(--line);background:var(--surface);font-weight:700;font-size:14px;color:var(--ink)}
 
 /* Ieeja */
-.login{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px 18px calc(24px + env(safe-area-inset-bottom))}
+.login{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px 18px calc(24px + var(--safe-b, env(safe-area-inset-bottom)))}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow)}
 .lcard{width:min(380px,100%);padding:28px 22px 20px;text-align:center;animation:up .35s ease-out}
 @keyframes up{from{opacity:0;transform:translateY(12px)}}
@@ -66,7 +79,7 @@ button{cursor:pointer}
 .hello{padding:8px 0 16px}
 .hello .d{font-size:13px;font-weight:700;color:var(--ink-3);text-transform:capitalize}
 .hello h2{margin:4px 0 0;font-size:26px;font-weight:800;letter-spacing:-.02em}
-.grid{display:grid;grid-template-columns:1fr;gap:12px;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.grid{display:grid;grid-template-columns:1fr;gap:12px;padding-bottom:calc(24px + var(--safe-b, env(safe-area-inset-bottom)))}
 @media(min-width:640px){.grid{grid-template-columns:1fr 1fr}}
 .tile{display:flex;flex-direction:column;gap:12px;padding:16px;text-align:left;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow);transition:transform .15s;width:100%}
 .tile:active{transform:scale(.985)}
@@ -87,7 +100,7 @@ button{cursor:pointer}
 
 /* Lietotne rāmī */
 .appv{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;background:var(--bg)}
-.appbar{display:flex;align-items:center;gap:10px;padding:calc(8px + env(safe-area-inset-top)) 12px 8px;background:var(--surface);border-bottom:1px solid var(--line)}
+.appbar{display:flex;align-items:center;gap:10px;padding:calc(8px + var(--safe-t, env(safe-area-inset-top))) 12px 8px;background:var(--surface);border-bottom:1px solid var(--line)}
 .appbar .t{flex:1;min-width:0;font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .frames{position:relative;flex:1}
 .frames iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg)}
@@ -102,7 +115,7 @@ button{cursor:pointer}
 .sheet-bg{position:fixed;inset:0;z-index:50;background:rgba(8,20,16,.45);display:flex;align-items:flex-end;justify-content:center;animation:fade .2s}
 @keyframes fade{from{opacity:0}}
 @media(min-width:700px){.sheet-bg{align-items:center}}
-.sheet{width:min(560px,100%);max-height:92vh;overflow:auto;background:var(--surface);border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));animation:sup .28s cubic-bezier(.2,.8,.2,1)}
+.sheet{width:min(560px,100%);max-height:92vh;overflow:auto;background:var(--surface);border-radius:20px 20px 0 0;padding:18px 16px calc(18px + var(--safe-b, env(safe-area-inset-bottom)));animation:sup .28s cubic-bezier(.2,.8,.2,1)}
 @media(min-width:700px){.sheet{border-radius:20px}}
 @keyframes sup{from{transform:translateY(30px);opacity:0}}
 .sheet .hd{display:flex;align-items:center;gap:10px;margin:0 0 14px}
@@ -157,9 +170,9 @@ button{cursor:pointer}
 .tog input{width:22px;height:22px;accent-color:var(--brand)}
 .acts{display:flex;gap:8px;margin-top:16px}
 .acts .btn{flex:1}
-.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:90;background:#17201c;color:#fff;padding:12px 18px;border-radius:12px;font-weight:700;font-size:14px;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);max-width:calc(100vw - 32px);animation:up .25s}
+.toast{position:fixed;left:50%;bottom:calc(20px + var(--safe-b, env(safe-area-inset-bottom)));transform:translateX(-50%);z-index:90;background:#17201c;color:#fff;padding:12px 18px;border-radius:12px;font-weight:700;font-size:14px;box-shadow:0 12px 30px -10px rgba(0,0,0,.5);max-width:calc(100vw - 32px);animation:up .25s}
 .toast.err{background:var(--red)}
-.foot{padding:8px 0 calc(28px + env(safe-area-inset-bottom));text-align:center;font-size:11.5px;font-weight:700;color:var(--ink-3)}
+.foot{padding:8px 0 calc(28px + var(--safe-b, env(safe-area-inset-bottom)));text-align:center;font-size:11.5px;font-weight:700;color:var(--ink-3)}
 
 /* ===== Kopskats (koncepts: lieli pasteļkrāsu bloki, SELECTUM HOME zaļais) ===== */
 :root{--mint:#d6e8e1;--sand:#f4e4b4;--sky:#d8e6f2;--rose:#f5dbe3;--lilac:#e2ddf2;--ink-strong:#16201b;--pill:#fff}
@@ -178,7 +191,7 @@ button{cursor:pointer}
   .rb.on{background:var(--ink-strong);color:var(--bg)}
   .rb:hover:not(.on){background:var(--surface-2)}
 }
-.board{flex:1;min-width:0;max-width:1240px;margin:0 auto;padding:calc(18px + env(safe-area-inset-top)) 16px 0}
+.board{flex:1;min-width:0;max-width:1240px;margin:0 auto;padding:calc(18px + var(--safe-t, env(safe-area-inset-top))) 16px 0}
 @media(min-width:900px){.board{padding:36px 40px 0}}
 .bhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .bhead .hi{flex:1;min-width:200px}
@@ -379,14 +392,15 @@ const APPS = {
   logi: { name: 'Logu mazgāšana', sub: 'Grafiks · izpilde ar bildi', path: '/shlogi/' },
   sniegs: { name: 'Sniega tīrīšana', sub: 'Traktoristu maršruti', path: '/shsniegs/' },
   darz: { name: 'Dārzniecība', sub: 'Grafiks · izpilde ar bildi', path: '/shdarznieciba/' },
-  stav: { name: 'Pazemes stāvvietas', sub: 'Mazgāšana · tīrīšana', path: '/shstavvietas/' }
+  stav: { name: 'Pazemes stāvvietas', sub: 'Mazgāšana · tīrīšana', path: '/shstavvietas/' },
+  dl: { name: 'Darba laiks', sub: 'Kas tagad strādā', path: '/shdarbalaiks/' }
 };
 /* #lietotne/papildu → papildu nodod lietotnei rāmī (piem. #budz/kadastrs=…) */
 const HX = (function () { const m = location.hash.match(/^#(\w+)\/(.+)$/); if (!m) return null; history.replaceState(history.state, '', '#' + m[1]); return { k: m[1], x: m[2] }; })();
-const ORDER = ['aizv', 'izv', 'kais', 'pers', 'budz', 'pl', 'logi', 'sniegs', 'darz', 'stav'];
+const ORDER = ['aizv', 'izv', 'kais', 'pers', 'budz', 'pl', 'logi', 'sniegs', 'darz', 'stav', 'dl'];
 /* Grafika lietotnes: tās redz visi portāla cilvēki (skatīšanās); tiesības dod labošanu */
-const GRAF = ['pl', 'logi', 'sniegs', 'darz', 'stav'], DARBI = ['logi', 'sniegs', 'darz', 'stav'];
-const GLY = {aizv: '<path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M3.5 11V9.5A3.5 3.5 0 0 1 7 6h13.5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M20.5 13v1.5A3.5 3.5 0 0 1 17 18H3.5"/>', izv: '<path d="M14 16.5V6H2.5v10.5h2"/><path d="M14 9.5h4l3.5 4v3h-2"/><path d="M9.3 16.5h5.4"/><circle cx="7" cy="16.8" r="2.3"/><circle cx="17" cy="16.8" r="2.3"/>', kais: '<path d="M12.00 12.00L12.00 2.50M12.00 7.25L9.88 5.13M12.00 7.25L14.12 5.13M12.00 12.00L3.77 7.25M7.89 9.62L4.99 10.40M7.89 9.62L7.11 6.73M12.00 12.00L3.77 16.75M7.89 14.38L7.11 17.27M7.89 14.38L4.99 13.60M12.00 12.00L12.00 21.50M12.00 16.75L14.12 18.87M12.00 16.75L9.88 18.87M12.00 12.00L20.23 16.75M16.11 14.38L19.01 13.60M16.11 14.38L16.89 17.27M12.00 12.00L20.23 7.25M16.11 9.62L16.89 6.73M16.11 9.62L19.01 10.40"/>', pers: '<circle cx="9.5" cy="8" r="4"/><path d="M2.5 21a7 7 0 0 1 14 0"/><path d="M19.5 8v6M16.5 11h6"/>', budz: '<path d="M5.5 2.5h13v19l-3.2-2.1-3.3 2.1-3.3-2.1-3.2 2.1z"/><path d="M9 8h6M9 12h6M9 16h3.5"/>', pl: '<path d="M3 20h18"/><path d="M6 20c0-5 1-9 3-12M10 20c0-4 1-7 3-9M14 20c0-3 1-6 4-8"/>', logi: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v18M4 12h16"/>', sniegs: '<path d="M5 17V10h7l2 3h5v4"/><path d="M12 10V6h3l2 7"/><circle cx="8" cy="17.5" r="2"/><circle cx="16.5" cy="17.5" r="2"/><path d="M10 17.5h4.5"/><path d="M2.5 9.5v9"/>', darz: '<path d="M12 21v-8"/><path d="M12 13c0-4 3-7 8-7 0 5-3 7-8 7z"/><path d="M12 15.5c0-3-2.5-5-7-5 0 4 2.5 5 7 5z"/>', stav: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9.5 17V7h3.5a3 3 0 0 1 0 6H9.5"/>'};
+const GRAF = ['pl', 'logi', 'sniegs', 'darz', 'stav', 'dl'], DARBI = ['logi', 'sniegs', 'darz', 'stav', 'dl'];
+const GLY = {aizv: '<path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M3.5 11V9.5A3.5 3.5 0 0 1 7 6h13.5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M20.5 13v1.5A3.5 3.5 0 0 1 17 18H3.5"/>', izv: '<path d="M14 16.5V6H2.5v10.5h2"/><path d="M14 9.5h4l3.5 4v3h-2"/><path d="M9.3 16.5h5.4"/><circle cx="7" cy="16.8" r="2.3"/><circle cx="17" cy="16.8" r="2.3"/>', kais: '<path d="M12.00 12.00L12.00 2.50M12.00 7.25L9.88 5.13M12.00 7.25L14.12 5.13M12.00 12.00L3.77 7.25M7.89 9.62L4.99 10.40M7.89 9.62L7.11 6.73M12.00 12.00L3.77 16.75M7.89 14.38L7.11 17.27M7.89 14.38L4.99 13.60M12.00 12.00L12.00 21.50M12.00 16.75L14.12 18.87M12.00 16.75L9.88 18.87M12.00 12.00L20.23 16.75M16.11 14.38L19.01 13.60M16.11 14.38L16.89 17.27M12.00 12.00L20.23 7.25M16.11 9.62L16.89 6.73M16.11 9.62L19.01 10.40"/>', pers: '<circle cx="9.5" cy="8" r="4"/><path d="M2.5 21a7 7 0 0 1 14 0"/><path d="M19.5 8v6M16.5 11h6"/>', budz: '<path d="M5.5 2.5h13v19l-3.2-2.1-3.3 2.1-3.3-2.1-3.2 2.1z"/><path d="M9 8h6M9 12h6M9 16h3.5"/>', pl: '<path d="M3 20h18"/><path d="M6 20c0-5 1-9 3-12M10 20c0-4 1-7 3-9M14 20c0-3 1-6 4-8"/>', logi: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v18M4 12h16"/>', sniegs: '<path d="M5 17V10h7l2 3h5v4"/><path d="M12 10V6h3l2 7"/><circle cx="8" cy="17.5" r="2"/><circle cx="16.5" cy="17.5" r="2"/><path d="M10 17.5h4.5"/><path d="M2.5 9.5v9"/>', darz: '<path d="M12 21v-8"/><path d="M12 13c0-4 3-7 8-7 0 5-3 7-8 7z"/><path d="M12 15.5c0-3-2.5-5-7-5 0 4 2.5 5 7 5z"/>', stav: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9.5 17V7h3.5a3 3 0 0 1 0 6H9.5"/>', dl: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'};
 const gl = (k, n) => `<svg class="gl" width="${n || 22}" height="${n || 22}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLY[k]}</svg>`;
 const ib = (k, n) => `<span class="ib ${COLOR[k] || 'c-' + k}">${gl(k, n)}</span>`;
 const RL = { admin: 'Administrators', vaditajs: 'Pieteicējs', izpilditajs: 'Izpildītājs', skatitajs: 'Skatītājs', pieteicejs: 'Pieteicējs', 'gatavotājs': 'Izpildītājs', 'vadība': 'Pieteicējs' };
@@ -395,7 +409,7 @@ const RL = { admin: 'Administrators', vaditajs: 'Pieteicējs', izpilditajs: 'Izp
    Katras lietotnes lomas atslēga kolonnā (pieteicējs = agrākais «darbu vadītājs»; Budžetā vadība apstiprina, gatavotājs sagatavo) */
 const RCOL = [['', 'Nav piekļuves'], ['skatitajs', 'Skatītājs'], ['P', 'Pieteicējs'], ['I', 'Izpildītājs'], ['admin', 'Administrators']];
 const RKEY = { P: ['pieteicejs', 'vaditajs', 'vadība'], I: ['izpilditajs', 'gatavotājs'] };
-const RNO = { aizv: 'Aizvietošanā darbus izpilda brigādes ar brigāžu saiti', izv: 'Izvedēji ir uzņēmumi (SIA) ar savu paroli', kais: 'Kurjeri ir uzņēmumi (SIA) ar savu paroli', pers: 'Personālā nav izpildītāja lomas' };
+const RNO = { dl: 'Darba laiku atzīmē sētnieki un uzkopējas brigāžu saitē', aizv: 'Aizvietošanā darbus izpilda brigādes ar brigāžu saiti', izv: 'Izvedēji ir uzņēmumi (SIA) ar savu paroli', kais: 'Kurjeri ir uzņēmumi (SIA) ar savu paroli', pers: 'Personālā nav izpildītāja lomas' };
 const rcol = (k, c) => { const L = S.roles[k] || []; return RKEY[c] ? RKEY[c].find(r => L.indexOf(r) !== -1) : (L.indexOf(c) !== -1 ? c : null); };
 const COLORS = ['#0f6b5c', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#475569'];
 
@@ -461,10 +475,10 @@ const gRole = (k) => S.me && !S.me.company ? (S.me.perms[k] || (S.me.perms.porta
 const plRole = () => gRole('pl');
 const hasApp = (k) => !!(S.me && (S.me.guest ? GUEST.indexOf(k) !== -1 : (S.me.perms[k] || (GRAF.indexOf(k) !== -1 && gRole(k)))));
 /* Skatīšanās bez ielogošanās (pārvaldniekiem): tikai lietotnes, kuru saraksti ir publiski redzami */
-const GUEST = ['aizv', 'izv', 'kais', 'pl', 'logi', 'sniegs', 'darz', 'stav'];   // Personāls un Budžets — tikai ar PIN (personas dati, cenas)
+const GUEST = ['aizv', 'izv', 'kais', 'pl', 'logi', 'sniegs', 'darz', 'stav', 'dl'];   // Personāls un Budžets — tikai ar PIN (personas dati, cenas)
 function guest() { ['shx_izv_user', 'shx_kais_user', 'carrierPin', 'carrierUser', 'shx_kais_courier', 'darbi_pin', 'shd_pin', 'plausana_pin', 'personals_pin', 'budzets_pin'].forEach(ls.del); ls.set('sh_guest', '1'); S.me = { name: 'Pārvaldnieks', guest: true, perms: Object.fromEntries(GUEST.map(k => [k, 'skatitajs'])), color: '' }; S.dash = {}; home(); }
 function apps() { return ORDER.filter(hasApp); }
-const COLOR = { aizv: 'c-aizv', izv: 'c-izv', kais: 'c-kais', pers: 'c-pers', budz: 'c-budz', pl: 'c-aizv', logi: 'c-kais', sniegs: 'c-budz', darz: 'c-aizv', stav: 'c-izv' };
+const COLOR = { aizv: 'c-aizv', izv: 'c-izv', kais: 'c-kais', pers: 'c-pers', budz: 'c-budz', pl: 'c-aizv', logi: 'c-kais', sniegs: 'c-budz', darz: 'c-aizv', stav: 'c-izv', dl: 'c-pers' };
 const ARROW = '<span class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg></span>';
 const GRID = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="7.5" cy="7.5" r="3.5"/><circle cx="16.5" cy="7.5" r="3.5"/><circle cx="7.5" cy="16.5" r="3.5"/><circle cx="16.5" cy="16.5" r="3.5"/></svg>';
 const SHIELD = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3Z"/><path d="M9 12l2 2 4-4"/></svg>';
