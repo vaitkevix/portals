@@ -80,6 +80,7 @@ export default {
   /** Cron: lietotāji, darbu veidi un objekti no Google tabulas */
   async scheduled(event, env, ctx) {
     if (event.cron !== '*/5 * * * *') ctx.waitUntil(syncConfig(new Ctx(env, ctx)).catch(e => console.error('syncConfig', e)));
+    if (event.cron !== '*/5 * * * *') ctx.waitUntil(mirrorSheets(new Ctx(env, ctx)).catch(e => console.error('mirror', e)));
     if (event.cron !== '*/5 * * * *') return;   // :00 un :30 nostrādā abi trigeri — pārējais tikai vienreiz (*/5)
     ctx.waitUntil(izvDrain(env, ctx, 60000).catch(e => console.error('izvDrain', e)));
     ctx.waitUntil(plCron(env).catch(e => console.error('plCron', e)));
@@ -560,7 +561,7 @@ class Ctx {
     this.bg((async () => {
       const ph = names.map(() => '?').join(',');
       const toks = (await this.all(`SELECT token FROM tokens WHERE name IN (${ph})`, ...names)).map(r => r.token);
-      if (!toks.length) return;
+      if (!toks.length || !this.env.GAS_URL) return;   // vecie FCM tokeni (2026-11 nav neviena) — paziņojumi iet ar Web Push
       const r = await this.bridge('push', { tokens: toks, title, body }, 25000);
       if (r.dead && r.dead.length) await this.db.batch(r.dead.map(t => this.st('DELETE FROM tokens WHERE token = ?', t)));
     })());
@@ -1202,6 +1203,21 @@ async function syncConfig(X) {
 }
 
 /** Datu izsniegšana pa lapām Apps Script nakts kopijai (mirrorFromCloudflare) */
+/** Nakts kopija D1 → «SH | Dati» (agrāk GAS mirrorFromCloudflare). Reizi dienā pēc 02:00, kv «mirrorDay». © VAITKEVIX, SIA */
+const MIRROR = [['jobs', 'Aizvietošana · Darbi', ['ID', 'Datums', 'Adrese', 'Tips', 'Apraksts', 'Vaditajs', 'Brigade', 'Statuss', 'Publicets', 'Izpildits', 'Izveidots', 'Komentars', 'Foto', 'Iemesls', 'Lidz', 'Serija', 'Prombutne', 'Steidzami', 'Laiks', 'Parbaude', 'ParbaudesKomentars']],
+  ['crew', 'Aizvietošana · Sastāvs', ['Datums', 'Brigade', 'Personas']], ['staff', 'Aizvietošana · Darbinieki', ['Vards', 'Pamatbrigade']],
+  ['problems', 'Aizvietošana · Problēmas', ['ID', 'Laiks', 'Adrese', 'Vaditajs', 'Vieniba', 'Apraksts', 'Foto', 'Statuss', 'Atrisinats']],
+  ['standing', 'Aizvietošana · Pastāvīgie', ['ID', 'Adrese', 'Tips', 'Apraksts', 'Vaditajs', 'Prombutne', 'No', 'Beigas', 'Brivdienas', 'Steidzami', 'Laiks', 'Foto', 'Izlaistas', 'Izveidots']]];
+async function mirrorSheets(X, force) {
+  if (!X.env.GOOGLE_SA) return;
+  const t = now(), day = t.slice(0, 10);
+  if (!force && (t.slice(11, 13) < '02' || (await kvGet(X.db, 'mirrorDay')) === day)) return;
+  await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('mirrorDay', ?)", day);
+  const out = [];
+  for (const [tb, tab, head] of MIRROR) { const e = EXPORT[tb]; out.push(await gsheets.mirror(X.env, tab, head, (await X.all(e[0])).map(e[1]), day)); }
+  await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('mirrorLog', ?)", t + ' ' + out.map(o => o.tab + ' ' + o.rows).join(', '));
+  return out;
+}
 const EXPORT = {
   jobs: ['SELECT * FROM jobs ORDER BY seq', j => JOB_F.map(f => j[f] || '')],
   crew: ['SELECT * FROM crew ORDER BY id', c => [c.datums, c.name, c.persons]],

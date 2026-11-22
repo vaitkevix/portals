@@ -140,3 +140,21 @@ export async function bridgeOp(env, op, r) {
   }
   return null;   // citas darbības (bildes, AI, push) — vēl caur Apps Script
 }
+
+/** Spogulis D1 → lapa (nakts kopija). Ja D1 krietni mazāk rindu — vispirms slēpta arhīva kopija; dati lapā nepazūd bez kopijas. */
+export async function mirror(env, tab, head, rows, day) {
+  await ensure(env, tab);
+  const had = Math.max(0, (await read(env, tab, 'A:A')).length - 1);
+  if (had >= 10 && rows.length < had * 0.5) {
+    const j = await call(env, env.DATA_SS + '?fields=sheets.properties');
+    const sh = (j.sheets || []).map(s => s.properties).find(p => p.title === tab), nm = '⚙ Arhīvs ' + tab + ' ' + day;
+    if (sh && !(j.sheets || []).some(s => s.properties.title === nm))
+      await call(env, env.DATA_SS + ':batchUpdate', { method: 'POST', body: JSON.stringify({ requests: [
+        { duplicateSheet: { sourceSheetId: sh.sheetId, newSheetName: nm, insertSheetIndex: (j.sheets || []).length } }] }) })
+        .then(r => { const id = r.replies && r.replies[0].duplicateSheet.properties.sheetId;
+          return id != null && call(env, env.DATA_SS + ':batchUpdate', { method: 'POST', body: JSON.stringify({ requests: [{ updateSheetProperties: { properties: { sheetId: id, hidden: true }, fields: 'hidden' } }] }) }); });
+  }
+  await write(env, tab, 'A1', str([head, ...rows.map(x => head.map((_, i) => x[i]))]));
+  if (had > rows.length) await clear(env, tab, 'A' + (rows.length + 2) + ':ZZ');
+  return { tab, rows: rows.length, had };
+}
