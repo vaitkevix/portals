@@ -16,6 +16,7 @@ import { fetchWx, wxCron } from './wx.js';
 import { notify as wpNotify } from './webpush.js';
 import { cleanAddr } from './util.js';
 import * as gsheets from './sheets.js';
+import * as ai from './ai.js';
 const GS_OPS = new Set(['config', 'people', 'master', 'addObjects', 'importObjects']);
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
 const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas, dl: darbalaiks };
@@ -850,7 +851,7 @@ const ACTIONS = {
     const o = (await X.objects()).find(x => norm(x.adrese) === norm(r.adrese));
     if (!piekluve && o) piekluve = o.piekluve;
     if (!String(r.text || '').trim() && r.kind === 'note' && !piekluve) throw new Error('Šai adresei nav piekļuves informācijas — uzrakstiet dažus vārdus, un AI tos noformēs');
-    const res = await X.bridge('aiNote', { kind: r.kind, adrese: r.adrese, tips: r.tips, text: r.text, piekluve }, 60000);
+    const res = await (X.env.ANTHROPIC_API_KEY ? ai.aiNote(X.env, { kind: r.kind, adrese: r.adrese, tips: r.tips, text: r.text, piekluve }) : X.bridge('aiNote', { kind: r.kind, adrese: r.adrese, tips: r.tips, text: r.text, piekluve }, 60000));
     return { text: res.text };
   },
 
@@ -858,8 +859,8 @@ const ACTIONS = {
     if (u.role === 'brigade') throw new Error('Nav atļauts');
     const objs = await X.objects();
     const mine = objs.filter(o => o.vaditajs === u.name).concat(objs.filter(o => o.vaditajs !== u.name)).slice(0, 400).map(o => o.adrese);
-    const res = await X.bridge('aiParse', { text: r.text, today: r.today, weekday: r.weekday, role: u.role, addresses: mine,
-      managers: await X.names('vaditajs'), types: await X.types() }, 90000);
+    const req = { text: r.text, today: r.today, weekday: r.weekday, role: u.role, addresses: mine, managers: await X.names('vaditajs'), types: await X.types() };
+    const res = X.env.ANTHROPIC_API_KEY ? await ai.aiParse(X.env, req) : await X.bridge('aiParse', req, 90000);
     return { datums: res.datums, vaditajs: res.vaditajs, rows: res.rows };
   },
 
