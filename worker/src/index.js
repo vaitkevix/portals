@@ -15,6 +15,7 @@ import * as darbalaiks from './darbalaiks.js';
 import { fetchWx, wxCron } from './wx.js';
 import { notify as wpNotify } from './webpush.js';
 import { cleanAddr } from './util.js';
+import * as gsheets from './sheets.js';
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
 const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas, dl: darbalaiks };
 import { master, importAll as importMaster, legacyPayload, publicLists, objectsStmts, personCanon, companiesStmts, listsStmts, typesStmts, kvGet, kvSet, resolveReview, clearInfoReview, autoMergePrefixed, groupsOf, groupsStmts } from './master.js';
@@ -1178,7 +1179,14 @@ async function syncConfig(X) {
   }
   if (!(r.users || []).length) throw new Error('Tabulā nav lietotāju — sinhronizācija atcelta');
   await X.db.batch(st);
-  if (mm && (await kvGet(X.db, 'objPush')) !== '1') await sheetObjects(X, r.objects || []).catch(e => console.error('sheetObjects', e));
+  if (mm && (await kvGet(X.db, 'objPush')) !== '1') {
+    let objs = r.objects || [];
+    if (X.env.GOOGLE_SA) {   // tieši no Google Sheets API (bez Apps Script); ja neizdodas — GAS dati
+      try { objs = await gsheets.objekti(X.env); await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('sheetsApi', ?)", 'ok ' + now() + ' · ' + objs.length + ' objekti'); }
+      catch (e) { await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('sheetsApi', ?)", 'kļūda ' + now() + ' · ' + String(e.message || e)); }
+    }
+    await sheetObjects(X, objs).catch(e => console.error('sheetObjects', e));
+  }
   await X.run("INSERT OR REPLACE INTO kv (k, v) VALUES ('configSync', ?)", now());
   const dirty = await X.first("SELECT v FROM kv WHERE k = 'peopleDirty'");
   if (dirty && dirty.v === '1') await pushPeople(X, ppl).catch(e => console.error('pushPeople', e));
