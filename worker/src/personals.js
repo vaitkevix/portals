@@ -14,11 +14,19 @@ const HIRE_COLS = ['id', 'iesniegts', 'iesniedza', 'vards', 'pk', 'adrese', 'tel
 const VAC_HEADERS = ['ID', 'Iesniegts', 'Iesniedza', 'Darbinieks', 'SIA', 'Objekts', 'Amats', 'Veids', 'No', 'Līdz', 'Kalendārās dienas', 'Darba dienas', 'Aizvietotājs',
   'Piezīmes', 'Statuss', 'Admina komentārs', 'Kalendāra notikums'];
 const VAC_COLS = ['id', 'iesniegts', 'iesniedza', 'darbinieks', 'sia', 'objekts', 'amats', 'veids', 'no', 'lidz', 'kal_dienas', 'darba_dienas', 'aizv', 'piezimes', 'statuss', 'komentars', 'kal'];
+const CHG_HEADERS = ['ID', 'Iesniegts', 'Iesniedza', 'Darbinieks', 'Kas mainās', 'Spēkā no', 'SIA (bija)', 'Objekts (bija)', 'Jaunā SIA', 'Jaunais objekts', 'Jaunais amats',
+  'Jaunā alga (EUR)', 'Slodze', 'Stundas nedēļā', 'Jaunā adrese', 'Jaunais telefons', 'Jaunais e-pasts', 'Jaunā banka', 'Jaunais IBAN', 'Invaliditāte', 'Pensionārs',
+  'Pēdējā darba diena', 'Beigu iemesls', 'Piezīmes', 'Statuss', 'Admina komentārs'];
+const CHG_COLS = ['id', 'iesniegts', 'iesniedza', 'darbinieks', 'veids', 'speka_no', 'sia_bija', 'objekts_bija', 'sia', 'objekts', 'amats', 'alga', 'slodze', 'stundas', 'adrese', 'tel', 'epasts',
+  'banka', 'iban', 'inval', 'pens', 'beigu_datums', 'iemesls', 'piezimes', 'statuss', 'komentars'];
+const CHG_TYPES = ['Amats / objekts / SIA', 'Alga / slodze', 'Personas dati', 'Darba attiecību beigas'];
+const SLODZE = ['Pilna slodze', 'Nepilna slodze'];
+const TBL = { hire: 'pers_hire', vac: 'pers_vac', chg: 'pers_chg' }, PFX_TBL = { P: 'pers_hire', A: 'pers_vac', G: 'pers_chg' };
 const BEGIN_TIME = ['Kodu kalkulators', 'Aplikācija viedtālrunī'];
 const STATUSES = ['Jauns', 'Apstrādē', 'Apstiprināts', 'Noraidīts'];
 const INVAL = ['NĒ', '1. grupa', '2. grupa', '3. grupa'];
 const OBJ_SEP = '; ', AM_SEP = ' — ';
-const READS = ['login', 'records', 'calendar', 'days'], WRITES = ['hire', 'vacation', 'status'];
+const READS = ['login', 'records', 'calendar', 'days'], WRITES = ['hire', 'vacation', 'change', 'status'];
 
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? r.v : null; };
@@ -174,10 +182,10 @@ async function userEmail(db, name) {
 }
 
 /* ---------- ieraksti ---------- */
-const rowsOf = (db, t) => all(db, 'SELECT * FROM ' + (t === 'hire' ? 'pers_hire' : 'pers_vac') + ' ORDER BY row');
+const rowsOf = (db, t) => all(db, 'SELECT * FROM ' + TBL[t] + ' ORDER BY row');
 const numOr = (v) => /^-?\d+(\.\d+)?$/.test(String(v)) ? Number(v) : v;
 async function nextId(db, prefix) {
-  const tbl = prefix === 'P' ? 'pers_hire' : 'pers_vac';
+  const tbl = PFX_TBL[prefix];
   let n = Number(await kvGet(db, 'pers:seq:' + prefix) || 0);
   (await all(db, 'SELECT id FROM ' + tbl)).forEach(r => { const m = /^[A-Z]+-(\d+)$/.exec(r.id); if (m && +m[1] > n) n = +m[1]; });
   n++;
@@ -284,8 +292,58 @@ async function submitVacation(env, user, f) {
   return { id, days, warnings, mailErr };
 }
 
+/* ---------- GROZĪJUMI (amats/objekts/SIA, alga/slodze, personas dati, darba attiecību beigas) ---------- */
+async function submitChange(env, user, f) {
+  const db = env.DB, req = need(f);
+  const darb = req('darbinieks', 'Darbinieks');
+  const veids = (Array.isArray(f.veids) ? f.veids : String(f.veids || '').split(',')).map(x => String(x).trim()).filter(x => CHG_TYPES.indexOf(x) >= 0);
+  if (!veids.length) throw new Error('Atzīmējiet, kas mainās.');
+  const has = (i) => veids.indexOf(CHG_TYPES[i]) >= 0, onlyEnd = veids.length === 1 && has(3);
+  const t = (k) => String(f[k] == null ? '' : f[k]).trim();
+  const v = { sia: '', objekts: '', amats: '', alga: '', slodze: '', stundas: '', adrese: '', tel: '', epasts: '', banka: '', iban: '', inval: '', pens: '', beigu_datums: '', iemesls: '' };
+  if (has(0)) {
+    v.sia = t('sia'); v.objekts = f.objekts ? parseObj(f.objekts, false) : ''; v.amats = v.objekts ? objAmati(v.objekts).join(', ') : '';
+    if (!v.sia && !v.objekts) throw new Error('Norādiet jauno SIA vai objektu un amatu.');
+  }
+  if (has(1)) {
+    const a = parseFloat(t('alga').replace(',', '.')); if (t('alga') && !(a > 0)) throw new Error('Nepareiza alga.');
+    v.alga = a > 0 ? String(Math.round(a * 100) / 100) : ''; v.slodze = SLODZE.indexOf(t('slodze')) >= 0 ? t('slodze') : '';
+    const h = parseFloat(t('stundas').replace(',', '.')); v.stundas = h > 0 ? String(h) : '';
+    if (v.slodze === 'Nepilna slodze' && !v.stundas) throw new Error('Nepilnai slodzei norādiet stundas nedēļā.');
+    if (!v.alga && !v.slodze) throw new Error('Norādiet jauno algu vai slodzi.');
+  }
+  if (has(2)) {
+    v.adrese = t('adrese'); v.tel = t('tel') ? normPhone(f.telKods, t('tel')) : ''; v.epasts = t('epasts');
+    if (v.epasts && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.epasts)) throw new Error('Nepareiza e-pasta adrese.');
+    v.iban = t('iban') ? normIBAN(t('iban')) : ''; v.banka = t('banka');
+    v.inval = INVAL.indexOf(t('inval')) >= 0 ? t('inval') : ''; v.pens = ['JĀ', 'NĒ'].indexOf(t('pens')) >= 0 ? t('pens') : '';
+    if (![v.adrese, v.tel, v.epasts, v.iban, v.banka, v.inval, v.pens].some(Boolean)) throw new Error('Norādiet, kuri personas dati mainās.');
+  }
+  if (has(3)) { v.beigu_datums = dmy(parseDate(req('beigu_datums', 'Pēdējā darba diena'))); v.iemesls = req('iemesls', 'Beigu iemesls'); }
+  const speka = onlyEnd ? '' : dmy(parseDate(req('speka_no', 'Spēkā no')));
+  const emp = (await getInit(db, user)).employees.find(e => e.name.toLowerCase() === darb.toLowerCase()) || {};
+  const id = await nextId(db, 'G'), piez = t('piezimes');
+  await insert(db, 'pers_chg', CHG_COLS, [id, stamp(), user.name, darb, veids.join(', '), speka, emp.sia || '', emp.objekts || '', v.sia, v.objekts, v.amats, v.alga, v.slodze, v.stundas,
+    v.adrese, v.tel, v.epasts, v.banka, v.iban, v.inval, v.pens, v.beigu_datums, v.iemesls, piez, 'Jauns', '']);
+  const mailErr = await mailChange(env, Object.assign({ id, by: user.name, darb, veids, speka, siaBija: emp.sia || '', objBija: emp.objekts || '', piez }, v));
+  if (mailErr) await db.prepare('UPDATE pers_chg SET mail_err = ? WHERE id = ?').bind(mailErr, id).run();
+  return { id, mailErr };
+}
+async function mailChange(env, d) {
+  const S = await settings(env.DB), full = yes(S, 'PILNI_DATI_EPASTA', 'NĒ'), end = d.veids.indexOf(CHG_TYPES[3]) >= 0;
+  const secs = [{ title: 'DARBINIEKS', rows: [['Vārds, Uzvārds', d.darb], ['Pašlaik', [d.siaBija, splitObj(d.objBija).join('; ')].filter(Boolean).join(' · ')], ['Kas mainās', d.veids.join(', ')], ['Spēkā no', d.speka]] }];
+  if (d.sia || d.objekts) secs.push({ title: 'AMATS / OBJEKTS / SIA', rows: [['Jaunā SIA', d.sia], ['Objekti un amati', splitObj(d.objekts).join('\n')]] });
+  if (d.alga || d.slodze) secs.push({ title: 'ALGA / SLODZE', rows: [['Jaunā alga', d.alga ? eur(+d.alga) : ''], ['Slodze', d.slodze + (d.stundas ? ' · ' + d.stundas + ' h nedēļā' : '')]] });
+  if ([d.adrese, d.tel, d.epasts, d.iban, d.banka, d.inval, d.pens].some(Boolean)) secs.push({ title: 'PERSONAS DATI', rows: [['Deklarētā adrese', full ? d.adrese : (d.adrese ? 'mainīta (redzama lietotnē)' : '')],
+    ['Telefons', d.tel], ['E-pasts', d.epasts], ['Banka', d.banka], ['IBAN', full ? d.iban : (d.iban ? 'mainīts (redzams lietotnē)' : '')], ['Invaliditāte', d.inval], ['Pensionārs', d.pens]] });
+  if (end) secs.push({ title: 'DARBA ATTIECĪBU BEIGAS', rows: [['Pēdējā darba diena', d.beigu_datums], ['Iemesls', d.iemesls]] });
+  secs.push({ title: 'PIETEIKUMS', rows: [['Iesniedza', d.by], ['Piezīmes', d.piez]] });
+  return sendMail(env, S, recipients(S, 'chg'), (end ? 'Darba attiecību beigas: ' : 'Grozījumi: ') + d.darb + (d.speka ? ' no ' + d.speka : d.beigu_datums ? ' — ' + d.beigu_datums : ''),
+    end ? 'Darba attiecību beigas' : 'Grozījumi', d.darb + ' · ' + d.id, secs, '', end ? '#8a2a3b' : '#5b3fa0', d.id);
+}
+
 async function getRecords(db, user, type) {
-  const isHire = type === 'hire', headers = isHire ? HIRE_HEADERS : VAC_HEADERS, cols = isHire ? HIRE_COLS : VAC_COLS;
+  const headers = { hire: HIRE_HEADERS, vac: VAC_HEADERS, chg: CHG_HEADERS }[type], cols = { hire: HIRE_COLS, vac: VAC_COLS, chg: CHG_COLS }[type];
   let rows = (await rowsOf(db, type)).filter(r => r.id);
   if (user.role !== 'admin') rows = rows.filter(r => r.iesniedza === user.name);
   rows.reverse();
@@ -296,7 +354,7 @@ async function setStatus(env, user, type, id, status, comment) {
   const db = env.DB;
   if (user.role !== 'admin') throw new Error('Statusu var mainīt tikai administrators.');
   if (STATUSES.indexOf(status) < 0) throw new Error('Nezināms statuss.');
-  const isHire = type === 'hire', tbl = isHire ? 'pers_hire' : 'pers_vac';
+  const isHire = type === 'hire', tbl = TBL[type]; if (!tbl) throw new Error('Nezināms veids.');
   const row = await db.prepare('SELECT * FROM ' + tbl + ' WHERE id = ?').bind(String(id == null ? '' : id)).first();
   if (!row) throw new Error('Ieraksts nav atrasts.');
   comment = String(comment || '').trim();
@@ -338,7 +396,9 @@ async function getCalendarRange(db, fromStr, toStr) {
 
 /* ---------- e-pasti (tas pats izskats kā GAS sendMail_) ---------- */
 function recipients(S, type) {
-  const list = [S.ADMIN_EMAIL || '', S[type === 'hire' ? 'EMAIL_PIENEMSANA' : 'EMAIL_ATVALINAJUMI'] || ''].join(',').split(/[,;\s]+/).map(s => s.trim().toLowerCase()).filter(s => /@/.test(s));
+  const k = type === 'hire' ? ['EMAIL_PIENEMSANA'] : type === 'chg' ? ['EMAIL_GROZIJUMI', 'EMAIL_PIENEMSANA'] : ['EMAIL_ATVALINAJUMI'];
+  const own = k.map(x => S[x] || '').find(x => /@/.test(x)) || '';
+  const list = [S.ADMIN_EMAIL || '', own].join(',').split(/[,;\s]+/).map(s => s.trim().toLowerCase()).filter(s => /@/.test(s));
   return [...new Set(list)].join(',');
 }
 const webAppUrl = (S) => /^https:\/\/\S+$/.test(String(S.WEB_APP_URL || '').trim()) ? String(S.WEB_APP_URL).trim() : 'https://vaitkevix.cloud/sh/#pers';
@@ -398,8 +458,9 @@ async function mailVacation(env, d) {
 }
 async function mailStatus(env, to, type, id, name, status, comment) {
   const colors = { 'Apstiprināts': '#1e7a4a', 'Noraidīts': '#b42318', 'Apstrādē': '#9a6a00', 'Jauns': '#1f3a5f' };
-  return sendMail(env, await settings(env.DB), to, (type === 'hire' ? 'Pieņemšana' : 'Atvaļinājums') + ' — ' + name + ': ' + status,
-    status, (type === 'hire' ? 'Pieņemšana darbā' : 'Atvaļinājums') + ' · ' + name + ' · ' + id,
+  const L = { hire: ['Pieņemšana', 'Pieņemšana darbā'], vac: ['Atvaļinājums', 'Atvaļinājums'], chg: ['Grozījumi', 'Grozījumi'] }[type] || ['Pieteikums', 'Pieteikums'];
+  return sendMail(env, await settings(env.DB), to, L[0] + ' — ' + name + ': ' + status,
+    status, L[1] + ' · ' + name + ' · ' + id,
     [{ title: 'STATUSS', rows: [['Pieteikums', id], ['Darbinieks', name], ['Jaunais statuss', status], ['Komentārs', comment]] }], '', colors[status], id);
 }
 
@@ -417,8 +478,9 @@ export async function api(env, req) {
     if (action === 'login') out = { user, meta: await getInit(db, user) };
     else if (action === 'hire') out = await submitHire(env, user, req.form || {});
     else if (action === 'vacation') out = await submitVacation(env, user, req.form || {});
+    else if (action === 'change') out = await submitChange(env, user, req.form || {});
     else if (action === 'days') out = { days: previewDays(req.no, req.lidz) };
-    else if (action === 'records') out = { hire: await getRecords(db, user, 'hire'), vac: await getRecords(db, user, 'vac') };
+    else if (action === 'records') out = { hire: await getRecords(db, user, 'hire'), vac: await getRecords(db, user, 'vac'), chg: await getRecords(db, user, 'chg') };
     else if (action === 'status') { await setStatus(env, user, req.type, req.id, req.status, req.comment); out = {}; }
     else out = await getCalendarRange(db, req.from, req.to);
     return Object.assign({ ok: true }, out || {});
