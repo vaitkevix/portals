@@ -35,6 +35,10 @@ if (/android/i.test(navigator.userAgent)) document.querySelector('meta[name=view
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
 <script>try{var t=localStorage.getItem('sh_theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+<script>/* Sākuma ekrāna ikona: iOS to saglabā vienreiz — dod to, kāds režīms ir pievienošanas brīdī (gaišs A / tumšs C). © VAITKEVIX, SIA */
+(function(){function set(){var t='';try{t=localStorage.getItem('sh_theme')||''}catch(e){}var d=t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+[].forEach.call(document.querySelectorAll('link[rel="apple-touch-icon"]'),function(l,i){if(i)l.remove();else l.href=d?'icon-dark.png?v=4':'icon.png?v=4'})}
+set();try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',set)}catch(e){}addEventListener('storage',set);window.shIconSet=set})();</script>
 <style>
 :root{--bg:#f1f4f2;--surface:#fff;--surface-2:#f5f7f6;--line:rgba(20,40,32,.09);--line-2:#d6ddd9;--ink:#17201c;--ink-2:#47504c;--ink-3:#6d7672;
   --brand:#0f6b5c;--brand-2:#13897a;--brand-soft:rgba(15,107,92,.1);--warn:#c2410c;--red:#c02626;--r:16px;--shadow:0 1px 2px rgba(16,32,26,.06),0 8px 24px -12px rgba(16,32,26,.18)}
@@ -622,7 +626,7 @@ const X = '<button class="x" aria-label="Aizvērt">×</button>';
 /* Tēma: kopīga visām lietotnēm (localStorage sh_theme). Atvērtās lietotnes pārslēdzas uzreiz. */
 function applyTheme(t) { document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light'); }
 function setTheme(t) {
-  applyTheme(t); ls.set('sh_theme', t);
+  applyTheme(t); ls.set('sh_theme', t); if (window.shIconSet) shIconSet();
   Object.keys(S.frames || {}).forEach(k => { try { S.frames[k].contentWindow.postMessage({ sh: 'theme', t }, location.origin); } catch (e) {} });
 }
 addEventListener('storage', (e) => { if (e.key === 'sh_theme') applyTheme(e.newValue); });   // pārslēgts lietotnē vai citā cilnē
