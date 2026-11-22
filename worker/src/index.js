@@ -88,6 +88,7 @@ export default {
     if (event.cron !== '*/5 * * * *') return;   // :00 un :30 nostrādā abi trigeri — pārējais tikai vienreiz (*/5)
     ctx.waitUntil(izvDrain(env, ctx, 60000).catch(e => console.error('izvDrain', e)));
     ctx.waitUntil(plCron(env).catch(e => console.error('plCron', e)));
+    ctx.waitUntil(foto.migrateDrive(env).catch(e => console.error('foto', e)));
     ctx.waitUntil(kais.maybeSwitch(env).then(() => kais.pushSheet(env)).catch(e => console.error('kais', e)));
     ctx.waitUntil((async () => { await wxCron(env).catch(e => console.error('wx', e)); for (const k in GRAF) await GRAF[k].cron(env).catch(e => console.error('cron ' + k, e)); })());
   }
@@ -127,6 +128,11 @@ async function img(url, ctx, env) {
     const o = await env.FOTO.get(id);
     if (!o) return new Response('Nav bildes', { status: 404, headers: CORS });
     return new Response(o.body, { headers: Object.assign({ 'Content-Type': (o.httpMetadata && o.httpMetadata.contentType) || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable' }, CORS) });
+  }
+  if (env && env.FOTO) {   // vecā Drive bilde, jau nokopēta R2
+    const o = await env.FOTO.get(foto.driveKey(id));
+    if (o) return new Response(o.body, { headers: Object.assign({ 'Content-Type': (o.httpMetadata && o.httpMetadata.contentType) || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable' }, CORS) });
+    ctx.waitUntil(foto.copyDrive(env, id).catch(() => 0));   // pirmā skatīšana → kopija R2
   }
   return imgFetch(id, sz, ctx);
 }
