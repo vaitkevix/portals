@@ -5,6 +5,19 @@ import { anorm } from './util.js';
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const first = (db, sql, ...a) => db.prepare(sql).bind(...a).first();
 const GRAF = [['pl', 'pl_obj', 'Zāles pļaušana'], ['logi', 'logi_obj', 'Logu mazgāšana'], ['darz', 'darz_obj', 'Dārzniecība'], ['stav', 'stav_obj', 'Pazemes stāvvietas'], ['sniegs', 'sniegs_obj', 'Sniega tīrīšana']];
+/* Pakalpojumi: karogs obj_info → lietotne, kurā objekts redzams */
+export const SVC = { pazemes: ['stav_obj', 'stav_visit', 'Pazemes stāvvieta', 'stav'], zale: ['pl_obj', 'pl_visit', 'Zāliens (pļaušana)', 'pl'], logi: ['logi_obj', 'logi_visit', 'Logu mazgāšana', 'logi'],
+  darz: ['darz_obj', 'darz_visit', 'Dārzniecība', 'darz'], sniegs: ['sniegs_obj', 'sniegs_visit', 'Sniega tīrīšana', 'sniegs'] };
+const IP = ['stavi', 'kapnu', 'lifti', 'dzivokli'];
+async function setSvc(db, k, key, on) {
+  const [tbl, vis] = SVC[key];
+  await db.prepare('INSERT INTO obj_info (anorm, ' + key + ') VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET ' + key + ' = excluded.' + key).bind(k, on ? 1 : 0).run();
+  if (!on) {   // nav pakalpojuma → objekts pazūd no lietotnes, grafiks apturēts (vēsture paliek)
+    await db.prepare('UPDATE ' + tbl + ' SET aktivs = 0 WHERE anorm = ?').bind(k).run().catch(() => 0);
+    await db.prepare('DELETE FROM ' + vis + " WHERE anorm = ? AND statuss = 'plan' AND avots != 'pieteikums'").bind(k).run()
+      .catch(() => db.prepare('DELETE FROM ' + vis + " WHERE anorm = ? AND statuss = 'plan'").bind(k).run().catch(() => 0));
+  }
+}
 const pj = (s, d) => { try { return JSON.parse(s || '') || d; } catch (e) { return d; } };
 
 /** Visas objektu algas: { anorm: [{ amats, alga, slodze }] } */
@@ -14,8 +27,12 @@ export async function allAlgas(db) {
 
 export async function info(db, adrese) {
   const k = anorm(adrese), out = { anorm: k };
-  const oi = await first(db, 'SELECT algas, piezimes, pazemes FROM obj_info WHERE anorm = ?', k).catch(() => null);
+  const oi = await first(db, 'SELECT * FROM obj_info WHERE anorm = ?', k).catch(() => null);
   out.algas = pj(oi && oi.algas, []); out.piezimes = (oi && oi.piezimes) || ''; out.pazemes = !!(oi && oi.pazemes);
+  out.svc = Object.fromEntries(Object.keys(SVC).map(x => [x, !!(oi && oi[x])])); out.svcNames = Object.fromEntries(Object.keys(SVC).map(x => [x, SVC[x][2]]));
+  out.ip = pj(oi && oi.ip, {});
+  const pl = await first(db, 'SELECT m2 FROM pl_obj WHERE anorm = ?', k).catch(() => null), lg = await first(db, 'SELECT qty FROM logi_obj WHERE anorm = ?', k).catch(() => null);
+  out.apjoms = { zale_m2: pl ? pl.m2 : null, logi: lg ? lg.qty : null };
   const d = await first(db, 'SELECT kods, vajag_uzk, vajag_set, aktivs FROM dl_obj WHERE anorm = ?', k).catch(() => null);
   out.dl = { kods: d && d.aktivs ? d.kods : '', vajag_uzk: d ? !!d.vajag_uzk : true, vajag_set: d ? !!d.vajag_set : true,
     darbinieki: (await all(db, 'SELECT phone, vards, amats, aktivs FROM dl_worker WHERE anorm = ? ORDER BY aktivs DESC, vards', k).catch(() => [])) };
@@ -43,10 +60,9 @@ export async function save(db, b) {
   const now = new Date().toISOString();
   await db.prepare('INSERT INTO obj_info (anorm, algas, piezimes, atjaunots) VALUES (?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET algas = excluded.algas, piezimes = excluded.piezimes, atjaunots = excluded.atjaunots')
     .bind(k, JSON.stringify(algas), String(b.piezimes || '').trim().slice(0, 2000), now).run();
-  if ('pazemes' in b) {   // Pazemes stāvvieta: nav → pazūd no Stāvvietām, grafiks apturēts (vēsture paliek)
-    await db.prepare('UPDATE obj_info SET pazemes = ? WHERE anorm = ?').bind(b.pazemes ? 1 : 0, k).run();
-    if (!b.pazemes) await db.batch([db.prepare('UPDATE stav_obj SET aktivs = 0 WHERE anorm = ?').bind(k), db.prepare("DELETE FROM stav_visit WHERE anorm = ? AND statuss = 'plan' AND avots != 'pieteikums'").bind(k)]).catch(() => 0);
-  }
+  if ('pazemes' in b && !b.svc) b.svc = { pazemes: !!b.pazemes };
+  if (b.svc) for (const x of Object.keys(SVC)) if (x in b.svc) await setSvc(db, k, x, !!b.svc[x]);
+  if (b.ip) { const ip = {}; IP.forEach(x => { const n = parseInt(b.ip[x], 10); if (n >= 0 && n < 10000) ip[x] = n; }); await db.prepare('UPDATE obj_info SET ip = ? WHERE anorm = ?').bind(JSON.stringify(ip), k).run(); }
   if (b.dl) {   // Darba laiks: SMS kods un vajadzība (tā pati loģika kā Darba laika Iestatījumos)
     if (!kods) await db.prepare('UPDATE dl_obj SET aktivs = 0 WHERE anorm = ?').bind(k).run();
     else {
@@ -55,4 +71,15 @@ export async function save(db, b) {
     }
   }
   return info(db, b.adrese);
+}
+
+/** Vairākiem objektiem uzreiz: ieslēgt/izslēgt pakalpojumu. adreses → on (true/false) */
+export async function bulk(db, key, list) {
+  if (!SVC[key]) throw new Error('Nezināms pakalpojums');
+  let n = 0; for (const x of (list || []).slice(0, 1000)) { const k = anorm(x.adrese); if (!k) continue; await setSvc(db, k, key, !!x.on); n++; }
+  return n;
+}
+/** Kopsavilkums objektu sarakstam: { anorm: { pazemes, zale, ... } } */
+export async function svcMap(db) {
+  const o = {}; (await all(db, 'SELECT * FROM obj_info').catch(() => [])).forEach(r => { o[r.anorm] = Object.fromEntries(Object.keys(SVC).map(x => [x, !!r[x]])); }); return o;
 }

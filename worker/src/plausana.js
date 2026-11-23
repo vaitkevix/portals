@@ -141,7 +141,7 @@ export async function plausana(request, env, X) {
   try {
     if (a === 'boot') {
       const t = today(), from = b.from || addDays(t, -7), to = b.to || addDays(t, 14);
-      const objects = (await db.prepare('SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, o.piekluve, p.m2, p.intervals, p.aktivs, p.brigade, p.piezime, p.lat, p.lng FROM objects o LEFT JOIN pl_obj p ON p.anorm = o.anorm ORDER BY o.ord').all()).results || [];
+      const objects = (await db.prepare('SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, o.piekluve, p.m2, p.intervals, p.aktivs, p.brigade, p.piezime, p.lat, p.lng FROM objects o LEFT JOIN pl_obj p ON p.anorm = o.anorm JOIN obj_info i ON i.anorm = o.anorm AND i.zale = 1 ORDER BY o.ord').all()).results || [];
       if (ROLE_W[role] < 1) objects.forEach(o => { o.piekluve = ''; });   // vārtu / atslēgu kodi — tikai izpildītājam un vadītājam
       const visits = (await db.prepare('SELECT * FROM pl_visit WHERE datums >= ? AND datums <= ? ORDER BY datums, prio DESC, adrese').bind(from, to).all()).results || [];
       const last = (await db.prepare("SELECT anorm, MAX(datums) d FROM pl_visit WHERE statuss = 'done' GROUP BY anorm").all()).results || [];
@@ -165,6 +165,7 @@ export async function plausana(request, env, X) {
       const list = (Array.isArray(b.objs) ? b.objs : [b]).slice(0, 500), st = [];
       for (const o of list) {
         const k = anorm(o.adrese || o.anorm); if (!k) continue;
+        st.push(db.prepare('INSERT INTO obj_info (anorm, zale) VALUES (?, 1) ON CONFLICT(anorm) DO UPDATE SET zale = 1').bind(k));   // grafikā = pakalpojums ieslēgts
         st.push(db.prepare('INSERT INTO pl_obj (anorm, m2, intervals, aktivs, brigade, piezime) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET m2 = excluded.m2, intervals = excluded.intervals, aktivs = excluded.aktivs, brigade = excluded.brigade, piezime = excluded.piezime')
           .bind(k, Math.max(0, Math.min(1e6, +o.m2 || 0)), Math.max(1, Math.min(90, Math.round(+o.intervals || 10))), o.aktivs === false || o.aktivs === 0 ? 0 : 1, String(o.brigade || '').slice(0, 60), String(o.piezime || '').slice(0, 300)));
         if (o.aktivs === false || o.aktivs === 0) st.push(db.prepare("DELETE FROM pl_visit WHERE anorm = ? AND statuss = 'plan'").bind(k));

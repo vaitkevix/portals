@@ -97,7 +97,7 @@ export async function api(request, env, X, fetchWx) {
   try {
     if (a === 'boot') {
       const t = today();
-      const objects = (await db.prepare('SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, o.piekluve, s.aktivs, s.brigade, s.piezime, s.seq, s.dati, s.lat, s.lng FROM objects o LEFT JOIN sniegs_obj s ON s.anorm = o.anorm ORDER BY o.ord').all()).results || [];
+      const objects = (await db.prepare('SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, o.piekluve, s.aktivs, s.brigade, s.piezime, s.seq, s.dati, s.lat, s.lng FROM objects o LEFT JOIN sniegs_obj s ON s.anorm = o.anorm JOIN obj_info i ON i.anorm = o.anorm AND i.sniegs = 1 ORDER BY o.ord').all()).results || [];
       if (ROLE_W[role] < 1) objects.forEach(o => { o.piekluve = ''; });
       const calls = (await db.prepare('SELECT * FROM sniegs_call ORDER BY datums DESC, izveidots DESC LIMIT 12').all()).results || [];
       const ids = calls.slice(0, 6).map(c => c.id);
@@ -121,6 +121,7 @@ export async function api(request, env, X, fetchWx) {
       const list = (Array.isArray(b.objs) ? b.objs : [b]).slice(0, 500), st = [];
       for (const o of list) {
         const k = anorm(o.adrese || o.anorm); if (!k) continue;
+        st.push(db.prepare('INSERT INTO obj_info (anorm, sniegs) VALUES (?, 1) ON CONFLICT(anorm) DO UPDATE SET sniegs = 1').bind(k));   // grafikā = pakalpojums ieslēgts
         const act = !(o.aktivs === false || o.aktivs === 0), br = String(o.brigade || '').slice(0, 80), seq = Math.max(0, Math.min(9999, Math.round(+o.seq || 0)));
         st.push(db.prepare('INSERT INTO sniegs_obj (anorm, aktivs, brigade, piezime, seq, dati) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET aktivs = excluded.aktivs, brigade = excluded.brigade, piezime = excluded.piezime, seq = excluded.seq, dati = excluded.dati')
           .bind(k, act ? 1 : 0, br, String(o.piezime || '').slice(0, 300), seq, JSON.stringify(cleanObj(o.dati))));

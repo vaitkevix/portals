@@ -173,6 +173,8 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .tadd{display:flex;gap:6px}.tadd input{flex:1;min-width:0;height:38px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 10px;font:inherit;font-size:14px}.tadd .btn{flex:none!important;width:40px!important;height:38px;min-width:0;padding:0}
 .tcol-new{background:transparent;border:2px dashed var(--line-2);min-height:auto}
 .tmove{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.35);display:grid;place-items:center;padding:16px}.tmove-box{background:var(--surface);border-radius:22px;padding:18px;width:min(360px,100%)}.tmove-box b{font-size:17px}
+.oip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.oip label{display:block}.oip span{display:block;font-size:12px;font-weight:800;color:var(--ink-2);margin:0 0 5px}.oip input{width:100%;height:44px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 10px;font:inherit;font-weight:700;min-width:0}
+@media (max-width:420px){.oip{grid-template-columns:repeat(2,minmax(0,1fr))}}.chip.svc{padding:3px 7px}
 .oh{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin:18px 0 8px}.oarow{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) 36px;gap:6px;margin-bottom:6px}.oarow input,.oarow select{height:42px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 10px;font:inherit;font-size:14px;min-width:0}.odel{border:0;background:transparent;color:#c02626;font-size:20px;cursor:pointer}.odl{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:0 0 12px}.odl label,.odl span{display:block;font-size:13px;font-weight:800;color:var(--ink-2);margin:0 0 6px}
 .odl-k{flex:1 1 140px;min-width:0}.odl-k input{width:100%;height:46px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 14px;font:inherit;font-weight:700;outline:none}
 .odl-v{flex:none}.odl-p{display:flex;gap:6px}
@@ -717,19 +719,26 @@ function drawAdmin() {
     s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-p]'); if (r) { remember(); editPerson(S.people.find(p => p.name === r.dataset.p)); } };
   }
   if (A.tab === 'objects') {
+    if (!A.svc) { api('objSvc').then(r => { A.svc = r; drawAdmin(); }).catch(() => { A.svc = { map: {}, names: {} }; }); A.svc = { map: {}, names: {}, loading: 1 }; }
+    const SV = A.svc, akey = (a) => String(a || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''), has = (o, k) => !!((SV.map[akey(o.adrese)] || {})[k]);
+    const SAPP = { pazemes: 'stav', zale: 'pl', logi: 'logi', darz: 'darz', sniegs: 'sniegs' };
     const F = A.f, VM = [...new Set(A.M.objects.map(o => o.vaditajs).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'lv')), GR = [...new Set(A.M.objects.map(o => o.grupa).filter(Boolean))].sort();
     const list = A.M.objects.map((o, i) => Object.assign({ i }, o)).filter(o => qm(o.adrese + ' ' + o.vaditajs + ' ' + o.grupa)
-      && (!F.v || (F.v === '-' ? !o.vaditajs : o.vaditajs === F.v)) && (!F.g || o.grupa === F.g) && (!F.k || (F.k === '-' ? !o.piekluve : !!o.piekluve)));
+      && (!F.v || (F.v === '-' ? !o.vaditajs : o.vaditajs === F.v)) && (!F.g || o.grupa === F.g) && (!F.k || (F.k === '-' ? !o.piekluve : !!o.piekluve))
+      && (!F.s || (F.s[0] === '-' ? !has(o, F.s.slice(1)) : has(o, F.s))));
     const s = adminShell(`<div class="afil" id="oF"><select data-f="v" aria-label="Vadītājs"><option value="">Visi vadītāji</option><option value="-" ${F.v === '-' ? 'selected' : ''}>Bez vadītāja (${A.M.objects.filter(o => !o.vaditajs).length})</option>${VM.map(m => `<option ${F.v === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
       <select data-f="g" aria-label="Grupa"><option value="">Visas grupas</option>${GR.map(g => `<option ${F.g === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>
       <select data-f="k" aria-label="Piekļuve"><option value="">Piekļuve: visi</option><option value="+" ${F.k === '+' ? 'selected' : ''}>Ar piekļuvi</option><option value="-" ${F.k === '-' ? 'selected' : ''}>Bez piekļuves</option></select>
-      <span class="n">${list.length} objekti</span>${list.length && (A.q || F.v || F.g || F.k) ? `<button class="btn ghost" id="oBulk" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">Mainīt vadītāju visiem ${list.length}</button>` : ''}</div>
+      <select data-f="s" aria-label="Pakalpojums"><option value="">Pakalpojumi: visi</option>${Object.keys(SV.names).map(k => `<option value="${k}" ${F.s === k ? 'selected' : ''}>Ir: ${esc(SV.names[k])}</option><option value="-${k}" ${F.s === '-' + k ? 'selected' : ''}>Nav: ${esc(SV.names[k])}</option>`).join('')}</select>
+      <span class="n">${list.length} objekti</span>${list.length && (A.q || F.v || F.g || F.k || F.s) ? `<button class="btn ghost" id="oBulk" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">Mainīt vadītāju visiem ${list.length}</button>` : ''}
+      ${list.length ? `<button class="btn ghost" id="oSvc" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">Pakalpojumi ${list.length} objektiem</button>` : ''}</div>
       <div class="plist">${list.slice(0, 300).map(o => `<button class="prow" data-o="${o.i}"><div class="nm"><b>${esc(o.adrese)}</b>
-      <div class="chips">${o.grupa ? `<span class="chip">${esc(o.grupa)}</span>` : ''}${o.vaditajs ? `<span class="chip a">${esc(o.vaditajs)}</span>` : ''}${o.piekluve ? '<span class="chip">🔑 piekļuve</span>' : ''}</div></div>${CHEV}</button>`).join('') || empty()}
+      <div class="chips">${o.grupa ? `<span class="chip">${esc(o.grupa)}</span>` : ''}${o.vaditajs ? `<span class="chip a">${esc(o.vaditajs)}</span>` : ''}${o.piekluve ? '<span class="chip">🔑 piekļuve</span>' : ''}${Object.keys(SAPP).filter(k => has(o, k)).map(k => `<span class="chip svc" title="${esc(SV.names[k] || '')}">${gl(SAPP[k], 13)}</span>`).join('')}</div></div>${CHEV}</button>`).join('') || empty()}
       ${list.length > 300 ? `<p class="copy">Rāda 300 no ${list.length} — sašauriniet meklēšanu</p>` : ''}</div>`, 'Objekts');
     $('pAdd').onclick = () => editObject(-1);
     s.querySelector('#oF').onchange = (e) => { const el = e.target.closest('[data-f]'); if (!el) return; A.f[el.dataset.f] = el.value; A.onlyList = true; drawAdmin(); A.onlyList = false; };
     const bk = s.querySelector('#oBulk'); if (bk) bk.onclick = () => bulkMgr(list.map(o => o.i));
+    const bs = s.querySelector('#oSvc'); if (bs) bs.onclick = () => bulkSvc(list);
     s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-o]'); if (r) { remember(); editObject(+r.dataset.o); } };
   }
   if (A.tab === 'groups') {
@@ -894,6 +903,20 @@ function subSheet(title, body, onSave, onDel) {
   return s;
 }
 const fld = (id, label, v, ph, type) => `<div class="f"><label for="${id}">${label}</label><input type="${type || 'text'}" id="${id}" value="${esc(v || '')}" placeholder="${esc(ph || '')}" autocomplete="off"></div>`;
+function bulkSvc(list) {
+  const N = (A.svc && A.svc.names) || {}; let key = Object.keys(N)[0] || 'pazemes', on = true;
+  const draw = () => subSheet('Pakalpojumi · ' + list.length + ' objekti', `<p class="hint" style="margin:0 0 10px">Ieslēdz vai izslēdz pakalpojumu visiem ${list.length} atlasītajiem objektiem. Izslēdzot objekts pazūd no lietotnes, un tā grafiks tiek apturēts (vēsture paliek).</p>
+    <div class="f"><label>Pakalpojums</label><div class="odl-p" style="flex-wrap:wrap" id="bsK">${Object.keys(N).map(k => `<label class="ochk"><input type="radio" name="bsk" value="${k}" ${k === key ? 'checked' : ''}><i></i>${esc(N[k])}</label>`).join('')}</div></div>
+    <div class="f"><label>Darbība</label><div class="odl-p" id="bsO"><label class="ochk"><input type="radio" name="bso" value="1" ${on ? 'checked' : ''}><i></i>Ieslēgt</label><label class="ochk"><input type="radio" name="bso" value="0" ${on ? '' : 'checked'}><i></i>Izslēgt</label></div></div>
+    <div class="chips" style="max-height:220px;overflow:auto">${list.slice(0, 200).map(o => `<span class="chip">${esc(o.adrese)}</span>`).join('')}${list.length > 200 ? `<span class="chip">… un vēl ${list.length - 200}</span>` : ''}</div>`,
+    async () => {
+      key = (document.querySelector('input[name=bsk]:checked') || {}).value || key; on = ((document.querySelector('input[name=bso]:checked') || {}).value || '1') === '1';
+      if (!on && !confirm('Izslēgt «' + N[key] + '» ' + list.length + ' objektiem? Grafiki šiem objektiem tiks apturēti.')) return;
+      try { const r = await api('objSvcBulk', { key, list: list.map(o => ({ adrese: o.adrese, on })) }); if (r.ok === false) throw new Error(r.error);
+        A.svc.map = r.map; toast((on ? 'Ieslēgts' : 'Izslēgts') + ': ' + N[key] + ' · ' + r.n + ' objekti', 'ok'); sheet(''); drawAdmin(); } catch (e) { toast(netMsg(e), 'err'); }
+    });
+  draw();
+}
 function editObject(i) {
   const o = i >= 0 ? Object.assign({}, A.M.objects[i]) : { adrese: '', vaditajs: '', grupa: 'SH objekti', piekluve: '' };
   const mgrs = mgrNames(); if (o.vaditajs && mgrs.indexOf(o.vaditajs) === -1) mgrs.unshift(o.vaditajs);
@@ -910,8 +933,10 @@ function editObject(i) {
       if (list.some((x, j) => j !== i && x.adrese.toLowerCase() === n.adrese.toLowerCase())) return toast('Šāda adrese jau ir', 'err');
       if (I.data) {   // vispirms objekta kartīte (pārbauda Darba laika kodu), tad pamatdati
         readAlgas();
-        if (I.data.pazemes && !$('oPaz').checked && !confirm('Noņemt pazemes stāvvietu? Objekts pazudīs no «Pazemes stāvvietas», un tā grafiks tiks apturēts (vēsture paliek).')) return;
-        try { const r = await api('objInfoSave', { adrese: n.adrese, algas: I.algas, piezimes: $('oNote').value, pazemes: $('oPaz').checked, dl: { kods: $('oKods').value.trim(), vajag_uzk: $('oUzk').checked, vajag_set: $('oSet').checked } });
+        const svc = Object.fromEntries([...document.querySelectorAll('[data-svc]')].map(x => [x.dataset.svc, x.checked])), off = Object.keys(svc).filter(k => I.data.svc[k] && !svc[k]);
+        if (off.length && !confirm('Noņemt: ' + off.map(k => I.data.svcNames[k]).join(', ') + '? Objekts pazudīs no šīm lietotnēm, un grafiks tiks apturēts (vēsture paliek).')) return;
+        const ip = Object.fromEntries([...document.querySelectorAll('[data-ip]')].map(x => [x.dataset.ip, x.value]));
+        try { const r = await api('objInfoSave', { adrese: n.adrese, algas: I.algas, piezimes: $('oNote').value, svc, ip, dl: { kods: $('oKods').value.trim(), vajag_uzk: $('oUzk').checked, vajag_set: $('oSet').checked } });
           if (r.ok === false) return toast(r.error, 'err'); } catch (e) { return toast(netMsg(e), 'err'); }
       }
       if (i >= 0) list[i] = n; else list.unshift(n); saveM('saveObjects', { objects: list }, () => sheet(''));
@@ -928,9 +953,11 @@ function editObject(i) {
     const chip = (t, c) => `<span class="chip${c ? ' ' + c : ''}">${t}</span>`;
     $('oInfo').innerHTML = `<div class="oh">Algas šajā objektā</div><p class="hint" style="margin:-4px 0 8px">Personālā, pieņemot darbā šajā objektā, alga tiks piedāvāta no šejienes.</p>
       <div id="oAlg"></div><datalist id="oAmL">${AM.map(a => `<option value="${esc(a)}">`).join('')}</datalist><button type="button" class="btn ghost" id="oAlgAdd" style="height:40px;margin:6px 0 4px">+ Amats</button>
-      <div class="oh">Objektā ir</div>
-      <div class="odl-p" style="flex-wrap:wrap;margin-bottom:6px"><label class="ochk"><input type="checkbox" id="oPaz" ${d.pazemes ? 'checked' : ''}><i></i>Pazemes stāvvieta</label></div>
-      <p class="hint" style="margin:0 0 4px">Ja nav atzīmēts, objekts neparādās lietotnē «Pazemes stāvvietas».</p>
+      <div class="oh">Pakalpojumi šajā objektā</div>
+      <div class="odl-p" style="flex-wrap:wrap;margin-bottom:6px" id="oSvcB">${Object.keys(d.svcNames).map(k => `<label class="ochk"><input type="checkbox" data-svc="${k}" ${d.svc[k] ? 'checked' : ''}><i></i>${esc(d.svcNames[k])}</label>`).join('')}</div>
+      <p class="hint" style="margin:0 0 4px">Objekts redzams tikai tajās lietotnēs, kuru pakalpojums atzīmēts.${d.apjoms.zale_m2 ? ' Zāliens: ' + num(d.apjoms.zale_m2) + ' m².' : ''}${d.apjoms.logi ? ' Logi: ' + num(d.apjoms.logi) + '.' : ''}</p>
+      <div class="oh">Ēkas dati</div>
+      <div class="oip">${[['stavi', 'Stāvi'], ['kapnu', 'Kāpņu telpas'], ['lifti', 'Lifti'], ['dzivokli', 'Dzīvokļi']].map(([k, l]) => `<label><span>${l}</span><input type="number" min="0" inputmode="numeric" data-ip="${k}" value="${d.ip[k] != null ? d.ip[k] : ''}"></label>`).join('')}</div>
       <div class="oh">Darba laiks</div>
       <div class="odl"><div class="odl-k"><label for="oKods">SMS kods</label><input type="text" id="oKods" value="${esc(d.dl.kods || '')}" placeholder="piem. 104" autocomplete="off"></div>
         <div class="odl-v"><span>Vajag</span><div class="odl-p"><label class="ochk"><input type="checkbox" id="oUzk" ${d.dl.vajag_uzk ? 'checked' : ''}><i></i>Uzkopēju</label><label class="ochk"><input type="checkbox" id="oSet" ${d.dl.vajag_set ? 'checked' : ''}><i></i>Sētnieku</label></div></div></div>
