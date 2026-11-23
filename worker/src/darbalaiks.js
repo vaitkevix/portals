@@ -218,6 +218,14 @@ async function tabele(db, no, lidz, role) {
   const det = S.map(s => ({ datums: s.datums, adrese: (O.find(o => o.anorm === s.anorm) || {}).adrese || s.anorm, amats: s.amats, vards: role >= 2 ? s.vards : '', sak: s.sak, beidz: s.beidz, min: s.min }));
   return { no, lidz, rindas: rows, kopa: { uzk: rows.reduce((n, r) => n + r.uzk, 0), set: rows.reduce((n, r) => n + r.set, 0) }, detalas: det };
 }
+/** Nostrādātais pa darbiniekiem (Personāla algām): { phone: { vards, min, dienas } } periodā no..lidz (YYYY-MM-DD) */
+export async function workerHours(db, no, lidz) {
+  const out = {};
+  for (const x of sessions(await marksOn(db, no, lidz))) { const k = x.phone || ('v:' + String(x.vards || '').toLowerCase()); const o = out[k] || (out[k] = { vards: x.vards || '', phone: x.phone || '', min: 0, dienas: new Set() });
+    o.min += x.min || 0; o.dienas.add(x.datums); }
+  Object.values(out).forEach(o => o.dienas = o.dienas.size);
+  return out;
+}
 async function recipients(db, b) {
   const W = await all(db, 'SELECT phone, amats, anorm FROM dl_worker WHERE aktivs = 1'), k = b.kam;
   if (k === 'set' || k === 'uzk') return W.filter(w => w.amats === k);

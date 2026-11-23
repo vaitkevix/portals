@@ -6,7 +6,7 @@ import * as M from './mail.js';
 import { personByPin, people } from './portal.js';
 import { master, publicLists } from './master.js';
 import { anorm } from './util.js';
-import { normPhone as dlPhone } from './darbalaiks.js';
+import { normPhone as dlPhone, workerHours } from './darbalaiks.js';
 import { allAlgas } from './objinfo.js';
 
 const TAB = { hire: 'Personāls · Pieņemšana', vac: 'Personāls · Atvaļinājumi', users: '⚙ Personāls Lietotāji', lists: '⚙ Personāls Saraksti', set: '⚙ Personāls Iestatījumi' };
@@ -378,12 +378,12 @@ async function payMonth(db, user, men) {
   (await rowsOf(db, 'hire')).filter(h => h.statuss === 'Apstiprināts' && h.vards).forEach(h => {
     const d = toDate(h.sakums); if (d && iso(d) > end) return;
     const k = h.vards.trim().toLowerCase();
-    emp[k] = { darbinieks: h.vards, sia: h.sia, objekts: noAlga(h.objekts), alga: Number(String(h.alga).replace(',', '.')) || 0, sakums: h.sakums, beidz: '', slodze: '' };
+    emp[k] = { darbinieks: h.vards, sia: h.sia, objekts: noAlga(h.objekts), alga: Number(String(h.alga).replace(',', '.')) || 0, sakums: h.sakums, beidz: '', slodze: '', phone: dlPhone(h.tel) };
   });
   (await rowsOf(db, 'chg')).filter(g => g.statuss === 'Apstiprināts').forEach(g => {
     const e = emp[String(g.darbinieks || '').trim().toLowerCase()]; if (!e) return;
     const sp = g.speka_no ? iso(toDate(g.speka_no)) : '';
-    if (!sp || sp <= end) { if (g.alga) e.alga = Number(g.alga) || e.alga; if (g.slodze) e.slodze = g.slodze + (g.stundas ? ' · ' + g.stundas + ' h/ned.' : ''); if (g.sia) e.sia = g.sia; if (g.objekts) e.objekts = noAlga(g.objekts); }
+    if (!sp || sp <= end) { if (g.tel) e.phone = dlPhone(g.tel) || e.phone; if (g.alga) e.alga = Number(g.alga) || e.alga; if (g.slodze) e.slodze = g.slodze + (g.stundas ? ' · ' + g.stundas + ' h/ned.' : ''); if (g.sia) e.sia = g.sia; if (g.objekts) e.objekts = noAlga(g.objekts); }
     if (g.beigu_datums) e.beidz = g.beigu_datums;
   });
   const rows = Object.values(emp).filter(e => !e.beidz || iso(toDate(e.beidz)) >= start);
@@ -397,6 +397,10 @@ async function payMonth(db, user, men) {
     const r = { darbinieks: b.darbinieks, sia: '', objekts: b.objekts, alga: 0, sakums: '', beidz: '', slodze: '', piemaksas: 0, gaida: 0, kopa: 0, bezAlgas: true }; rows.push(r); }
     const r = rows.find(e => e.darbinieks.trim().toLowerCase() === k);
     if (r.bezAlgas) { if (b.statuss === 'Apstiprināts') r.piemaksas += Number(b.summa) || 0; else if (b.statuss !== 'Noraidīts') r.gaida += Number(b.summa) || 0; r.kopa = r.piemaksas; } });
+  // Darba laiks (SMS): nostrādātās stundas un dienas mēnesī — pēc tālruņa, citādi pēc vārda
+  const H = await workerHours(db, start, end).catch(() => ({})), byName = {};
+  Object.values(H).forEach(h => { if (h.vards) byName[h.vards.trim().toLowerCase()] = h; });
+  rows.forEach(e => { const h = (e.phone && H[e.phone]) || byName[e.darbinieks.trim().toLowerCase()]; e.stundas = h ? Math.round(h.min / 6) / 10 : null; e.dienas = h ? h.dienas : null; delete e.phone; });
   rows.sort((a, b) => a.darbinieks.localeCompare(b.darbinieks, 'lv'));
   return { menesis: men, bonus: out, rows };
 }
