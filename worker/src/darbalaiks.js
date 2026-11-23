@@ -62,6 +62,11 @@ function objState(o, S) {
     uzk: o.vajag_uzk ? roleState(S, o.anorm, 'uzk') : { statuss: 'nevajag' }, set: o.vajag_set ? roleState(S, o.anorm, 'set') : { statuss: 'nevajag' } };
   r.trukst = (o.vajag_uzk && r.uzk.statuss === 'nav') || (o.vajag_set && r.set.statuss === 'nav'); return r;
 }
+/** Visu aktīvo objektu šodienas stāvoklis: { anorm: objState } (vadītāja panelim) */
+export async function objStates(db, d) {
+  d = d || today(); const O = (await objs(db)).filter(o => o.aktivs), S = sessions(await marksOn(db, d)), out = {};
+  O.forEach(o => out[o.anorm] = objState(o, S)); return { datums: d, darbaDiena: dow(d) <= 5, map: out };
+}
 /* Kopsavilkums portāla kartītei un sākumam */
 export async function summary(db, d) {
   d = d || today(); const O = (await objs(db)).filter(o => o.aktivs), S = sessions(await marksOn(db, d));

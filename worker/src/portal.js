@@ -1,4 +1,4 @@
-import { summary as dlSummary } from './darbalaiks.js';
+import { summary as dlSummary, objStates as dlStates } from './darbalaiks.js';
 import { clientsData, saveClient, delClient, report } from './klienti.js';
 import { notify } from './webpush.js';
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
@@ -121,7 +121,29 @@ async function dash(env, me) {
   }
   /* Darba laiks: objekti pa adresēm (SMS) — cik pilnībā darbā, kur trūkst */
   if (!me.company && (P.dl || P.portal === 'admin')) { try { const x = await dlSummary(env.DB, td); out.dl = Object.assign({ today: 0, done: 0, late: 0, cant: 0, urgent: 0, days: {}, next: [] }, x); } catch (e) { /* tabulas vēl nav */ } }
+  /* Vadītāja panelis: mani objekti šodien (Darba laiks, aizvietošana, grafiki, izvešana, kaisāmmateriāls) */
+  if (!me.company) { try { out.mine = await mineToday(env, me, td); } catch (e) { /* tabulas vēl nav */ } }
   return out;
+}
+async function mineToday(env, me, td) {
+  const db = env.DB, all = async (q, ...a) => ((await db.prepare(q).bind(...a).all()).results || []);
+  const O = await all('SELECT anorm, adrese FROM objects WHERE vaditajs = ? ORDER BY ord, adrese', me.name);
+  if (!O.length) return null;
+  const R = {}; O.forEach(o => R[o.anorm] = { a: o.adrese, k: o.anorm, dl: null, aizv: [0, 0], g: {}, izv: 0, kais: 0 });
+  const S = await dlStates(db, td).catch(() => null);
+  if (S) O.forEach(o => { const x = S.map[o.anorm]; if (x) R[o.anorm].dl = { u: x.uzk.statuss, s: x.set.statuss, t: x.trukst && S.darbaDiena }; });
+  (await all("SELECT anorm, COUNT(*) n, SUM(CASE WHEN statuss != 'izpildīts' THEN 1 ELSE 0 END) o FROM jobs WHERE datums = ? GROUP BY anorm", td).catch(() => [])).forEach(r => { if (R[r.anorm]) R[r.anorm].aizv = [r.n, r.o]; });
+  for (const [k, T] of [['pl', 'pl_visit'], ['logi', 'logi_visit'], ['sniegs', 'sniegs_visit'], ['darz', 'darz_visit'], ['stav', 'stav_visit']])
+    (await all(`SELECT anorm, COUNT(*) n, SUM(CASE WHEN statuss = 'done' THEN 1 ELSE 0 END) d, SUM(CASE WHEN statuss = 'cant' THEN 1 ELSE 0 END) c FROM ${T} WHERE datums = ? GROUP BY anorm`, td).catch(() => []))
+      .forEach(r => { if (R[r.anorm]) R[r.anorm].g[k] = [r.n, r.d, r.c]; });
+  const an = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  for (const [app, key, done] of [['izv', 'izv:getTasks', /izpild|atcelt/i], ['kais', 'kais:getTasks', /piegād|atcelt/i]]) {
+    const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(key).first(); let t = []; try { t = JSON.parse(r.v).result || []; } catch (e) {}
+    t.forEach(x => { if (done.test(String(x.status || ''))) return; const o = R[an(x.address)]; if (o) o[app]++; });
+  }
+  const list = Object.values(R), issue = (o) => (o.dl && o.dl.t ? 4 : 0) + (o.aizv[1] ? 2 : 0) + Object.values(o.g).reduce((n, g) => n + (g[0] - g[1] ? 1 : 0) + (g[2] ? 2 : 0), 0) + (o.izv || o.kais ? 1 : 0);
+  list.forEach(o => o.i = issue(o)); list.sort((a, b) => b.i - a.i || a.a.localeCompare(b.a, 'lv'));
+  return { n: list.length, problem: list.filter(o => o.i).length, trukst: list.filter(o => o.dl && o.dl.t).length, darbi: list.reduce((n, o) => n + o.aizv[0] + Object.values(o.g).reduce((m, g) => m + g[0], 0), 0), list };
 }
 
 export async function portal(request, env, ctx, hooks) {

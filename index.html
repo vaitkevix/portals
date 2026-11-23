@@ -267,6 +267,9 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .sx b{display:block;font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.03em;margin-top:8px;line-height:1}
 .sx .arrow{width:38px;height:38px;right:10px;bottom:10px}
 @media(max-width:520px){.sx{min-height:104px;padding:12px}.sx .arrow{display:none}}
+.mlist{display:flex;flex-direction:column;gap:6px;margin-top:10px}.mrow{background:rgba(255,255,255,.55);border-radius:16px;padding:9px 12px}:root[data-theme="dark"] .mrow{background:rgba(0,0,0,.18)}.mrow.bad{box-shadow:inset 3px 0 0 #c63d3d}
+.ma{display:flex;align-items:center;gap:8px}.ma b{flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mdl{display:flex;gap:4px}.mbs{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}.mbs .ok{font-size:12px;color:var(--ink-3)}
+.mb{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.7);font-size:12px;font-weight:800;cursor:pointer}:root[data-theme="dark"] .mb{background:rgba(255,255,255,.08)}.mb.w{background:#fdf3d8;color:#7a5400}.mb.r{background:#f5dbe3;color:#8a2a3b}
 .wide{position:relative;margin-top:14px;padding:18px 20px 22px;border-radius:28px;background:var(--sand);color:#17201c}
 :root[data-theme="dark"] .wide{color:var(--ink)}
 .wide .t1{display:flex;align-items:center;gap:10px;font-weight:800;font-size:15px}
@@ -574,6 +577,15 @@ function home() {
       ${D.dl.trukst && D.dl.darbaDiena ? `<div class="dlm"><b>Trūkst darbinieka · ${D.dl.trukst}</b>${D.dl.truksAdr.map(x => `<span><em>${esc(x.a)}</em>${pt(x.u)}${pt(x.s)}</span>`).join('')}<small>pirmais punkts: uzkopējs · otrais: sētnieks · sarkans = nav darbā</small></div>` : ''}
       ${ARROW.replace('class="arrow"', 'class="arrow" style="top:14px;bottom:auto"')}</button>`);
   }
+  // Vadītāja panelis: mani objekti šodien
+  if (D.mine && D.mine.n) {
+    $('wide').insertAdjacentHTML('beforeend', `<div class="wide mine" style="margin-top:12px;background:var(--mint)"><div class="t1"><i>${gl('aizv', 20)}</i>Mani objekti · šodien</div>
+      <h3>${D.mine.n} objekti${D.mine.problem ? ' · ' + D.mine.problem + ' jāpievērš uzmanība' : ' · viss kārtībā'}</h3>
+      <div class="meta">${D.mine.darbi} darbi šodien${D.mine.trukst ? ' · trūkst darbinieka ' + D.mine.trukst : ''}</div>
+      <div class="mlist">${D.mine.list.slice(0, 6).map(mineRow).join('')}</div>
+      ${D.mine.n > 6 ? `<button class="btn ghost" id="mineAll" style="margin-top:10px;width:100%">Visi ${D.mine.n} objekti</button>` : ''}</div>`);
+    const all = $('mineAll'); if (all) all.onclick = () => { const s = sheet(`<div class="hd"><h3>Mani objekti · šodien</h3>${X}</div><div class="mlist">${D.mine.list.map(mineRow).join('')}</div>`); };
+  }
   // Kalendārs + tuvākais
   const t = new Date(); if (!CAL.y) { CAL.y = t.getFullYear(); CAL.m = t.getMonth(); }
   drawCal();
@@ -623,6 +635,17 @@ async function refresh(quiet) {
 $('refreshBtn').onclick = async () => { const b = $('refreshBtn'); b.style.transform = 'rotate(180deg)'; b.style.transition = 'transform .5s'; await refresh(); setTimeout(() => { b.style.transform = ''; }, 500); };
 
 /* ---------- Lietotnes rāmī (atvērtās paliek ielādētas — pārslēgšanās uzreiz) ---------- */
+/* Vadītāja panelis: viena objekta rinda — Darba laiks (uzkopējs/sētnieks), aizvietošana, grafiki, izvešana, kaisāmmateriāls */
+function mineRow(o) {
+  const dot = (st) => !st || st === 'nevajag' ? '' : `<span class="dlp ${st === 'nav' ? 'r' : 'g'}"></span>`;
+  const b = [];
+  if (o.aizv[0]) b.push(`<span class="mb${o.aizv[1] ? ' w' : ''}" data-go="aizv">${gl('aizv', 13)}${o.aizv[0] - o.aizv[1]}/${o.aizv[0]}</span>`);
+  Object.keys(o.g).forEach(k => { const g = o.g[k]; b.push(`<span class="mb${g[2] ? ' r' : g[0] - g[1] ? ' w' : ''}" data-go="${k}">${gl(k, 13)}${g[1]}/${g[0]}</span>`); });
+  if (o.izv) b.push(`<span class="mb w" data-go="izv">${gl('izv', 13)}${o.izv}</span>`);
+  if (o.kais) b.push(`<span class="mb w" data-go="kais">${gl('kais', 13)}${o.kais}</span>`);
+  return `<div class="mrow${o.i ? ' bad' : ''}"><div class="ma"><b>${esc(o.a)}</b>${o.dl ? `<span class="mdl">${dot(o.dl.u)}${dot(o.dl.s)}</span>` : ''}</div><div class="mbs">${b.join('') || '<span class="ok">nav darbu šodien</span>'}</div></div>`;
+}
+document.addEventListener('click', (e) => { const g = e.target.closest('.mrow [data-go]'); if (!g) return; closeSheet(); openApp(g.dataset.go); });
 function openApp(k, noPush) {
   if (!hasApp(k)) return;
   show('vApp'); $('appTitle').textContent = APPS[k].name;
