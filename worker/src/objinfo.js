@@ -35,7 +35,7 @@ export async function info(db, adrese) {
   out.apjoms = { zale_m2: pl ? pl.m2 : null, logi: lg ? lg.qty : null };
   const d = await first(db, 'SELECT kods, vajag_uzk, vajag_set, aktivs FROM dl_obj WHERE anorm = ?', k).catch(() => null);
   out.dl = { kods: d && d.aktivs ? d.kods : '', vajag_uzk: d ? !!d.vajag_uzk : true, vajag_set: d ? !!d.vajag_set : true,
-    darbinieki: (await all(db, 'SELECT phone, vards, amats, aktivs FROM dl_worker WHERE anorm = ? ORDER BY aktivs DESC, vards', k).catch(() => [])) };
+    darbinieki: (await all(db, 'SELECT w.phone, w.vards, COALESCE(a.amats, w.amats) amats, w.aktivs FROM dl_worker w LEFT JOIN dl_assign a ON a.phone = w.phone AND a.anorm = ? WHERE a.anorm IS NOT NULL OR w.anorm = ? ORDER BY w.aktivs DESC, w.vards', k, k).catch(() => [])) };
   const c = await first(db, 'SELECT c.name FROM client_obj o JOIN clients c ON c.id = o.client WHERE o.anorm = ?', k).catch(() => null);
   out.klients = c ? c.name : '';
   out.grafiki = [];

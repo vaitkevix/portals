@@ -1233,7 +1233,7 @@ async function pushPeople(X, list) {
    pārsauktām adresēm (tā pati adrese bez prefiksa, piem. «AB …», «J | …») pārnes visus saistītos ierakstus; izņemtās adreses
    pazūd no sarakstiem, bet to vēsture (darbi, apmeklējumi) paliek. ---------- */
 const OBJ_REF = { av: ['jobs', 'problems', 'pl_visit', 'logi_visit', 'darz_visit', 'stav_visit', 'sniegs_visit'], a: ['standing'],
-  n: ['pl_obj', 'logi_obj', 'darz_obj', 'stav_obj', 'sniegs_obj', 'client_obj', 'dl_obj', 'dl_worker', 'dl_mark', 'dl_sms'] };
+  n: ['pl_obj', 'logi_obj', 'darz_obj', 'stav_obj', 'sniegs_obj', 'client_obj', 'dl_obj', 'dl_worker', 'dl_assign', 'dl_mark', 'dl_sms'] };
 const objCore = (s) => norm(String(s || '').replace(/^\s*[A-ZĀČĒĢĪĶĻŅŠŪŽ]{1,4}\s*\|\s*/, '').replace(/^[A-ZĀČĒĢĪĶĻŅŠŪŽ]{2,3}\s+(?=\S)/, '')).replace(/[\s,]+/g, '');
 async function sheetObjects(X, rows) {
   const canon = await personCanon(X.db), seen = new Set(), list = [];

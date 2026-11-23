@@ -309,6 +309,18 @@ async function submitVacation(env, user, f) {
 /* ---------- Personāls → Darba laiks (dl_worker): apstiprināta pieņemšana / grozījumi pārnesas paši. © VAITKEVIX, SIA ---------- */
 const dlAmats = (a) => /s[eē]tn/i.test(String(a || '')) ? 'set' : 'uzk';
 function todayIso() { const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Riga', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map(x => [x.type, x.value])); return p.year + '-' + p.month + '-' + p.day; }
+/** Visi objekti ar amatu katrā (Darba laika dl_assign): [{ anorm, amats }] — tikai tie, kas ir objektu sarakstā */
+async function dlObjs(db, objekts) {
+  const out = [];
+  for (const p of splitObj(objekts).map(objPair)) {
+    const o = await db.prepare('SELECT anorm FROM objects WHERE anorm = ?').bind(anorm(p.name)).first(); if (!o) continue;
+    const r = [...new Set(p.amati.map(dlAmats))]; out.push({ anorm: o.anorm, amats: r.length > 1 ? 'abi' : r[0] || '' });
+  }
+  return out;
+}
+async function setAssign(db, phone, list, fallback) {
+  await db.batch([db.prepare('DELETE FROM dl_assign WHERE phone = ?').bind(phone), ...list.map(x => db.prepare('INSERT OR REPLACE INTO dl_assign (phone, anorm, amats) VALUES (?, ?, ?)').bind(phone, x.anorm, x.amats || fallback || 'uzk'))]);
+}
 async function dlObj(db, objekts) {
   const first = splitObj(objekts).map(objPair)[0]; if (!first) return { anorm: '', amats: '' };
   const k = anorm(first.name), o = await db.prepare('SELECT anorm FROM objects WHERE anorm = ?').bind(k).first();
@@ -325,6 +337,7 @@ export async function dlSync(env) {
     const o = await dlObj(db, h.objekts);
     await db.prepare('INSERT INTO dl_worker (phone, vards, amats, anorm, aktivs) VALUES (?, ?, ?, ?, 1) ON CONFLICT(phone) DO UPDATE SET vards = excluded.vards, amats = excluded.amats, anorm = CASE WHEN excluded.anorm != \'\' THEN excluded.anorm ELSE dl_worker.anorm END, aktivs = 1')
       .bind(phone, h.vards, o.amats || dlAmats(h.amats), o.anorm).run();
+    { const L = await dlObjs(db, h.objekts); if (L.length) await setAssign(db, phone, L, o.amats || dlAmats(h.amats)); }
     await db.prepare('UPDATE pers_hire SET dl_sync = ? WHERE id = ?').bind('ok ' + today + (o.anorm ? '' : ' (objekts nav sarakstā)'), h.id).run();
     log.push(h.id);
   }
@@ -338,7 +351,8 @@ export async function dlSync(env) {
       if (sp && sp > today) continue;   // vēl nav spēkā
       if (!w) { await db.prepare('UPDATE pers_chg SET dl_sync = ? WHERE id = ?').bind('kļūda: darbinieks nav Darba laikā', g.id).run(); continue; }
       let phone = w.phone;
-      if (g.tel) { const np = dlPhone(g.tel); if (np && np !== phone && !(await db.prepare('SELECT 1 FROM dl_worker WHERE phone = ?').bind(np).first())) { await db.prepare('UPDATE dl_worker SET phone = ? WHERE phone = ?').bind(np, phone).run(); phone = np; } }
+      if (g.tel) { const np = dlPhone(g.tel); if (np && np !== phone && !(await db.prepare('SELECT 1 FROM dl_worker WHERE phone = ?').bind(np).first())) { await db.batch([db.prepare('UPDATE dl_worker SET phone = ? WHERE phone = ?').bind(np, phone), db.prepare('UPDATE dl_assign SET phone = ? WHERE phone = ?').bind(np, phone)]); phone = np; } }
+      if (g.objekts) { const L = await dlObjs(db, g.objekts); if (L.length) await setAssign(db, phone, L, w.amats); }
       if (g.objekts) { const o = await dlObj(db, g.objekts); await db.prepare('UPDATE dl_worker SET anorm = CASE WHEN ? != \'\' THEN ? ELSE anorm END, amats = CASE WHEN ? != \'\' THEN ? ELSE amats END WHERE phone = ?').bind(o.anorm, o.anorm, o.amats, o.amats, phone).run(); }
       await db.prepare('UPDATE pers_chg SET dl_sync = ? WHERE id = ?').bind(end ? 'gaida beigas' : 'ok ' + today, g.id).run();
       log.push(g.id);
