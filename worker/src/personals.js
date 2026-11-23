@@ -5,6 +5,8 @@ import * as G from './sheets.js';
 import * as M from './mail.js';
 import { personByPin, people } from './portal.js';
 import { master, publicLists } from './master.js';
+import { anorm } from './util.js';
+import { normPhone as dlPhone } from './darbalaiks.js';
 
 const TAB = { hire: 'Personāls · Pieņemšana', vac: 'Personāls · Atvaļinājumi', users: '⚙ Personāls Lietotāji', lists: '⚙ Personāls Saraksti', set: '⚙ Personāls Iestatījumi' };
 const HIRE_HEADERS = ['ID', 'Iesniegts', 'Iesniedza', 'Vārds, Uzvārds', 'Personas kods', 'Deklarētā adrese', 'Telefons', 'E-pasts', 'Invaliditāte', 'Pensionārs', 'Veselības pārbaude',
@@ -237,8 +239,7 @@ async function submitHire(env, user, f) {
   const inval = INVAL.indexOf(f.inval) >= 0 ? f.inval : 'NĒ';
   const pens = f.pens === 'JĀ' ? 'JĀ' : 'NĒ';
   const vesel = f.vesel === 'IR' ? 'IR' : 'NAV';
-  const bt = BEGIN_TIME.indexOf(f.begintime) >= 0 ? f.begintime : '';
-  if (!bt) throw new Error('Izvēlieties Begin Time: kodu kalkulators vai aplikācija viedtālrunī.');
+  const bt = BEGIN_TIME.indexOf(f.begintime) >= 0 ? f.begintime : '';   // vairs netiek prasīts — darba laiku atzīmē ar SMS (Darba laiks)
   const sia = req('sia', 'SIA');
   const objekts = parseObj(f.objekts, true);
   const amats = objAmati(objekts).join(', ');
@@ -292,6 +293,53 @@ async function submitVacation(env, user, f) {
   return { id, days, warnings, mailErr };
 }
 
+/* ---------- Personāls → Darba laiks (dl_worker): apstiprināta pieņemšana / grozījumi pārnesas paši. © VAITKEVIX, SIA ---------- */
+const dlAmats = (a) => /s[eē]tn/i.test(String(a || '')) ? 'set' : 'uzk';
+function todayIso() { const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Riga', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map(x => [x.type, x.value])); return p.year + '-' + p.month + '-' + p.day; }
+async function dlObj(db, objekts) {
+  const first = splitObj(objekts).map(objPair)[0]; if (!first) return { anorm: '', amats: '' };
+  const k = anorm(first.name), o = await db.prepare('SELECT anorm FROM objects WHERE anorm = ?').bind(k).first();
+  return { anorm: o ? o.anorm : '', amats: first.amati.length ? dlAmats(first.amati[0]) : '' };   // galvenais = pirmais amats
+}
+export async function dlSync(env) {
+  const db = env.DB, today = todayIso(), log = [];
+  const W = () => all(db, 'SELECT phone, vards, amats, anorm, aktivs FROM dl_worker');
+  // 1) apstiprināta pieņemšana → jauns darbinieks (vai atjauno esošo pēc tālruņa)
+  for (const h of await all(db, "SELECT * FROM pers_hire WHERE statuss = 'Apstiprināts' AND dl_sync = ''")) {
+    const phone = dlPhone(h.tel);
+    if (!phone) { await db.prepare('UPDATE pers_hire SET dl_sync = ? WHERE id = ?').bind('kļūda: nav derīga tālruņa', h.id).run(); continue; }
+    const o = await dlObj(db, h.objekts);
+    await db.prepare('INSERT INTO dl_worker (phone, vards, amats, anorm, aktivs) VALUES (?, ?, ?, ?, 1) ON CONFLICT(phone) DO UPDATE SET vards = excluded.vards, amats = excluded.amats, anorm = CASE WHEN excluded.anorm != \'\' THEN excluded.anorm ELSE dl_worker.anorm END, aktivs = 1')
+      .bind(phone, h.vards, o.amats || dlAmats(h.amats), o.anorm).run();
+    await db.prepare('UPDATE pers_hire SET dl_sync = ? WHERE id = ?').bind('ok ' + today + (o.anorm ? '' : ' (objekts nav sarakstā)'), h.id).run();
+    log.push(h.id);
+  }
+  // 2) apstiprināti grozījumi: izmaiņas no «Spēkā no», beigas — pēc pēdējās darba dienas
+  for (const g of await all(db, "SELECT * FROM pers_chg WHERE statuss = 'Apstiprināts' AND (dl_sync = '' OR dl_sync = 'gaida beigas' OR dl_sync LIKE 'kļūda: darbinieks%')")) {
+    const nameK = String(g.darbinieks || '').trim().toLowerCase();
+    let w = (await W()).find(x => String(x.vards || '').trim().toLowerCase() === nameK);
+    if (!w) { const h = (await all(db, "SELECT tel FROM pers_hire WHERE lower(trim(vards)) = ? AND statuss != 'Noraidīts' ORDER BY row DESC", nameK))[0]; const ph = h && dlPhone(h.tel); if (ph) w = await db.prepare('SELECT * FROM dl_worker WHERE phone = ?').bind(ph).first(); }
+    const sp = g.speka_no ? iso(toDate(g.speka_no)) : '', end = g.beigu_datums ? iso(toDate(g.beigu_datums)) : '';
+    if (g.dl_sync === '' || g.dl_sync.indexOf('kļūda: darbinieks') === 0) {   // kļūdu mēģina vēlreiz — darbinieks var parādīties vēlāk
+      if (sp && sp > today) continue;   // vēl nav spēkā
+      if (!w) { await db.prepare('UPDATE pers_chg SET dl_sync = ? WHERE id = ?').bind('kļūda: darbinieks nav Darba laikā', g.id).run(); continue; }
+      let phone = w.phone;
+      if (g.tel) { const np = dlPhone(g.tel); if (np && np !== phone && !(await db.prepare('SELECT 1 FROM dl_worker WHERE phone = ?').bind(np).first())) { await db.prepare('UPDATE dl_worker SET phone = ? WHERE phone = ?').bind(np, phone).run(); phone = np; } }
+      if (g.objekts) { const o = await dlObj(db, g.objekts); await db.prepare('UPDATE dl_worker SET anorm = CASE WHEN ? != \'\' THEN ? ELSE anorm END, amats = CASE WHEN ? != \'\' THEN ? ELSE amats END WHERE phone = ?').bind(o.anorm, o.anorm, o.amats, o.amats, phone).run(); }
+      await db.prepare('UPDATE pers_chg SET dl_sync = ? WHERE id = ?').bind(end ? 'gaida beigas' : 'ok ' + today, g.id).run();
+      log.push(g.id);
+      if (!end) continue;
+      w = await db.prepare('SELECT * FROM dl_worker WHERE phone = ?').bind(phone).first();
+    }
+    if (end && end < today) {   // pēc pēdējās darba dienas — izslēdz (dati paliek)
+      if (w) await db.prepare('UPDATE dl_worker SET aktivs = 0 WHERE phone = ?').bind(w.phone).run();
+      await db.prepare('UPDATE pers_chg SET dl_sync = ? WHERE id = ?').bind('ok ' + today + (w ? ' · izslēgts' : ' · nav Darba laikā'), g.id).run();
+      log.push(g.id + ' beigas');
+    }
+  }
+  return log;
+}
+
 /* ---------- GROZĪJUMI (amats/objekts/SIA, alga/slodze, personas dati, darba attiecību beigas) ---------- */
 async function submitChange(env, user, f) {
   const db = env.DB, req = need(f);
@@ -343,7 +391,7 @@ async function mailChange(env, d) {
 }
 
 async function getRecords(db, user, type) {
-  const headers = { hire: HIRE_HEADERS, vac: VAC_HEADERS, chg: CHG_HEADERS }[type], cols = { hire: HIRE_COLS, vac: VAC_COLS, chg: CHG_COLS }[type];
+  const headers = { hire: HIRE_HEADERS.concat(['Darba laiks']), vac: VAC_HEADERS, chg: CHG_HEADERS.concat(['Darba laiks']) }[type], cols = { hire: HIRE_COLS.concat(['dl_sync']), vac: VAC_COLS, chg: CHG_COLS.concat(['dl_sync']) }[type];
   let rows = (await rowsOf(db, type)).filter(r => r.id);
   if (user.role !== 'admin') rows = rows.filter(r => r.iesniedza === user.name);
   rows.reverse();
@@ -359,6 +407,7 @@ async function setStatus(env, user, type, id, status, comment) {
   if (!row) throw new Error('Ieraksts nav atrasts.');
   comment = String(comment || '').trim();
   await db.prepare('UPDATE ' + tbl + ' SET statuss = ?, komentars = ? WHERE id = ?').bind(status, comment, row.id).run();
+  if (status === 'Apstiprināts' && type !== 'vac') await dlSync(env).catch(e => console.error('dlSync', e));
   if (String(row.statuss) !== status && yes(await settings(db), 'ZINOT_VADITAJAM', 'JĀ')) {   // paziņojums darbu vadītājam
     const to = await userEmail(db, row.iesniedza);
     if (to) {
@@ -522,6 +571,7 @@ export async function imports(env) {
   return { hire, vac, iestatijumi: Object.keys(set).length, lietotaji: users.length, saraksti: Object.keys(lists).length };
 }
 export async function maybeSwitch(env) {
+  if (await isNative(env)) { await dlSync(env).catch(e => console.error('dlSync', e)); return; }
   const db = env.DB;
   if ((await kvGet(db, 'pers:switch')) !== '1' || await isNative(env) || !env.GOOGLE_SA) return;
   const r = await imports(env);
