@@ -32,7 +32,7 @@ const BEGIN_TIME = ['Kodu kalkulators', 'Aplikācija viedtālrunī'];
 const STATUSES = ['Jauns', 'Apstrādē', 'Apstiprināts', 'Noraidīts'];
 const INVAL = ['NĒ', '1. grupa', '2. grupa', '3. grupa'];
 const OBJ_SEP = '; ', AM_SEP = ' — ';
-const READS = ['login', 'records', 'calendar', 'days', 'pay', 'employee'], WRITES = ['hire', 'vacation', 'change', 'bonus', 'status'];
+const READS = ['login', 'records', 'calendar', 'days', 'pay', 'employee'], WRITES = ['hire', 'vacation', 'change', 'bonus', 'status', 'delete'];
 
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? r.v : null; };
@@ -189,7 +189,7 @@ async function userEmail(db, name) {
 }
 
 /* ---------- ieraksti ---------- */
-const rowsOf = (db, t) => all(db, 'SELECT * FROM ' + TBL[t] + ' ORDER BY row');
+const rowsOf = (db, t) => all(db, 'SELECT * FROM ' + TBL[t] + " WHERE statuss != 'Dzēsts' ORDER BY row");   // «Dzēsts» — paslēpts, bet datubāzē paliek
 const numOr = (v) => /^-?\d+(\.\d+)?$/.test(String(v)) ? Number(v) : v;
 async function nextId(db, prefix) {
   const tbl = PFX_TBL[prefix];
@@ -262,7 +262,7 @@ async function submitHire(env, user, f) {
   const iban = normIBAN(req('iban', 'IBAN'));
   const piez = String(f.piezimes || '').trim();
 
-  const dup = (await all(db, "SELECT id, sakums FROM pers_hire WHERE pk = ? AND statuss != 'Noraidīts'", pk)).find(r => { const d = toDate(r.sakums); return d && d.getTime() === sakums.getTime(); });
+  const dup = (await all(db, "SELECT id, sakums FROM pers_hire WHERE pk = ? AND statuss NOT IN ('Noraidīts', 'Dzēsts')", pk)).find(r => { const d = toDate(r.sakums); return d && d.getTime() === sakums.getTime(); });
   if (dup) throw new Error('Šis darbinieks ar šo datumu jau ir pieteikts (' + dup.id + ').');
   const id = await nextId(db, 'P');
   await insert(db, 'pers_hire', HIRE_COLS, [id, stamp(), user.name, vards, pk, adrese, tel, epasts, inval, pens, vesel, sia, objekts, amats, dmy(sakums), String(alga), banka, iban, piez, 'Jauns', '', '', bt]);
@@ -332,7 +332,7 @@ export async function dlSync(env) {
   for (const g of await all(db, "SELECT * FROM pers_chg WHERE statuss = 'Apstiprināts' AND (dl_sync = '' OR dl_sync = 'gaida beigas' OR dl_sync LIKE 'kļūda: darbinieks%')")) {
     const nameK = String(g.darbinieks || '').trim().toLowerCase();
     let w = (await W()).find(x => String(x.vards || '').trim().toLowerCase() === nameK);
-    if (!w) { const h = (await all(db, "SELECT tel FROM pers_hire WHERE lower(trim(vards)) = ? AND statuss != 'Noraidīts' ORDER BY row DESC", nameK))[0]; const ph = h && dlPhone(h.tel); if (ph) w = await db.prepare('SELECT * FROM dl_worker WHERE phone = ?').bind(ph).first(); }
+    if (!w) { const h = (await all(db, "SELECT tel FROM pers_hire WHERE lower(trim(vards)) = ? AND statuss NOT IN ('Noraidīts', 'Dzēsts') ORDER BY row DESC", nameK))[0]; const ph = h && dlPhone(h.tel); if (ph) w = await db.prepare('SELECT * FROM dl_worker WHERE phone = ?').bind(ph).first(); }
     const sp = g.speka_no ? iso(toDate(g.speka_no)) : '', end = g.beigu_datums ? iso(toDate(g.beigu_datums)) : '';
     if (g.dl_sync === '' || g.dl_sync.indexOf('kļūda: darbinieks') === 0) {   // kļūdu mēģina vēlreiz — darbinieks var parādīties vēlāk
       if (sp && sp > today) continue;   // vēl nav spēkā
@@ -498,6 +498,15 @@ async function getRecords(db, user, type) {
   return rows.slice(0, 400).map(r => { const o = {}; headers.forEach((h, i) => o[h] = String(r[cols[i]] == null ? '' : r[cols[i]])); return o; });
 }
 
+/** Admins izdzēš pieteikumu: paslēpj visur (statuss «Dzēsts»), ieraksts paliek datubāzē atjaunošanai */
+async function delRec(db, user, type, id) {
+  if (user.role !== 'admin') throw new Error('Dzēst var tikai administrators.');
+  const tbl = TBL[type]; if (!tbl) throw new Error('Nezināms veids.');
+  const row = await db.prepare('SELECT id, komentars FROM ' + tbl + ' WHERE id = ?').bind(String(id == null ? '' : id)).first();
+  if (!row) throw new Error('Ieraksts nav atrasts.');
+  await db.prepare('UPDATE ' + tbl + " SET statuss = 'Dzēsts', komentars = ? WHERE id = ?").bind(('Dzēsa ' + user.name + ' ' + todayIso() + (row.komentars ? ' · ' + row.komentars : '')).slice(0, 500), row.id).run();
+  return true;
+}
 async function setStatus(env, user, type, id, status, comment) {
   const db = env.DB;
   if (user.role !== 'admin') throw new Error('Statusu var mainīt tikai administrators.');
@@ -636,6 +645,7 @@ export async function api(env, req) {
     else if (action === 'employee') out = await employee(db, user, req.vards);
     else if (action === 'days') out = { days: previewDays(req.no, req.lidz) };
     else if (action === 'records') out = { hire: await getRecords(db, user, 'hire'), vac: await getRecords(db, user, 'vac'), chg: await getRecords(db, user, 'chg'), bonus: await getRecords(db, user, 'bonus') };
+    else if (action === 'delete') { await delRec(db, user, req.type, req.id); out = {}; }
     else if (action === 'status') { await setStatus(env, user, req.type, req.id, req.status, req.comment); out = {}; }
     else out = await getCalendarRange(db, req.from, req.to);
     return Object.assign({ ok: true }, out || {});

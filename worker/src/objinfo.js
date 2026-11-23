@@ -42,7 +42,7 @@ export async function info(db, adrese) {
   for (const [app, tbl, name] of GRAF) { const r = await first(db, 'SELECT aktivs FROM ' + tbl + ' WHERE anorm = ?', k).catch(() => null); if (r) out.grafiki.push({ app, name, aktivs: !!r.aktivs }); }
   // Personāls: apstiprināti/jauni pieņemšanas ieraksti ar šo objektu
   const low = String(adrese || '').trim().toLowerCase();
-  out.personals = (await all(db, "SELECT id, vards, amats, objekts, statuss, sakums FROM pers_hire WHERE statuss != 'Noraidīts'").catch(() => []))
+  out.personals = (await all(db, "SELECT id, vards, amats, objekts, statuss, sakums FROM pers_hire WHERE statuss NOT IN ('Noraidīts', 'Dzēsts')").catch(() => []))
     .filter(h => String(h.objekts || '').split(';').some(e => e.split('—')[0].trim().toLowerCase() === low)).map(h => ({ id: h.id, vards: h.vards, statuss: h.statuss, sakums: h.sakums,
       amats: (String(h.objekts).split(';').find(e => e.split('—')[0].trim().toLowerCase() === low) || '').split('—').slice(1).filter(x => !/\d\s*(EUR|€)?\s*$/i.test(x.trim())).join('').trim() }));
   return out;
