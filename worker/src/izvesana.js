@@ -54,7 +54,14 @@ const log = (t, text) => (t.vesture ? t.vesture + '\n' : '') + stamp() + ' · ' 
 
 /* ---------- izvedēja parole: «SIA\nPAROLE» (Uzņēmumi, veids izvedējs) ---------- */
 async function sias(db) { return (await all(db, 'SELECT name, kinds, pass FROM companies WHERE active = 1')).filter(c => String(c.kinds).split(',').indexOf('izvedejs') !== -1); }
-export async function login(db, pin) {
+/** Portāla sesija aizstāj SIA paroli: izvedēja uzņēmums vai Izvešanas/portāla administrators */
+export function portalCarrier(me) {
+  if (!me) return null; const p = me.perms || {};
+  if (me.company) return p.izv === 'izvedejs' ? { sia: me.name } : null;
+  return p.izv === 'admin' || p.portal === 'admin' ? { sia: '', admin: me.name } : null;
+}
+export async function login(db, pin, me) {
+  const pc = portalCarrier(me); if (pc) return pc;
   const s = String(pin == null ? '' : pin), i = s.indexOf('\n');
   const user = (i >= 0 ? s.slice(0, i) : '').replace(/\s+/g, ' ').trim(), pass = (i >= 0 ? s.slice(i + 1) : s).trim().toUpperCase();
   if (!pass || !user) return null;
@@ -112,15 +119,15 @@ export async function setTaskCancelled(env, id, cancel) {
   return withTasks(env, { status: 'success' });
 }
 const accKey = (v) => String(v || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/^(kk|ir|ee) /, '').replace(/^(j|vnī) ?\| ?/, '');
-export async function getAccess(db, pin) {
-  if (!await login(db, pin)) { await slow(); return {}; }
+export async function getAccess(db, pin, me) {
+  if (!await login(db, pin, me)) { await slow(); return {}; }
   const o = {}; (await all(db, "SELECT adrese, piekluve FROM objects WHERE piekluve != ''")).forEach(r => { const a = accKey(r.adrese); if (a) o[a] = String(r.piekluve).trim(); });
   return o;
 }
-export async function checkCarrierPin(db, pin) { if (await login(db, pin)) return true; await slow(); return false; }
-export async function completeTask(env, d) {
+export async function checkCarrierPin(db, pin, me) { if (await login(db, pin, me)) return true; await slow(); return false; }
+export async function completeTask(env, d, me) {
   const db = env.DB; d = d || {};
-  const lg = await login(db, d.pin); if (!lg) return fail('Nepareiza parole', 'pin');
+  const lg = await login(db, d.pin, me); if (!lg) return fail('Nepareiza parole', 'pin');
   const t0 = await byId(db, d.id); if (!t0) return fail('Pieteikums nav atrasts — iespējams, tas ir izdzēsts');
   let bags = null, coefNote = '';
   if (d.bagsHauled !== undefined && d.bagsHauled !== null && d.bagsHauled !== '') {
@@ -144,9 +151,9 @@ export async function completeTask(env, d) {
     .bind(ST_DONE, lg.sia || t.sia || '', photo || t.foto_pec || '', m3, String(d.carrierComment || ''), stamp(), bags ? String(bags) : t.maisi_izv, bags ? coefNote : t.koef, v, t.id).run();
   return withTasks(env, { status: 'success' });
 }
-export async function reportProblem(env, d) {
+export async function reportProblem(env, d, me) {
   const db = env.DB; d = d || {};
-  if (!await login(db, d.pin)) return fail('Nepareiza parole', 'pin');
+  if (!await login(db, d.pin, me)) return fail('Nepareiza parole', 'pin');
   const reason = String(d.reason || '').trim(); if (!reason) return fail('Izvēlieties iemeslu');
   const comment = String(d.comment || '').trim();
   const t = await byId(db, d.id); if (!t) return fail('Pieteikums nav atrasts — iespējams, tas ir izdzēsts');
@@ -319,7 +326,7 @@ async function photoData(env, url) {
   let s = ''; const b = new Uint8Array(buf); for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
   return 'data:' + ct + ';base64,' + btoa(s);
 }
-export async function ai(env, fn, a) {
+export async function ai(env, fn, a, me) {
   const db = env.DB;
   try {
     await AI.aiLimit(db, 'izv', AI_DAILY);
@@ -341,7 +348,7 @@ export async function ai(env, fn, a) {
       return { status: 'success', data: { kind: String(j.kind || ''), ok: j.ok !== false, note: String(j.note || '') } };
     }
     if (fn === 'aiCompare') {
-      const d = a[0] || {}; if (!await login(db, d.pin)) return { status: 'error', code: 'pin', message: 'Nepareiza parole' };
+      const d = a[0] || {}; if (!await login(db, d.pin, me)) return { status: 'error', code: 'pin', message: 'Nepareiza parole' };
       const t = await byId(db, d.id); if (!t) return aiErr('Pieteikums nav atrasts');
       const first = String(t.foto_pirms || '').split(/\s+/).filter(Boolean)[0] || '';
       const before = first ? await photoData(env, first) : null;
@@ -378,7 +385,7 @@ export async function ai(env, fn, a) {
 }
 
 /* ---------- /izv?fn=… ---------- */
-export async function handle(env, fn, a) {
+export async function handle(env, fn, a, me) {
   const db = env.DB; a = Array.isArray(a) ? a : [];
   switch (fn) {
     case 'getBoot': return { lists: await getInitialData(env), tasks: await getTasks(db) };
@@ -387,15 +394,16 @@ export async function handle(env, fn, a) {
     case 'saveTask': return await saveTask(env, a[0]);
     case 'updateTask': return await updateTask(env, a[0]);
     case 'setTaskCancelled': return await setTaskCancelled(env, a[0], a[1]);
-    case 'getAccess': return await getAccess(db, a[0]);
-    case 'checkCarrierPin': return await checkCarrierPin(db, a[0]);
-    case 'completeTask': return await completeTask(env, a[0]);
-    case 'reportProblem': return await reportProblem(env, a[0]);
+    case 'getAccess': return await getAccess(db, a[0], me);
+    case 'checkCarrierPin': return await checkCarrierPin(db, a[0], me);
+    case 'portalCarrier': { const pc = portalCarrier(me); return pc ? { name: pc.sia || pc.admin } : null; }
+    case 'completeTask': return await completeTask(env, a[0], me);
+    case 'reportProblem': return await reportProblem(env, a[0], me);
     case 'reportPdf': return await reportPdf(db, a[0], a[1]);
     case 'geocodeAddresses': return await geocodeAddresses(db, a[0]);
     case 'saveFileToDrive': return await savePhotos(env, a[0], 'izv', 'bilde');
   }
-  if (/^ai/.test(fn)) return await ai(env, fn, a);
+  if (/^ai/.test(fn)) return await ai(env, fn, a, me);
   return undefined;
 }
 

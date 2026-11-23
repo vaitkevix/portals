@@ -112,8 +112,8 @@ export default {
 const APPS = {
   izv: { gas: 'IZV_GAS_URL', reads: ['getBoot', 'getTasks', 'getInitialData'], boot: 'getBoot',
     fns: ['getBoot', 'getTasks', 'getInitialData', 'saveTask', 'updateTask', 'setTaskCancelled', 'getAccess', 'checkCarrierPin', 'completeTask', 'reportProblem', 'reportPdf',
-      'geocodeAddresses', 'aiParseMessage', 'aiCheckPhoto', 'aiCompare', 'aiAsk', 'aiMonthSummary', 'saveFileToDrive'],
-    async: ['saveTask', 'completeTask', 'reportProblem', 'updateTask', 'setTaskCancelled'], open: ['getBoot', 'getTasks', 'getInitialData', 'reportPdf', 'checkCarrierPin'], pinFns: ['completeTask', 'reportProblem'], idRe: /^TASK-\d{10,}$/, idPrefix: 'TASK-' },
+      'geocodeAddresses', 'aiParseMessage', 'aiCheckPhoto', 'aiCompare', 'aiAsk', 'aiMonthSummary', 'saveFileToDrive', 'portalCarrier'],
+    async: ['saveTask', 'completeTask', 'reportProblem', 'updateTask', 'setTaskCancelled'], open: ['getBoot', 'getTasks', 'getInitialData', 'reportPdf', 'checkCarrierPin', 'portalCarrier'], pinFns: ['completeTask', 'reportProblem'], idRe: /^TASK-\d{10,}$/, idPrefix: 'TASK-' },
   kais: { gas: 'KAIS_GAS_URL', reads: ['getTasks', 'getInitialData'], boot: null,
     fns: ['getTasks', 'getInitialData', 'saveTask', 'completeTask', 'saveFileToDrive'],
     async: ['saveTask', 'completeTask'], open: ['getTasks', 'getInitialData'], pinFns: [], idRe: /^KM-\d{10,}$/, idPrefix: 'KM-' }
@@ -299,14 +299,14 @@ async function izv(request, url, env, ctx, app) {
   try {
     if (A.fns.indexOf(fn) === -1) throw new Error('Nezināma darbība');
     if (app === 'izv' && await izvN.isNative(env)) {   // bez Apps Script (D1, R2, AI Worker)
+      const me = await session(env, url.searchParams.get('t') || '');
       if (A.open.indexOf(fn) === -1) {
-        const me = await session(env, url.searchParams.get('t') || '');
         if (!me || !((me.perms || {}).izv || (me.perms || {}).portal === 'admin')) throw Object.assign(new Error('Lai pieteiktu vai atzīmētu, ienāciet portālā vaitkevix.cloud/sh'), { code: 'login' });
         if ((me.perms || {}).izv === 'skatitajs' && (me.perms || {}).portal !== 'admin') throw new Error('Jums ir tikai skatīšanās tiesības');
         if (/^ai/.test(fn) && !((me.perms || {}).izv === 'admin' || (me.perms || {}).portal === 'admin' || (me.perms || {}).izv === 'pieteicejs')) throw new Error('Nav atļauts');
       }
       let a = []; try { a = JSON.parse((await request.text()) || '[]'); } catch (e) {}
-      const r = await izvN.handle(env, fn, a);
+      const r = await izvN.handle(env, fn, a, me);
       if (r !== undefined) return new Response(JSON.stringify({ ok: true, result: r }), { headers: H });
     }
     if (app === 'kais' && await kais.isNative(env)) {   // bez Apps Script (D1 + tabulas kopija)
