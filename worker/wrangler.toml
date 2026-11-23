@@ -1,4 +1,4 @@
-# SH | Portāls — Cloudflare Worker «sh-portals»: visu lietotņu API (vaitkevix.cloud/sh/api), D1, R2, e-pasts (© VAITKEVIX, SIA) — v78
+# SH | Portāls — Cloudflare Worker «sh-portals»: visu lietotņu API (vaitkevix.cloud/sh/api), D1, R2, e-pasts (© VAITKEVIX, SIA) — v79
 name = "sh-portals"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
