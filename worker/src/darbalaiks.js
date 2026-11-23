@@ -319,7 +319,13 @@ export async function api(request, env, X) {
     if (a === 'delWorker') { need(3); const p = normPhone(b.phone); if (!p) throw new Error('Nav tālruņa');   // atzīmes un SMS vēsture paliek
       await db.batch([db.prepare('DELETE FROM dl_worker WHERE phone = ?').bind(p), db.prepare('DELETE FROM dl_assign WHERE phone = ?').bind(p)]); return out({ ok: true }); }
     if (a === 'saveWorker') { need(2); const p = normPhone(b.phone); if (!p) throw new Error('Nepareizs tālrunis — ievadiet valsts kodu un numuru');
-      if (!String(b.vards || '').trim()) throw new Error('Ierakstiet vārdu un uzvārdu');
+      if (String(b.vards || '').trim().split(/\s+/).filter(x => x.length > 1).length < 2) throw new Error('Ierakstiet pilnu vārdu un uzvārdu');
+      if (b.aktivs !== false) {   // aktīvam darbiniekam obligāti: vismaz viens objekts ar amatu
+        const L = Array.isArray(b.objekti) ? b.objekti.filter(x => x && x.anorm) : [];
+        if (!L.length) throw new Error('Pievienojiet vismaz vienu objektu');
+        if (L.some(x => AMS.indexOf(x.amats) === -1)) throw new Error('Katram objektam izvēlieties amatu');
+        const ok = new Set((await all(db, 'SELECT anorm FROM objects')).map(o => o.anorm)); if (L.some(x => !ok.has(x.anorm))) throw new Error('Objekts nav atrasts sarakstā');
+      }
       if (W < 3) {   // vadītājs: jauns darbinieks vai savējais
         const ex = normPhone(b.oldPhone) || p, mine = (await myPhones(db, me.name)).phones;
         if ((await workerOf(db, ex)) && mine.indexOf(ex) === -1) throw new Error('Šis darbinieks ir cita vadītāja — labot var administrators');
