@@ -59,7 +59,14 @@ export default {
       if (url.pathname.startsWith(base + '/') && url.pathname !== base + '/api') {
         // Viena saite: lietotnes atveras tikai portālā (rāmī). Tieša atvēršana → vaitkevix.cloud/sh/
         const rest = url.pathname.slice(base.length);
-        if (base !== '/sh' && SITE_KEY[base] && (rest === '/' || rest === '/index.html') && request.headers.get('Sec-Fetch-Dest') === 'document' && !(base === '/shaizvietosana' && url.searchParams.get('k')))
+        const isDoc = (rest === '/' || rest === '/index.html') && request.headers.get('Sec-Fetch-Dest') === 'document';
+        if (base === '/shaizvietosana' && isDoc) {   // brigādes saite: atslēgu atceras sīkdatnē → sākuma ekrāna ikona (bez ?k=) atveras brigādes darbos
+          const k = url.searchParams.get('k') || '', ck = ((request.headers.get('Cookie') || '').match(/(?:^|;\s*)shbk=([\w-]{8,64})/) || [])[1];
+          if (!k && ck) return Response.redirect(url.origin + base + '/?k=' + ck, 302);
+          if (/^[\w-]{8,64}$/.test(k)) { const r = await site(request, url, base), h = new Headers(r.headers);
+            h.append('Set-Cookie', 'shbk=' + k + '; Path=' + base + '/; Max-Age=31536000; Secure; SameSite=Lax'); return new Response(r.body, { status: r.status, headers: h }); }
+        }
+        if (base !== '/sh' && SITE_KEY[base] && isDoc && !(base === '/shaizvietosana' && url.searchParams.get('k')))
           return Response.redirect(url.origin + '/sh/#' + SITE_KEY[base], 302);
         return site(request, url, base);
       }
