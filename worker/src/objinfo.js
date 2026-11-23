@@ -30,7 +30,7 @@ export async function info(db, adrese) {
   const oi = await first(db, 'SELECT * FROM obj_info WHERE anorm = ?', k).catch(() => null);
   out.algas = pj(oi && oi.algas, []); out.piezimes = (oi && oi.piezimes) || ''; out.pazemes = !!(oi && oi.pazemes);
   out.svc = Object.fromEntries(Object.keys(SVC).map(x => [x, !!(oi && oi[x])])); out.svcNames = Object.fromEntries(Object.keys(SVC).map(x => [x, SVC[x][2]]));
-  out.ip = pj(oi && oi.ip, {});
+  out.ip = pj(oi && oi.ip, {}); out.parv = (oi && oi.parv) || '';
   const pl = await first(db, 'SELECT m2 FROM pl_obj WHERE anorm = ?', k).catch(() => null), lg = await first(db, 'SELECT qty FROM logi_obj WHERE anorm = ?', k).catch(() => null);
   out.apjoms = { zale_m2: pl ? pl.m2 : null, logi: lg ? lg.qty : null };
   const d = await first(db, 'SELECT kods, vajag_uzk, vajag_set, aktivs FROM dl_obj WHERE anorm = ?', k).catch(() => null);
@@ -63,6 +63,7 @@ export async function save(db, b) {
   if ('pazemes' in b && !b.svc) b.svc = { pazemes: !!b.pazemes };
   if (b.svc) for (const x of Object.keys(SVC)) if (x in b.svc) await setSvc(db, k, x, !!b.svc[x]);
   if (b.ip) { const ip = {}; IP.forEach(x => { const n = parseInt(b.ip[x], 10); if (n >= 0 && n < 10000) ip[x] = n; }); await db.prepare('UPDATE obj_info SET ip = ? WHERE anorm = ?').bind(JSON.stringify(ip), k).run(); }
+  if ('parv' in b) await db.prepare('UPDATE obj_info SET parv = ? WHERE anorm = ?').bind(String(b.parv || '').trim().slice(0, 120), k).run();
   if (b.dl) {   // Darba laiks: SMS kods un vajadzība (tā pati loģika kā Darba laika Iestatījumos)
     if (!kods) await db.prepare('UPDATE dl_obj SET aktivs = 0 WHERE anorm = ?').bind(k).run();
     else {
@@ -81,5 +82,13 @@ export async function bulk(db, key, list) {
 }
 /** Kopsavilkums objektu sarakstam: { anorm: { pazemes, zale, ... } } */
 export async function svcMap(db) {
-  const o = {}; (await all(db, 'SELECT * FROM obj_info').catch(() => [])).forEach(r => { o[r.anorm] = Object.fromEntries(Object.keys(SVC).map(x => [x, !!r[x]])); }); return o;
+  const o = {}; (await all(db, 'SELECT * FROM obj_info').catch(() => [])).forEach(r => { o[r.anorm] = Object.fromEntries(Object.keys(SVC).map(x => [x, !!r[x]])); o[r.anorm].parv = r.parv || ''; }); return o;
+}
+
+/** Vairākiem objektiem uzreiz: pārvaldnieks */
+export async function bulkParv(db, parv, list) {
+  const v = String(parv || '').trim().slice(0, 120); let n = 0;
+  for (const a of (list || []).slice(0, 2000)) { const k = anorm(a); if (!k) continue;
+    await db.prepare('INSERT INTO obj_info (anorm, parv) VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET parv = excluded.parv').bind(k, v).run(); n++; }
+  return n;
 }

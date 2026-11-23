@@ -702,6 +702,7 @@ const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kais�
 const KN = { izvedejs: 'Izvedējs', kurjers: 'Kurjers', plausejs: 'Pļāvējs', darba_devejs: 'Darba devējs' };
 /* Darbu izpildītāja (SIA) pilnvaras pa projektiem: projekts → veids */
 const CPERM = [['izv', 'izvedejs', 'Izvedējs'], ['kais', 'kurjers', 'Kurjers'], ['pl', 'plausejs', 'Izpildītājs'], ['logi', 'logu_mazg', 'Izpildītājs'], ['sniegs', 'traktorists', 'Traktorists'], ['darz', 'darznieks', 'Izpildītājs'], ['stav', 'stav_mazg', 'Izpildītājs']];
+const objByParv = (n) => A.svc && A.svc.map ? Object.values(A.svc.map).filter(x => x.parv === n).length : 0;
 const isDoer = (c) => CPERM.some(x => c.kinds.includes(x[1]));
 const A = { tab: 'people', q: '', M: null, f: {} };
 async function openAdmin(tab) {
@@ -744,24 +745,27 @@ function drawAdmin() {
   if (A.tab === 'objects') {
     if (!A.svc) { api('objSvc').then(r => { A.svc = r; drawAdmin(); }).catch(() => { A.svc = { map: {}, names: {} }; }); A.svc = { map: {}, names: {}, loading: 1 }; }
     const SV = A.svc, akey = (a) => String(a || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''), has = (o, k) => !!((SV.map[akey(o.adrese)] || {})[k]);
-    const SAPP = { pazemes: 'stav', zale: 'pl', logi: 'logi', darz: 'darz', sniegs: 'sniegs' };
+    const SAPP = { pazemes: 'stav', zale: 'pl', logi: 'logi', darz: 'darz', sniegs: 'sniegs' }, pv = (o) => (SV.map[akey(o.adrese)] || {}).parv || '', PV = parvNames();
     const F = A.f, VM = [...new Set(A.M.objects.map(o => o.vaditajs).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'lv')), GR = [...new Set(A.M.objects.map(o => o.grupa).filter(Boolean))].sort();
     const list = A.M.objects.map((o, i) => Object.assign({ i }, o)).filter(o => qm(o.adrese + ' ' + o.vaditajs + ' ' + o.grupa)
       && (!F.v || (F.v === '-' ? !o.vaditajs : o.vaditajs === F.v)) && (!F.g || o.grupa === F.g) && (!F.k || (F.k === '-' ? !o.piekluve : !!o.piekluve))
-      && (!F.s || (F.s[0] === '-' ? !has(o, F.s.slice(1)) : has(o, F.s))));
+      && (!F.s || (F.s[0] === '-' ? !has(o, F.s.slice(1)) : has(o, F.s))) && (!F.p || (F.p === '-' ? !pv(o) : pv(o) === F.p)));
     const s = adminShell(`<div class="afil" id="oF"><select data-f="v" aria-label="Vadītājs"><option value="">Visi vadītāji</option><option value="-" ${F.v === '-' ? 'selected' : ''}>Bez vadītāja (${A.M.objects.filter(o => !o.vaditajs).length})</option>${VM.map(m => `<option ${F.v === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
       <select data-f="g" aria-label="Grupa"><option value="">Visas grupas</option>${GR.map(g => `<option ${F.g === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>
       <select data-f="k" aria-label="Piekļuve"><option value="">Piekļuve: visi</option><option value="+" ${F.k === '+' ? 'selected' : ''}>Ar piekļuvi</option><option value="-" ${F.k === '-' ? 'selected' : ''}>Bez piekļuves</option></select>
       <select data-f="s" aria-label="Pakalpojums"><option value="">Pakalpojumi: visi</option>${Object.keys(SV.names).map(k => `<option value="${k}" ${F.s === k ? 'selected' : ''}>Ir: ${esc(SV.names[k])}</option><option value="-${k}" ${F.s === '-' + k ? 'selected' : ''}>Nav: ${esc(SV.names[k])}</option>`).join('')}</select>
+      <select data-f="p" aria-label="Pārvaldnieks"><option value="">Visi pārvaldnieki</option><option value="-" ${F.p === '-' ? 'selected' : ''}>Bez pārvaldnieka</option>${PV.map(m => `<option ${F.p === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
       <span class="n">${list.length} objekti</span>${list.length && (A.q || F.v || F.g || F.k || F.s) ? `<button class="btn ghost" id="oBulk" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">Mainīt vadītāju visiem ${list.length}</button>` : ''}
+      ${list.length ? `<button class="btn ghost" id="oParv" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">Pārvaldnieks ${list.length} objektiem</button>` : ''}
       ${list.length ? `<button class="btn ghost" id="oSvc" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">Pakalpojumi ${list.length} objektiem</button>` : ''}</div>
       <div class="plist">${list.slice(0, 300).map(o => `<button class="prow" data-o="${o.i}"><div class="nm"><b>${esc(o.adrese)}</b>
-      <div class="chips">${o.grupa ? `<span class="chip">${esc(o.grupa)}</span>` : ''}${o.vaditajs ? `<span class="chip a">${esc(o.vaditajs)}</span>` : ''}${o.piekluve ? '<span class="chip">🔑 piekļuve</span>' : ''}${Object.keys(SAPP).filter(k => has(o, k)).map(k => `<span class="chip svc" title="${esc(SV.names[k] || '')}">${gl(SAPP[k], 13)}</span>`).join('')}</div></div>${CHEV}</button>`).join('') || empty()}
+      <div class="chips">${o.grupa ? `<span class="chip">${esc(o.grupa)}</span>` : ''}${o.vaditajs ? `<span class="chip a">${esc(o.vaditajs)}</span>` : ''}${pv(o) ? `<span class="chip">🏢 ${esc(pv(o))}</span>` : ''}${o.piekluve ? '<span class="chip">🔑 piekļuve</span>' : ''}${Object.keys(SAPP).filter(k => has(o, k)).map(k => `<span class="chip svc" title="${esc(SV.names[k] || '')}">${gl(SAPP[k], 13)}</span>`).join('')}</div></div>${CHEV}</button>`).join('') || empty()}
       ${list.length > 300 ? `<p class="copy">Rāda 300 no ${list.length} — sašauriniet meklēšanu</p>` : ''}</div>`, 'Objekts');
     $('pAdd').onclick = () => editObject(-1);
     s.querySelector('#oF').onchange = (e) => { const el = e.target.closest('[data-f]'); if (!el) return; A.f[el.dataset.f] = el.value; A.onlyList = true; drawAdmin(); A.onlyList = false; };
     const bk = s.querySelector('#oBulk'); if (bk) bk.onclick = () => bulkMgr(list.map(o => o.i));
     const bs = s.querySelector('#oSvc'); if (bs) bs.onclick = () => bulkSvc(list);
+    const bp = s.querySelector('#oParv'); if (bp) bp.onclick = () => bulkParv(list);
     s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-o]'); if (r) { remember(); editObject(+r.dataset.o); } };
   }
   if (A.tab === 'groups') {
@@ -772,12 +776,13 @@ function drawAdmin() {
     s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-g]'); if (r) { remember(); editGroup(+r.dataset.g); } };
   }
   if (A.tab === 'companies') {
+    if (!A.svc) { A.svc = { map: {}, names: {}, loading: 1 }; api('objSvc').then(r => { A.svc = r; if (A.tab === 'companies') drawAdmin(); }).catch(() => {}); }
     const list = A.M.companies.map((c, i) => Object.assign({ i }, c)).filter(c => qm(c.name));
     const row = (c) => `<button class="prow ${c.active ? '' : 'off'}" data-c="${c.i}"><div class="nm"><b>${esc(c.name)}</b>
-      <div class="chips">${CPERM.filter(x => c.kinds.includes(x[1])).map(x => `<span class="chip a">${APPS[x[0]].name} · ${x[2]}</span>`).join('')}${c.kinds.includes('darba_devejs') ? '<span class="chip">Darba devējs</span>' : ''}${isDoer(c) && c.pass ? '<span class="chip">🔒 ir parole</span>' : ''}</div></div>${CHEV}</button>`;
+      <div class="chips">${CPERM.filter(x => c.kinds.includes(x[1])).map(x => `<span class="chip a">${APPS[x[0]].name} · ${x[2]}</span>`).join('')}${c.kinds.includes('darba_devejs') ? `<span class="chip">Pārvaldnieks · darba devējs</span>${objByParv(c.name) ? `<span class="chip a">${objByParv(c.name)} objekti</span>` : ''}` : ''}${isDoer(c) && c.pass ? '<span class="chip">🔒 ir parole</span>' : ''}</div></div>${CHEV}</button>`;
     const doers = list.filter(isDoer), emp = list.filter(c => !isDoer(c));
     const s = adminShell(`<h3 class="ah">Darbu izpildītāji <small>${doers.length}</small></h3><p class="copy" style="text-align:left;margin:0 0 10px">Ienāk portālā ar SIA paroli un redz tikai projektus, kuriem dota pilnvara.</p><div class="plist">${doers.map(row).join('') || empty()}</div>
-      <h3 class="ah">Darba devēji <small>${emp.length}</small></h3><div class="plist">${emp.map(row).join('') || empty()}</div>`, 'Uzņēmums');
+      <h3 class="ah">Pārvaldnieki un darba devēji <small>${emp.length}</small></h3><div class="plist">${emp.map(row).join('') || empty()}</div>`, 'Uzņēmums');
     $('pAdd').onclick = () => editCompany(-1);
     s.querySelectorAll('.plist').forEach(l => l.onclick = (e) => { const r = e.target.closest('[data-c]'); if (r) { remember(); editCompany(+r.dataset.c); } });
   }
@@ -927,6 +932,14 @@ function subSheet(title, body, onSave, onDel) {
   return s;
 }
 const fld = (id, label, v, ph, type) => `<div class="f"><label for="${id}">${label}</label><input type="${type || 'text'}" id="${id}" value="${esc(v || '')}" placeholder="${esc(ph || '')}" autocomplete="off"></div>`;
+/* Objektu pārvaldnieki — uzņēmumi (Uzņēmumi → pārvaldnieki / darba devēji) */
+const parvNames = () => (A.M.companies || []).filter(c => c.active !== false && c.kinds.includes('darba_devejs')).map(c => c.name);
+function bulkParv(list) {
+  subSheet('Pārvaldnieks · ' + list.length + ' objekti', `<div class="f"><label for="bpV">Pārvaldnieks</label><select id="bpV" class="fsel"><option value="">— noņemt pārvaldnieku —</option>${parvNames().map(m => `<option>${esc(m)}</option>`).join('')}</select></div>
+    <div class="chips" style="max-height:220px;overflow:auto">${list.slice(0, 200).map(o => `<span class="chip">${esc(o.adrese)}</span>`).join('')}${list.length > 200 ? `<span class="chip">… un vēl ${list.length - 200}</span>` : ''}</div>`,
+    async () => { const v = $('bpV').value; if (!confirm((v ? 'Iestatīt pārvaldnieku «' + v + '»' : 'Noņemt pārvaldnieku') + ' ' + list.length + ' objektiem?')) return;
+      try { const r = await api('objParvBulk', { parv: v, list: list.map(o => o.adrese) }); A.svc.map = r.map; toast('Pārvaldnieks iestatīts ' + r.n + ' objektiem', 'ok'); sheet(''); drawAdmin(); } catch (e) { toast(netMsg(e), 'err'); } });
+}
 function bulkSvc(list) {
   const N = (A.svc && A.svc.names) || {}; let key = Object.keys(N)[0] || 'pazemes', on = true;
   const draw = () => subSheet('Pakalpojumi · ' + list.length + ' objekti', `<p class="hint" style="margin:0 0 10px">Ieslēdz vai izslēdz pakalpojumu visiem ${list.length} atlasītajiem objektiem. Izslēdzot objekts pazūd no lietotnes, un tā grafiks tiek apturēts (vēsture paliek).</p>
@@ -960,7 +973,7 @@ function editObject(i) {
         const svc = Object.fromEntries([...document.querySelectorAll('[data-svc]')].map(x => [x.dataset.svc, x.checked])), off = Object.keys(svc).filter(k => I.data.svc[k] && !svc[k]);
         if (off.length && !confirm('Noņemt: ' + off.map(k => I.data.svcNames[k]).join(', ') + '? Objekts pazudīs no šīm lietotnēm, un grafiks tiks apturēts (vēsture paliek).')) return;
         const ip = Object.fromEntries([...document.querySelectorAll('[data-ip]')].map(x => [x.dataset.ip, x.value]));
-        try { const r = await api('objInfoSave', { adrese: n.adrese, algas: I.algas, piezimes: $('oNote').value, svc, ip, dl: { kods: $('oKods').value.trim(), vajag_uzk: $('oUzk').checked, vajag_set: $('oSet').checked } });
+        try { const r = await api('objInfoSave', { adrese: n.adrese, algas: I.algas, piezimes: $('oNote').value, svc, ip, parv: $('oParvS') ? $('oParvS').value : (I.data && I.data.parv) || '', dl: { kods: $('oKods').value.trim(), vajag_uzk: $('oUzk').checked, vajag_set: $('oSet').checked } });
           if (r.ok === false) return toast(r.error, 'err'); } catch (e) { return toast(netMsg(e), 'err'); }
       }
       if (i >= 0) list[i] = n; else list.unshift(n); saveM('saveObjects', { objects: list }, () => sheet(''));
@@ -977,6 +990,8 @@ function editObject(i) {
     const chip = (t, c) => `<span class="chip${c ? ' ' + c : ''}">${t}</span>`;
     $('oInfo').innerHTML = `<div class="oh">Algas šajā objektā</div><p class="hint" style="margin:-4px 0 8px">Personālā, pieņemot darbā šajā objektā, alga tiks piedāvāta no šejienes.</p>
       <div id="oAlg"></div><datalist id="oAmL">${AM.map(a => `<option value="${esc(a)}">`).join('')}</datalist><button type="button" class="btn ghost" id="oAlgAdd" style="height:40px;margin:6px 0 4px">+ Amats</button>
+      <div class="oh">Pārvaldnieks</div>
+      <select id="oParvS" class="fsel" style="margin-bottom:6px"><option value="">— nav norādīts —</option>${[...new Set(parvNames().concat(d.parv ? [d.parv] : []))].map(m => `<option ${m === d.parv ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
       <div class="oh">Pakalpojumi šajā objektā</div>
       <div class="odl-p" style="flex-wrap:wrap;margin-bottom:6px" id="oSvcB">${Object.keys(d.svcNames).map(k => `<label class="ochk"><input type="checkbox" data-svc="${k}" ${d.svc[k] ? 'checked' : ''}><i></i>${esc(d.svcNames[k])}</label>`).join('')}</div>
       <p class="hint" style="margin:0 0 4px">Objekts redzams tikai tajās lietotnēs, kuru pakalpojums atzīmēts.${d.apjoms.zale_m2 ? ' Zāliens: ' + num(d.apjoms.zale_m2) + ' m².' : ''}${d.apjoms.logi ? ' Logi: ' + num(d.apjoms.logi) + '.' : ''}</p>
@@ -1153,7 +1168,7 @@ function editCompany(i) {
   const c = i >= 0 ? JSON.parse(JSON.stringify(A.M.companies[i])) : { name: '', kinds: ['izvedejs'], pass: genPw(), phone: '', active: true };
   subSheet(i >= 0 ? c.name : 'Jauns uzņēmums', fld('cN', 'Nosaukums', c.name, 'SIA …') +
     `<div class="f" style="margin-bottom:6px"><label>Pilnvaras projektiem (darbu izpildītājs)</label></div><div class="cperm" id="cK">${CPERM.map(x => `<label class="tog">${APPS[x[0]].name} · ${x[2]}<input type="checkbox" data-k="${x[1]}" ${c.kinds.includes(x[1]) ? 'checked' : ''}></label>`).join('')}
-      <label class="tog">Darba devējs (Personālā)<input type="checkbox" data-k="darba_devejs" ${c.kinds.includes('darba_devejs') ? 'checked' : ''}></label></div>` +
+      <label class="tog">Objektu pārvaldnieks / darba devējs (Personālā)<input type="checkbox" data-k="darba_devejs" ${c.kinds.includes('darba_devejs') ? 'checked' : ''}></label></div>` +
     `<div class="f"><label for="cP">Parole ienākšanai (darbu izpildītājam)</label><div class="row2"><input type="text" id="cP" value="${esc(c.pass)}" autocomplete="off" style="text-transform:uppercase"><button class="btn ghost" id="cG" type="button">Jauna parole</button></div></div>` +
     fld('cT', 'Tālrunis', c.phone, '+371 …', 'tel') + `<label class="tog">Aktīvs<input type="checkbox" id="cA" ${c.active ? 'checked' : ''}></label>`,
     () => { const list = A.M.companies.slice(); const n = { name: $('cN').value.trim(), kinds: [...document.querySelectorAll('#cK input:checked')].map(b => b.dataset.k), pass: $('cP').value.trim().toUpperCase(), phone: $('cT').value.trim(), active: $('cA').checked };
