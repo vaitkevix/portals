@@ -296,7 +296,11 @@ export async function api(request, env, X) {
       await kvSet(db, 'dl:cfg', c).run(); return out({ ok: true, cfg: c }); }
     if (a === 'registerHook') { need(3);
       if (!env.SMS_USER || !env.SMS_PASS || !env.DL_HOOK_KEY) throw new Error('Worker noslēpumi SMS_USER, SMS_PASS, DL_HOOK_KEY nav iestatīti');
-      const base = new URL(request.url).origin, res = [];
+      const u = new URL(request.url), i = u.pathname.indexOf('/dl'), base = u.origin + (i > 0 ? u.pathname.slice(0, i) : ''), res = [];   // piem. https://vaitkevix.cloud/sh/api
+      try {   // vecās (arī nepareizās) /dl/sms adreses noņem, lai nedublējas
+        const old = await (await fetch(SMS_API + '/webhooks', { headers: { Authorization: gwAuth(env) } })).json();
+        for (const w of (Array.isArray(old) ? old : [])) if (/\/dl\/sms/.test(w.url || '') && w.id) await fetch(SMS_API + '/webhooks/' + encodeURIComponent(w.id), { method: 'DELETE', headers: { Authorization: gwAuth(env) } });
+      } catch (e) { console.error('webhooks', e); }
       for (const ev of ['sms:received', 'system:ping']) { const r = await fetch(SMS_API + '/webhooks', { method: 'POST', headers: { Authorization: gwAuth(env), 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: base + '/dl/sms?key=' + encodeURIComponent(env.DL_HOOK_KEY), event: ev }) }); res.push(ev + ': ' + r.status); }
       return out({ ok: true, rezultats: res }); }
