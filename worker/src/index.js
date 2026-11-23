@@ -560,6 +560,12 @@ const SITE_KEY = { '/shaizvietosana': 'aizv', '/shizvesana': 'izv', '/shkaisamma
 async function site(request, url, base) {
   if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
   const rest = url.pathname.slice(base.length) || '/';
+  const k = url.searchParams.get('k') || '';
+  if (base === '/shaizvietosana' && rest === '/manifest.json' && /^[\w-]{8,64}$/.test(k)) {   // brigādes saite → sākuma ekrāna ikona atver ar ?k= (bez PIN)
+    const m = await (await fetch(SITES[base] + '/manifest.json', { headers: { 'User-Agent': 'vaitkevix-proxy' } })).json();
+    m.start_url = m.id = base + '/?k=' + k; m.scope = base + '/'; m.name = m.short_name = 'SH | Brigādes darbi';
+    return new Response(JSON.stringify(m), { headers: { 'Content-Type': 'application/manifest+json;charset=utf-8', 'Cache-Control': 'no-cache' } });
+  }
   const r = await fetch(SITES[base] + rest + url.search, { headers: { 'User-Agent': 'vaitkevix-proxy' }, cf: { cacheTtl: 60, cacheEverything: true } });
   const h = new Headers(r.headers);
   h.delete('set-cookie');
