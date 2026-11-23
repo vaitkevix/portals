@@ -173,6 +173,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .tadd{display:flex;gap:6px}.tadd input{flex:1;min-width:0;height:38px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 10px;font:inherit;font-size:14px}.tadd .btn{flex:none!important;width:40px!important;height:38px;min-width:0;padding:0}
 .tcol-new{background:transparent;border:2px dashed var(--line-2);min-height:auto}
 .tmove{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.35);display:grid;place-items:center;padding:16px}.tmove-box{background:var(--surface);border-radius:22px;padding:18px;width:min(360px,100%)}.tmove-box b{font-size:17px}
+.oh{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin:18px 0 8px}.oarow{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.8fr) minmax(0,1fr) 36px;gap:6px;margin-bottom:6px}.oarow input,.oarow select{height:42px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 10px;font:inherit;font-size:14px;min-width:0}.odel{border:0;background:transparent;color:#c02626;font-size:20px;cursor:pointer}.ochk{font-size:13.5px;height:44px;padding:0 10px;border-radius:12px;background:var(--surface-2)}.chip.off{opacity:.55}
 .mcard .mh{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px}.mfld{margin:0 0 10px}.mfld label{display:block;font-size:13px;font-weight:800;margin:0 0 5px}.minp{width:100%;height:44px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface);padding:0 12px;font:inherit;font-size:15px;min-width:0}.mfld .hint{margin-top:4px}
 .tgl{display:flex;align-items:center;gap:10px;font-size:15px;cursor:pointer}.tgl input{width:22px;height:22px;accent-color:var(--ink)}
 .row2 .btn{width:auto;padding:0 14px;height:46px;font-size:14px;white-space:nowrap}
@@ -891,15 +892,47 @@ function editObject(i) {
   const o = i >= 0 ? Object.assign({}, A.M.objects[i]) : { adrese: '', vaditajs: '', grupa: 'SH objekti', piekluve: '' };
   const mgrs = mgrNames(); if (o.vaditajs && mgrs.indexOf(o.vaditajs) === -1) mgrs.unshift(o.vaditajs);
   const groups = [...new Set(A.M.objects.map(x => x.grupa).filter(Boolean))];
-  subSheet(i >= 0 ? o.adrese : 'Jauns objekts', fld('oA', 'Adrese', o.adrese, 'Iela māja, Rīga') +
+  const I = { data: null, algas: [] };
+  subSheet(i >= 0 ? o.adrese : 'Jauns objekts', `<div class="oh">Pamatdati</div>` + fld('oA', 'Adrese', o.adrese, 'Iela māja, Rīga') +
     `<div class="f"><label for="oM">Darbu vadītājs</label><select id="oM" class="fsel">${['', ...mgrs].map(m => `<option value="${esc(m)}" ${o.vaditajs === m ? 'selected' : ''}>${m ? esc(m) : '— nav —'}</option>`).join('')}</select></div>` +
     `<div class="f"><label for="oG">Grupa</label><input type="text" id="oG" list="oGl" value="${esc(o.grupa)}"><datalist id="oGl">${groups.map(g => `<option value="${esc(g)}">`).join('')}</datalist></div>` +
-    `<div class="f"><label for="oP">Piekļuve (vārti, kodi — redz izvedējs)</label><textarea id="oP" rows="3" style="width:100%;border-radius:12px;border:1px solid var(--line-2);background:var(--surface-2);padding:10px 14px;font:inherit;font-weight:600">${esc(o.piekluve)}</textarea></div>`,
-    () => { const list = A.M.objects.slice(); const n = { adrese: $('oA').value.trim(), vaditajs: $('oM').value, grupa: $('oG').value.trim(), piekluve: $('oP').value.trim() };
+    `<div class="f"><label for="oP">Piekļuve (vārti, kodi — redz izvedējs)</label><textarea id="oP" rows="3" style="width:100%;border-radius:12px;border:1px solid var(--line-2);background:var(--surface-2);padding:10px 14px;font:inherit;font-weight:600">${esc(o.piekluve)}</textarea></div>` +
+    `<div id="oInfo">${i >= 0 ? '<div class="skel"></div>' : '<p class="hint">Algas, Darba laiku un pārējo varēs iestatīt pēc objekta saglabāšanas.</p>'}</div>`,
+    async () => {
+      const list = A.M.objects.slice(); const n = { adrese: $('oA').value.trim(), vaditajs: $('oM').value, grupa: $('oG').value.trim(), piekluve: $('oP').value.trim() };
       if (!n.adrese) return toast('Ierakstiet adresi', 'err');
       if (list.some((x, j) => j !== i && x.adrese.toLowerCase() === n.adrese.toLowerCase())) return toast('Šāda adrese jau ir', 'err');
-      if (i >= 0) list[i] = n; else list.unshift(n); saveM('saveObjects', { objects: list }, () => sheet('')); },
+      if (I.data) {   // vispirms objekta kartīte (pārbauda Darba laika kodu), tad pamatdati
+        readAlgas();
+        try { const r = await api('objInfoSave', { adrese: n.adrese, algas: I.algas, piezimes: $('oNote').value, dl: { kods: $('oKods').value.trim(), vajag_uzk: $('oUzk').checked, vajag_set: $('oSet').checked } });
+          if (r.ok === false) return toast(r.error, 'err'); } catch (e) { return toast(netMsg(e), 'err'); }
+      }
+      if (i >= 0) list[i] = n; else list.unshift(n); saveM('saveObjects', { objects: list }, () => sheet(''));
+    },
     i >= 0 ? () => { const list = A.M.objects.slice(); list.splice(i, 1); saveM('saveObjects', { objects: list }, () => sheet('')); } : null);
+  if (i < 0) return;
+  const AM = [...new Set((A.M.lists.amati || []).concat(['Sētnieks', 'Apkopēja']))];
+  const readAlgas = () => { I.algas = [...document.querySelectorAll('#oAlg .oarow')].map(r => ({ amats: r.querySelector('.oam').value.trim(), alga: r.querySelector('.oal').value.trim(), slodze: r.querySelector('.osl').value })).filter(a => a.amats || a.alga); };
+  const algRow = (a, k) => `<div class="oarow" data-k="${k}"><input class="oam" list="oAmL" value="${esc(a.amats || '')}" placeholder="Amats"><input class="oal" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(a.alga || '')}" placeholder="€">
+    <select class="osl"><option value="">slodze</option>${['Pilna slodze', 'Nepilna slodze', '0,5 slodze', '0,25 slodze'].map(x => `<option ${a.slodze === x ? 'selected' : ''}>${x}</option>`).join('')}</select><button type="button" class="odel" aria-label="Noņemt">×</button></div>`;
+  const drawAlg = () => { $('oAlg').innerHTML = (I.algas.length ? I.algas : [{}]).map(algRow).join(''); };
+  api('objInfo', { adrese: o.adrese }).then(d => {
+    I.data = d; I.algas = d.algas.slice();
+    const chip = (t, c) => `<span class="chip${c ? ' ' + c : ''}">${t}</span>`;
+    $('oInfo').innerHTML = `<div class="oh">Algas šajā objektā</div><p class="hint" style="margin:-4px 0 8px">Personālā, pieņemot darbā šajā objektā, alga tiks piedāvāta no šejienes.</p>
+      <div id="oAlg"></div><datalist id="oAmL">${AM.map(a => `<option value="${esc(a)}">`).join('')}</datalist><button type="button" class="btn ghost" id="oAlgAdd" style="height:40px;margin:6px 0 4px">+ Amats</button>
+      <div class="oh">Darba laiks</div>
+      <div class="row2" style="gap:8px;align-items:flex-end">${fld('oKods', 'SMS kods', d.dl.kods, 'piem. 104')}<div class="f" style="flex:none"><label>&nbsp;</label><div class="row2" style="gap:6px"><label class="tgl ochk"><input type="checkbox" id="oUzk" ${d.dl.vajag_uzk ? 'checked' : ''}>Uzkopējs</label><label class="tgl ochk"><input type="checkbox" id="oSet" ${d.dl.vajag_set ? 'checked' : ''}>Sētnieks</label></div></div></div>
+      <div class="chips">${d.dl.darbinieki.map(w => chip(esc(w.vards || w.phone) + ' · ' + (w.amats === 'set' ? 'sētnieks' : 'uzkopējs') + (w.aktivs ? '' : ' · neaktīvs'), w.aktivs ? '' : 'off')).join('') || chip('nav piesaistītu darbinieku')}</div>
+      <div class="oh">Darbinieki (Personāls)</div>
+      <div class="chips">${d.personals.map(h => chip(esc(h.vards) + (h.amats ? ' · ' + esc(h.amats) : '') + ' · ' + esc(h.statuss) + (h.sakums ? ' · no ' + esc(h.sakums) : ''))).join('') || chip('nav pieņemšanas ierakstu')}</div>
+      <div class="oh">Klients un grafiki</div>
+      <div class="chips">${chip(d.klients ? 'Klients: ' + esc(d.klients) : 'Klients nav piesaistīts')}${d.grafiki.map(g => chip(gl(g.app, 14) + ' ' + esc(g.name) + (g.aktivs ? '' : ' · izslēgts'), g.aktivs ? '' : 'off')).join('')}</div>
+      <div class="f" style="margin-top:12px"><label for="oNote">Piezīmes par objektu</label><textarea id="oNote" rows="2" style="width:100%;border-radius:12px;border:1px solid var(--line-2);background:var(--surface-2);padding:10px 14px;font:inherit">${esc(d.piezimes)}</textarea></div>`;
+    drawAlg();
+    $('oAlgAdd').onclick = () => { readAlgas(); I.algas.push({}); drawAlg(); const r = $('oAlg').lastElementChild; r && r.querySelector('.oam').focus(); };
+    $('oAlg').onclick = (e) => { const b = e.target.closest('.odel'); if (!b) return; readAlgas(); I.algas.splice(+b.closest('.oarow').dataset.k, 1); drawAlg(); };
+  }).catch(e => { $('oInfo').innerHTML = `<p class="hint">${esc(netMsg(e))}</p>`; });
 }
 /* ---------- Klienti ---------- */
 const eur = (n) => (+n || 0).toLocaleString('lv-LV', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';

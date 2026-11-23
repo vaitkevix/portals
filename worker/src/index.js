@@ -19,6 +19,7 @@ import * as gsheets from './sheets.js';
 import * as ai from './ai.js';
 import * as foto from './foto.js';
 import * as mail from './mail.js';
+import * as objinfo from './objinfo.js';
 import * as kais from './kaisammaterials.js';
 import * as izvN from './izvesana.js';
 import * as persN from './personals.js';
@@ -1175,6 +1176,9 @@ async function masterAdmin(X, a, b, me) {
     await db.batch(groupsStmts(db, list)); X.c = {}; masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
   if (a === 'reviewAutoPrefix') { const r = await autoMergePrefixed(db); X.c = {}; masterDirty(X, 1); return Object.assign({ ok: true }, r, await master(db)); }
   if (a === 'reviewClearInfo') { const n = await clearInfoReview(db); masterDirty(X); return Object.assign({ ok: true, cleared: n }, await master(db)); }
+  /* Objekta kartīte: algas, Darba laiks, darbinieki, klients, grafiki */
+  if (a === 'objInfo') return Object.assign({ ok: true }, await objinfo.info(db, b.adrese));
+  if (a === 'objInfoSave') { try { return Object.assign({ ok: true }, await objinfo.save(db, b)); } catch (e) { return { ok: false, error: e.message }; } }
   /* E-pasts: pagaidu novirzīšana un pārbaude (Administrēšana → E-pasts) */
   const mailCfg = async () => { const J = async (k) => { try { return JSON.parse((await kvGet(db, k)) || '{}') || {}; } catch (e) { return {}; } };
     const P = await J('pers:set'), B = await J('budz:settings');

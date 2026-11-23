@@ -7,6 +7,7 @@ import { personByPin, people } from './portal.js';
 import { master, publicLists } from './master.js';
 import { anorm } from './util.js';
 import { normPhone as dlPhone } from './darbalaiks.js';
+import { allAlgas } from './objinfo.js';
 
 const TAB = { hire: 'Personāls · Pieņemšana', vac: 'Personāls · Atvaļinājumi', users: '⚙ Personāls Lietotāji', lists: '⚙ Personāls Saraksti', set: '⚙ Personāls Iestatījumi' };
 const HIRE_HEADERS = ['ID', 'Iesniegts', 'Iesniedza', 'Vārds, Uzvārds', 'Personas kods', 'Deklarētā adrese', 'Telefons', 'E-pasts', 'Invaliditāte', 'Pensionārs', 'Veselības pārbaude',
@@ -227,6 +228,9 @@ async function getInit(db, user) {
   (await rowsOf(db, 'hire')).forEach(r => { if (r.statuss === 'Noraidīts') return; splitObj(r.objekts).map(objPair).forEach(o => {
     if (!(o.alga > 0)) return; const k = o.name.trim().toLowerCase(), a = algas[k] || (algas[k] = {});
     if (o.amati.length > 1) a[o.amati.join(', ')] = o.alga; else (o.amati.length ? o.amati : ['']).forEach(am => a[am] = o.alga); }); });   // vairāku amatu alga — tikai tieši tādai kombinācijai
+  // administrēšanā (Objekti → Algas) iestatītās algas ir galvenās — pārraksta vēsturi
+  const OA = await allAlgas(db), ON = {}; (await all(db, 'SELECT anorm, adrese FROM objects')).forEach(o => ON[o.anorm] = o.adrese);
+  Object.keys(OA).forEach(k => { const name = String(ON[k] || '').trim().toLowerCase(); if (!name) return; const a = algas[name] || (algas[name] = {}); OA[k].forEach(x => a[x.amats] = x.alga); });
   return {
     user, statuses: STATUSES, inval: INVAL, algas,
     lists: { sia: colVals('SIA'), bankas: colVals('Banka'), veidi: colVals('Atvaļinājuma veids'), amati: colVals('Amats'), kodi: colVals('Tālruņa kods'),
