@@ -1,4 +1,4 @@
-/* SH | Darba laiks — sētnieki un uzkopēji atzīmējas TIKAI ar SMS: «SAKU <objekta kods>» un «BEIDZU» (arī «?» — statuss).
+/* SH | Darba laiks — sētnieki un uzkopēji atzīmējas TIKAI ar SMS: «START <objekta kods>» un «STOP» (arī «?» — statuss).
  * SMS vārteja: Android telefons birojā ar «SMS Gateway for Android» (sms-gate.app, Cloud režīms) → webhook POST /dl/sms?key=<DL_HOOK_KEY>.
  * Adminam svarīga adrese: pie katra objekta uzkopējs un sētnieks — darbā / beidza / nav.
  * API POST /dl (PIN): perms.dl = admin | vaditajs (pieteicējs) | skatitajs (neredz tālruņus). Vecās dl_mark rindas paliek.
@@ -28,9 +28,9 @@ export function normPhone(s) {
 /* SMS teksts → komanda */
 export function parseCmd(t) {
   const s = String(t || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
-  let m = /^(SAKU|SAKT|SAKUMS|START|S)\b\s*#?\s*([0-9A-Z-]{1,8})?/.exec(s);
+  let m = /^(SAKU|SAKT|SAKUMS|START|S)(?=[\s#0-9]|$)\s*#?\s*([0-9A-Z-]{1,8})?/.exec(s);
   if (m && (m[1] !== 'S' || m[2])) return { cmd: 'sak', kods: m[2] || '' };
-  if (/^(BEIDZU|BEIDZ|BEIGAS|BEIGT|STOP|B)\b/.test(s)) return { cmd: 'beidz' };
+  if (/^(BEIDZU|BEIDZ|BEIGAS|BEIGT|STOP|B)\b/.test(s) || /^(STOP|BEIDZU)/.test(s)) return { cmd: 'beidz' };
   if (/^(\?|STATUSS|STATUS|INFO)/.test(s)) return { cmd: 'stat' };
   return { cmd: '' };
 }
@@ -112,27 +112,27 @@ export async function handleSms(db, phone, text) {
   const O = await objs(db), adr = (a) => (O.find(o => o.anorm === a) || {}).adrese || a, am = AM[W.amats] || 'darbinieks';
   if (c.cmd === 'sak') {
     let o = null;
-    if (c.kods) { o = O.find(x => x.aktivs && String(x.kods).toUpperCase() === c.kods); if (!o) return { reply: 'Objekts ar kodu ' + c.kods + ' nav atrasts. Pārbaudi kodu uz uzlīmes un sūti vēlreiz, piem. SAKU 104.', anorm: '' }; }
-    else { o = O.find(x => x.aktivs && x.anorm === W.anorm); if (!o) return { reply: 'Sūti SAKU un objekta kodu no uzlīmes, piem. SAKU 104.', anorm: '' }; }
+    if (c.kods) { o = O.find(x => x.aktivs && String(x.kods).toUpperCase() === c.kods); if (!o) return { reply: 'Objekts ar kodu ' + c.kods + ' nav atrasts. Pārbaudi kodu uz uzlīmes un sūti vēlreiz, piem. START 104.', anorm: '' }; }
+    else { o = O.find(x => x.aktivs && x.anorm === W.anorm); if (!o) return { reply: 'Sūti START un objekta kodu no uzlīmes, piem. START 104.', anorm: '' }; }
     const same = open.find(s => s.anorm === o.anorm);
-    if (same) return { reply: o.adrese + ': jau esi atzīmēts darbā kopš ' + same.sak + '. Beigās sūti BEIDZU.', anorm: o.anorm };
+    if (same) return { reply: o.adrese + ': jau esi atzīmēts darbā kopš ' + same.sak + '. Beigās sūti STOP.', anorm: o.anorm };
     for (const s of open) await addMark(db, { datums: d, vards: W.vards, veids: 'beidz', laiks: t, anorm: s.anorm, amats: s.amats, phone, kas: phone });   // pārgāja uz citu objektu
     await addMark(db, { datums: d, vards: W.vards, veids: 'sak', laiks: t, anorm: o.anorm, amats: W.amats, phone, kas: phone });
-    return { reply: o.adrese + ': ' + am + ' atzīmēts darbā ' + t + '. Beigās sūti BEIDZU.', anorm: o.anorm };
+    return { reply: o.adrese + ': ' + am + ' atzīmēts darbā ' + t + '. Beigās sūti STOP.', anorm: o.anorm };
   }
   if (c.cmd === 'beidz') {
-    if (!open.length) return { reply: 'Šodien nav atzīmēts darba sākums. Darbu sākot sūti SAKU un objekta kodu.', anorm: W.anorm };
+    if (!open.length) return { reply: 'Šodien nav atzīmēts darba sākums. Darbu sākot sūti START un objekta kodu.', anorm: W.anorm };
     const s = open[open.length - 1];
     await addMark(db, { datums: d, vards: W.vards, veids: 'beidz', laiks: t, anorm: s.anorm, amats: s.amats, phone, kas: phone });
     const m = Math.max(0, mins(t) - mins(s.sak));
     return { reply: adr(s.anorm) + ': darbs beigts ' + t + ' (' + dur(m) + '). Paldies!', anorm: s.anorm };
   }
   if (c.cmd === 'stat') {
-    if (open.length) return { reply: 'Tu esi darbā: ' + adr(open[0].anorm) + ' kopš ' + open[0].sak + '. Beigās sūti BEIDZU.', anorm: open[0].anorm };
+    if (open.length) return { reply: 'Tu esi darbā: ' + adr(open[0].anorm) + ' kopš ' + open[0].sak + '. Beigās sūti STOP.', anorm: open[0].anorm };
     if (S.length) { const l = S[S.length - 1]; return { reply: 'Šodien: ' + adr(l.anorm) + ' ' + l.sak + '–' + l.beidz + '. Šobrīd neesi atzīmēts darbā.', anorm: l.anorm }; }
-    return { reply: 'Šodien neesi atzīmējies. Darbu sākot sūti SAKU un objekta kodu.', anorm: W.anorm };
+    return { reply: 'Šodien neesi atzīmējies. Darbu sākot sūti START un objekta kodu.', anorm: W.anorm };
   }
-  return { reply: 'Nesapratu. Darbu sākot sūti SAKU un objekta kodu (piem. SAKU 104), beidzot — BEIDZU. Statuss: ?', anorm: W.anorm };
+  return { reply: 'Nesapratu. Darbu sākot sūti START un objekta kodu (piem. START 104), beidzot — STOP. Statuss: ?', anorm: W.anorm };
 }
 async function hmacHex(key, data) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -172,13 +172,13 @@ export async function reminders(env, force) {
     for (const o of O) for (const am of ['uzk', 'set']) {
       if (!(am === 'uzk' ? o.vajag_uzk : o.vajag_set) || roleState(S, o.anorm, am).statuss !== 'nav') continue;
       const to = W.filter(w => w.anorm === o.anorm && w.amats === am).map(w => w.phone);
-      if (to.length) a += await sendSms(env, to, 'Atgādinājums: ' + o.adrese + ' — šodien neesi atzīmējies darbā. Darbu sākot sūti SAKU ' + o.kods + '.', o.anorm);
+      if (to.length) a += await sendSms(env, to, 'Atgādinājums: ' + o.adrese + ' — šodien neesi atzīmējies darbā. Darbu sākot sūti START ' + o.kods + '.', o.anorm);
     }
   }
   if ((force ? force === 'vakars' : (mins(t) >= mins(C.vakars) && mins(t) < mins(C.vakars) + 120)) && await mark('dl:remVak')) {
     const O = await objs(db), open = sessions(await marksOn(db, d)).filter(s => !s.beidz && s.phone);
     for (const s of open) { const o = O.find(x => x.anorm === s.anorm) || { adrese: s.anorm };
-      b += await sendSms(env, [s.phone], 'Tu joprojām esi atzīmēts darbā (' + o.adrese + '). Ja esi beidzis, atbildi BEIDZU.', s.anorm); }
+      b += await sendSms(env, [s.phone], 'Tu joprojām esi atzīmēts darbā (' + o.adrese + '). Ja esi beidzis, atbildi STOP.', s.anorm); }
   }
   return { rits: a, vakars: b };
 }
@@ -264,7 +264,7 @@ export async function api(request, env, X) {
       return out({ ok: true, nosutits: await sendSms(env, to.map(w => w.phone), t, b.kam === 'obj' ? b.anorm : '') }); }
     if (a === 'atgadinat') { need(2); const o = (await objs(db)).find(x => x.anorm === b.anorm); if (!o) throw new Error('Objekts nav atrasts'); const am = b.amats === 'set' ? 'set' : 'uzk';
       const to = (await recipients(db, { kam: 'obj', anorm: o.anorm, amats: am })).map(w => w.phone); if (!to.length) throw new Error('Šim objektam nav ' + (am === 'set' ? 'sētnieka' : 'uzkopēja') + ' ar tālruni');
-      return out({ ok: true, nosutits: await sendSms(env, to, 'Atgādinājums: ' + o.adrese + ' — neesi atzīmējies darbā. Darbu sākot sūti SAKU ' + o.kods + '.', o.anorm) }); }
+      return out({ ok: true, nosutits: await sendSms(env, to, 'Atgādinājums: ' + o.adrese + ' — neesi atzīmējies darbā. Darbu sākot sūti START ' + o.kods + '.', o.anorm) }); }
     if (a === 'labot') { need(3);
       if (b.aizvert) { if (!okT(b.laiks)) throw new Error('Laiks HH:MM'); const m = await db.prepare("SELECT * FROM dl_mark WHERE id = ? AND veids = 'sak'").bind(b.aizvert).first(); if (!m) throw new Error('Atzīme nav atrasta');
         if (mins(b.laiks) < mins(m.laiks)) throw new Error('Beigas nevar būt pirms sākuma ' + m.laiks);
