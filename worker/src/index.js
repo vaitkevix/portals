@@ -1176,16 +1176,33 @@ async function masterAdmin(X, a, b, me) {
   if (a === 'reviewAutoPrefix') { const r = await autoMergePrefixed(db); X.c = {}; masterDirty(X, 1); return Object.assign({ ok: true }, r, await master(db)); }
   if (a === 'reviewClearInfo') { const n = await clearInfoReview(db); masterDirty(X); return Object.assign({ ok: true, cleared: n }, await master(db)); }
   /* E-pasts: pagaidu novirzīšana un pārbaude (Administrēšana → E-pasts) */
-  if (a === 'mailCfg') return { ok: true, override: (await kvGet(db, 'mail:override')) || '', from: mail.FROM };
+  const mailCfg = async () => { const J = async (k) => { try { return JSON.parse((await kvGet(db, k)) || '{}') || {}; } catch (e) { return {}; } };
+    const P = await J('pers:set'), B = await J('budz:settings');
+    return { ok: true, override: (await kvGet(db, 'mail:override')) || '', from: mail.FROM,
+      pers: { ADMIN_EMAIL: P.ADMIN_EMAIL || '', EMAIL_PIENEMSANA: P.EMAIL_PIENEMSANA || '', EMAIL_ATVALINAJUMI: P.EMAIL_ATVALINAJUMI || '', EMAIL_GROZIJUMI: P.EMAIL_GROZIJUMI || '',
+        PILNI_DATI_EPASTA: String(P.PILNI_DATI_EPASTA || 'NĒ').toUpperCase() === 'JĀ' ? 'JĀ' : 'NĒ', ZINOT_VADITAJAM: String(P.ZINOT_VADITAJAM || 'JĀ').toUpperCase() === 'NĒ' ? 'NĒ' : 'JĀ' },
+      budz: { 'Vadības e-pasti': B['Vadības e-pasti'] || '', 'Sūtīt paziņojumus': String(B['Sūtīt paziņojumus'] || 'jā').toLowerCase() === 'nē' ? 'nē' : 'jā', 'Sūtītāja vārds': B['Sūtītāja vārds'] || 'SH | Budžets' } }; };
+  const emList = (v, label) => { const L = String(v || '').split(/[,;\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean); const bad = L.find(x => !mail.valid(x)); if (bad) throw new Error(label + ': nepareiza adrese «' + bad + '»'); return [...new Set(L)].join(', '); };
+  if (a === 'mailCfg') return await mailCfg();
   if (a === 'mailCfgSave') {
-    const o = String(b.override || '').trim().toLowerCase();
-    if (o && !mail.valid(o)) return { ok: false, error: 'Nepareiza e-pasta adrese' };
-    await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('mail:override', ?)").bind(o).run();
-    return { ok: true, override: o, from: mail.FROM };
+    if ('override' in b) { const o = String(b.override || '').trim().toLowerCase(); if (o && !mail.valid(o)) return { ok: false, error: 'Nepareiza e-pasta adrese' };
+      await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('mail:override', ?)").bind(o).run(); }
+    try {
+      if (b.pers) { let P = {}; try { P = JSON.parse((await kvGet(db, 'pers:set')) || '{}') || {}; } catch (e) {}
+        ['ADMIN_EMAIL', 'EMAIL_PIENEMSANA', 'EMAIL_ATVALINAJUMI', 'EMAIL_GROZIJUMI'].forEach(k => { if (k in b.pers) P[k] = emList(b.pers[k], k); });
+        ['PILNI_DATI_EPASTA', 'ZINOT_VADITAJAM'].forEach(k => { if (k in b.pers) P[k] = b.pers[k] === 'JĀ' ? 'JĀ' : 'NĒ'; });
+        await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('pers:set', ?)").bind(JSON.stringify(P)).run(); }
+      if (b.budz) { let B = {}; try { B = JSON.parse((await kvGet(db, 'budz:settings')) || '{}') || {}; } catch (e) {}
+        if ('Vadības e-pasti' in b.budz) B['Vadības e-pasti'] = emList(b.budz['Vadības e-pasti'], 'Vadības e-pasti');
+        if ('Sūtīt paziņojumus' in b.budz) B['Sūtīt paziņojumus'] = b.budz['Sūtīt paziņojumus'] === 'nē' ? 'nē' : 'jā';
+        if ('Sūtītāja vārds' in b.budz) B['Sūtītāja vārds'] = String(b.budz['Sūtītāja vārds'] || '').trim().slice(0, 60) || 'SH | Budžets';
+        await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('budz:settings', ?)").bind(JSON.stringify(B)).run(); }
+    } catch (e) { return { ok: false, error: e.message }; }
+    return await mailCfg();
   }
   if (a === 'mailTest') {
     const to = String(b.to || '').trim(); if (!mail.valid(to)) return { ok: false, error: 'Ievadiet e-pasta adresi' };
-    const r = await mail.send(X.env, { to, subject: 'SH sistēmas e-pasta pārbaude', fromName: 'SELECTUM HOME', html: '<p>Šī ir SH sistēmas testa vēstule (' + (me && me.name || '') + '). Ja to redzat — e-pasts strādā.</p><p style="color:#6d7672;font-size:12px">© VAITKEVIX, SIA</p>' });
+    const r = await mail.send(X.env, { to, direct: true, subject: 'SH sistēmas e-pasta pārbaude', fromName: 'SELECTUM HOME', html: '<p>Šī ir SH sistēmas testa vēstule (' + (me && me.name || '') + '). Ja to redzat — e-pasts strādā.</p><p style="color:#6d7672;font-size:12px">© VAITKEVIX, SIA</p>' });
     return { ok: true, sent: r.sent, failed: r.failed };
   }
   if (a === 'saveReview') { await db.batch([kvSet(db, 'masterReview', JSON.stringify(b.review || []))]); masterDirty(X); return Object.assign({ ok: true }, await master(db)); }

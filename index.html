@@ -173,6 +173,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .tadd{display:flex;gap:6px}.tadd input{flex:1;min-width:0;height:38px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 10px;font:inherit;font-size:14px}.tadd .btn{flex:none!important;width:40px!important;height:38px;min-width:0;padding:0}
 .tcol-new{background:transparent;border:2px dashed var(--line-2);min-height:auto}
 .tmove{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.35);display:grid;place-items:center;padding:16px}.tmove-box{background:var(--surface);border-radius:22px;padding:18px;width:min(360px,100%)}.tmove-box b{font-size:17px}
+.mcard .mh{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px}.mfld{margin:0 0 10px}.mfld label{display:block;font-size:13px;font-weight:800;margin:0 0 5px}.minp{width:100%;height:44px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface);padding:0 12px;font:inherit;font-size:15px;min-width:0}.mfld .hint{margin-top:4px}
 .tgl{display:flex;align-items:center;gap:10px;font-size:15px;cursor:pointer}.tgl input{width:22px;height:22px;accent-color:var(--ink)}
 .row2 .btn{width:auto;padding:0 14px;height:46px;font-size:14px;white-space:nowrap}
 .seg{display:flex;flex-wrap:wrap;gap:6px}
@@ -681,8 +682,10 @@ function tabsHtml() {
   const n = (A.M && A.M.review || []).length;
   return `<div class="seg" id="aTabs" style="margin:0 0 12px">${TABS.map(([k, l]) => `<button type="button" data-t="${k}" class="${A.tab === k ? 'on' : ''}">${l}${k === 'review' && n ? ' · ' + n : ''}</button>`).join('')}</div>`;
 }
+HTMLElement.prototype.onClick = function (f) { (this._clk || (this._clk = [])).push(f); this.addEventListener('click', f); };
 function adminShell(inner, addLabel) {
   const bg = $('sheetBg') || (sheet(''), $('sheetBg')); const s = bg.firstChild; s.classList.add('adm');
+  (s._clk || []).forEach(f => s.removeEventListener('click', f)); s._clk = [];   // pārzīmējot — bez dubultiem apstrādātājiem
   if (A.onlyList && $('aBody') && s.dataset.tab === A.tab) { $('aBody').innerHTML = inner; return s; }   // meklējot pārzīmē tikai sarakstu
   s.dataset.tab = A.tab;
   s.innerHTML = `<div class="adm-head"><div class="hd"><h3>Administrēšana</h3>${X}</div>${tabsHtml()}
@@ -741,22 +744,42 @@ function drawAdmin() {
   }
   if (A.tab === 'mail') {
     if (!A.mail) { adminShell('<div class="skel"></div>', null); api('mailCfg').then(r => { A.mail = r; drawAdmin(); }).catch(e => toast(netMsg(e), 'err')); return; }
-    const m = A.mail, on = !!m.override;
-    const s = adminShell(`<div class="perm"><div class="pt">Novirzīšana</div>
-      <p class="hint" style="margin:0 0 10px">Kad ieslēgta, <b>visas</b> sistēmas vēstules (Budžets, Personāls u.c.) aiziet uz vienu adresi — tēmā redzams, kam tās bija domātas. Noder, kamēr adresāti vēl nav apstiprināti Cloudflare.</p>
-      <label class="tgl"><input type="checkbox" id="mOn" ${on ? 'checked' : ''}> <b>Novirzīt visas vēstules</b></label>
-      <div class="row2" style="margin-top:10px"><input type="email" id="mTo" value="${esc(m.override)}" placeholder="vards@selectumhome.lv" ${on ? '' : 'disabled'} style="flex:1;height:44px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface);padding:0 12px;min-width:0"><button class="btn" id="mSave" style="height:44px">Saglabāt</button></div>
-      <div class="chips" style="margin-top:10px"><span class="chip">${on ? '● Ieslēgta → ' + esc(m.override) : '○ Izslēgta — vēstules iet īstajiem adresātiem'}</span></div></div>
-      <div class="perm"><div class="pt">Pārbaude</div><p class="hint" style="margin:0 0 10px">Nosūta testa vēstuli no <b>${esc(m.from)}</b>. Adresātam jābūt apstiprinātam Cloudflare → Email Routing → Destination addresses.</p>
-      <div class="row2"><input type="email" id="mTest" placeholder="vards@selectumhome.lv" style="flex:1;height:44px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface);padding:0 12px;min-width:0"><button class="btn ghost" id="mTestGo" style="height:44px">Nosūtīt testu</button></div></div>`, null);
-    s.querySelector('#mOn').onchange = (e) => { const i = s.querySelector('#mTo'); i.disabled = !e.target.checked; if (e.target.checked) i.focus(); };
-    s.querySelector('#mSave').onclick = async () => {
-      const onv = s.querySelector('#mOn').checked, to = s.querySelector('#mTo').value.trim();
-      if (onv && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return toast('Ievadiet e-pasta adresi', 'err');
-      try { A.mail = await api('mailCfgSave', { override: onv ? to : '' }); toast(onv ? 'Novirzīšana ieslēgta → ' + to : 'Novirzīšana izslēgta', 'ok'); drawAdmin(); } catch (e) { toast(netMsg(e), 'err'); }
-    };
+    const m = A.mail, on = !!m.override, P = m.pers || {}, B = m.budz || {};
+    const inp = (id, v, ph) => `<input type="text" inputmode="email" class="minp" id="${id}" value="${esc(v || '')}" placeholder="${ph || 'vards@selectumhome.lv'}">`;
+    const fld = (label, hint, html) => `<div class="mfld"><label>${label}</label>${html}${hint ? `<div class="hint">${hint}</div>` : ''}</div>`;
+    const yn = (id, v, label) => `<label class="tgl" style="margin:6px 0"><input type="checkbox" id="${id}" ${v ? 'checked' : ''}> ${label}</label>`;
+    const card = (ic, title, sub, body, save) => `<div class="perm mcard"><div class="mh">${ic ? `<span class="mic">${ic}</span>` : ''}<div><div class="pt" style="margin:0">${title}</div>${sub ? `<div class="hint">${sub}</div>` : ''}</div></div>${body}${save ? `<button class="btn" data-msave="${save}" style="height:44px;margin-top:6px">Saglabāt</button>` : ''}</div>`;
+    const ico = (k) => APPS[k] ? `<span class="ib ${COLOR[k] || ''}" style="width:34px;height:34px;border-radius:11px">${gl(k, 18)}</span>` : '';
+    const s = adminShell(
+      card('', 'Visām lietotnēm', 'Sūtītājs: <b>' + esc(m.from) + '</b>. Adresātiem jābūt apstiprinātiem Cloudflare → Email Routing → Destination addresses.',
+        `${yn('mOn', on, '<b>Novirzīt visas vēstules uz vienu adresi</b>')}
+         <div class="row2" style="margin-top:6px">${inp('mTo', m.override)}</div>
+         <div class="chips" style="margin:8px 0 0"><span class="chip">${on ? '● Ieslēgta → ' + esc(m.override) : '○ Izslēgta — vēstules iet īstajiem adresātiem'}</span></div>`, 'all') +
+      card('', 'Pārbaude', 'Nosūta testa vēstuli uz norādīto adresi (novirzīšana netiek ņemta vērā).', `<div class="row2">${inp('mTest', '')}<button class="btn ghost" id="mTestGo" style="height:44px;flex:none">Nosūtīt testu</button></div>`) +
+      card(ico('pers'), 'Personāls', 'Pieņemšana, atvaļinājumi, grozījumi. Arī Pilnvarās ar lomu «Izpildītājs» un e-pastu saņem jaunos pieteikumus.',
+        fld('Administrators', 'saņem visus pieteikumus', inp('pAdm', P.ADMIN_EMAIL)) +
+        fld('Pieņemšana darbā', '', inp('pHire', P.EMAIL_PIENEMSANA)) +
+        fld('Atvaļinājumi', '', inp('pVac', P.EMAIL_ATVALINAJUMI)) +
+        fld('Grozījumi', 'ja tukšs — iet uz «Pieņemšana darbā»', inp('pChg', P.EMAIL_GROZIJUMI)) +
+        yn('pFull', P.PILNI_DATI_EPASTA === 'JĀ', 'E-pastā rādīt pilnus datus (personas kods, adrese, IBAN)') +
+        yn('pMgr', P.ZINOT_VADITAJAM !== 'NĒ', 'Paziņot vadītājam, kad mainās viņa pieteikuma statuss'), 'pers') +
+      card(ico('budz'), 'Budžets', 'Iesniegtās tāmes ar PDF un paziņojumi par apstiprināšanu.',
+        fld('Vadības e-pasti', 'kam sūtīt iesniegto budžetu; vairākus atdalīt ar komatu', inp('bMgmt', B['Vadības e-pasti'])) +
+        fld('Sūtītāja vārds', '', `<input type="text" class="minp" id="bFrom" value="${esc(B['Sūtītāja vārds'] || '')}">`) +
+        yn('bNote', B['Sūtīt paziņojumus'] !== 'nē', 'Paziņot autoram, kad budžets apstiprināts vai noraidīts'), 'budz') +
+      `<p class="hint" style="margin:4px 2px 0">Pārējās lietotnes (Aizvietošana, Izvešana, grafiki, Darba laiks) sūta paziņojumus uz telefonu vai SMS, ne e-pastu.</p>`, null);
+    s.querySelector('#mOn').onchange = (e) => { if (e.target.checked) s.querySelector('#mTo').focus(); };
+    const save = async (data, msg) => { try { const r = await api('mailCfgSave', data); if (r.ok === false) throw new Error(r.error); A.mail = r; toast(msg, 'ok'); remember(); drawAdmin(); } catch (e) { toast(netMsg(e), 'err'); } };
+    const v = (id) => s.querySelector('#' + id).value.trim(), c = (id) => s.querySelector('#' + id).checked;
+    s.onClick((e) => {
+      const b = e.target.closest('[data-msave]'); if (!b) return;
+      if (b.dataset.msave === 'all') { if (c('mOn') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v('mTo'))) return toast('Ievadiet e-pasta adresi novirzīšanai', 'err');
+        return save({ override: c('mOn') ? v('mTo') : '' }, c('mOn') ? 'Novirzīšana ieslēgta → ' + v('mTo') : 'Novirzīšana izslēgta'); }
+      if (b.dataset.msave === 'pers') return save({ pers: { ADMIN_EMAIL: v('pAdm'), EMAIL_PIENEMSANA: v('pHire'), EMAIL_ATVALINAJUMI: v('pVac'), EMAIL_GROZIJUMI: v('pChg'), PILNI_DATI_EPASTA: c('pFull') ? 'JĀ' : 'NĒ', ZINOT_VADITAJAM: c('pMgr') ? 'JĀ' : 'NĒ' } }, 'Personāla e-pasti saglabāti');
+      if (b.dataset.msave === 'budz') return save({ budz: { 'Vadības e-pasti': v('bMgmt'), 'Sūtītāja vārds': v('bFrom'), 'Sūtīt paziņojumus': c('bNote') ? 'jā' : 'nē' } }, 'Budžeta e-pasti saglabāti');
+    });
     s.querySelector('#mTestGo').onclick = async () => {
-      const to = s.querySelector('#mTest').value.trim(); if (!to) return toast('Ievadiet adresi', 'err');
+      const to = v('mTest'); if (!to) return toast('Ievadiet adresi', 'err');
       try { const r = await api('mailTest', { to }); if (r.sent && r.sent.length) toast('Nosūtīts: ' + r.sent.join(', '), 'ok'); else toast('Neizdevās: ' + ((r.failed || [])[0] || {}).error, 'err'); } catch (e) { toast(netMsg(e), 'err'); }
     };
   }
@@ -782,7 +805,7 @@ function drawAdmin() {
       c.addEventListener('drop', (e) => { e.preventDefault(); c.classList.remove('over'); const i = +e.dataTransfer.getData('text/plain'); if (!isNaN(i)) moveT(i, c.dataset.g); });
     });
     s.querySelectorAll('.tnew').forEach(inp => inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); s.querySelector(`[data-tadd="${CSS.escape(inp.dataset.g)}"]`).click(); } }));
-    s.addEventListener('click', async (e) => {
+    s.onClick(async (e) => {
       const td = e.target.closest('[data-tdel]'), ta = e.target.closest('[data-tadd]'), ti = e.target.closest('.titem'), gn = e.target.closest('#tGroupAdd');
       if (td) { e.preventDefault(); const t = A.M.types.slice(), x = t[+td.dataset.tdel]; if (!confirm('Dzēst darbu «' + x.name + '»?')) return; t.splice(+td.dataset.tdel, 1); return saveT(t); }
       if (ta) { const g = ta.dataset.tadd, inp = s.querySelector(`.tnew[data-g="${CSS.escape(g)}"]`), v = inp.value.trim(); if (!v) return inp.focus();
@@ -794,7 +817,7 @@ function drawAdmin() {
         document.body.appendChild(bg); bg.onclick = (ev) => { const b = ev.target.closest('[data-mv]'); if (!b && ev.target !== bg) return; bg.remove(); if (b && b.dataset.mv) moveT(i, b.dataset.mv); };
         return; }
     });
-    s.addEventListener('click', async (e) => {
+    s.onClick(async (e) => {
       const d = e.target.closest('[data-del]'), a = e.target.closest('[data-add]'); if (!d && !a) return; e.preventDefault();
       if (d && !confirm('Dzēst «' + d.parentElement.firstChild.textContent.trim() + '»?')) return;
       const k = (d || a).dataset[d ? 'del' : 'add'].split(':')[0];
@@ -838,7 +861,7 @@ function drawAdmin() {
       return `<div class="prow"><div class="nm"><b>${esc(r[0])}: ${esc(r[1])}</b><div style="font-size:13px;color:var(--ink-3);font-weight:600;margin-top:4px">${esc(r[2])}. ${esc(r[3])}</div></div><button class="btn ghost" data-keep="-1" data-i="${i}" style="width:auto;height:40px;padding:0 14px;font-size:13px">Izdarīts</button></div>`; };
     const s = adminShell(R.length ? `<p class="copy" style="text-align:left;margin:0 0 10px">${pairs ? `<b>${pairs} līdzīgi pāri.</b> Izvēlieties, kuru paturēt — otrs tiks apvienots ar to (darbi, problēmas un tiesības pārceltas, nekas netiek zaudēts). ` : ''}${info ? info + ' informatīvi ieraksti.' : ''}</p>
       ${pfx ? `<button class="btn" id="rvPfx" style="margin:0 0 8px">Apvienot ${pfx} adreses → paturēt «J |» / «VNĪ |»</button>` : ''}${info ? `<button class="btn ghost" id="rvInfo" style="margin:0 0 12px">Notīrīt informatīvos (${info})</button>` : ''}<div class="plist">${R.map(row).join('')}</div>` : '<div class="card" style="padding:20px;text-align:center;font-weight:700;color:var(--ink-3)">Viss pārbaudīts ✓</div>', null);
-    s.addEventListener('click', (e) => {
+    s.onClick((e) => {
       if (e.target.closest('#rvPfx')) { if (confirm('Apvienot ' + pfx + ' adrešu pārus?\n\nPaliks adrese ar «J |» vai «VNĪ |» (filtrs). Otra tiek dzēsta, tās darbi, problēmas un piekļuve pārcelti.')) saveM('reviewAutoPrefix', {}, () => toast('Apvienots: ' + (A.M.merged || 0) + (A.M.remaining ? ' · vēl ' + A.M.remaining + ' — spiediet vēlreiz' : '') + (A.M.failed ? ' · neizdevās ' + A.M.failed : ''), 'ok')); return; }
       if (e.target.closest('#rvInfo')) { if (confirm('Notīrīt ' + info + ' informatīvos ierakstus? Dati netiek mainīti.')) saveM('reviewClearInfo', {}); return; }
       const b = e.target.closest('[data-keep]'); if (!b) return; const keep = +b.dataset.keep, i = +b.dataset.i, r = R[i];
