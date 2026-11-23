@@ -165,6 +165,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .f input[type=text],.f input[type=tel]{width:100%;height:46px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 14px;outline:none;font-weight:700}
 .f input:focus{border-color:var(--brand)}
 .row2{display:flex;gap:8px}
+.tgl{display:flex;align-items:center;gap:10px;font-size:15px;cursor:pointer}.tgl input{width:22px;height:22px;accent-color:var(--ink)}
 .row2 .btn{width:auto;padding:0 14px;height:46px;font-size:14px;white-space:nowrap}
 .seg{display:flex;flex-wrap:wrap;gap:6px}
 .seg button{min-height:38px;padding:6px 12px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface);font-weight:700;font-size:13.5px}
@@ -655,7 +656,7 @@ $('menuBtn').onclick = () => {
 };
 
 /* ---------- Administrēšana: cilvēki un pilnvaras + pamatdati (viens saraksts visām lietotnēm) ---------- */
-const TABS = [['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['companies', 'Uzņēmumi'], ['lists', 'Saraksti'], ['review', 'Pārbaudīt']];
+const TABS = [['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['companies', 'Uzņēmumi'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['review', 'Pārbaudīt']];
 const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kaisāmmateriāls)', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
 const KN = { izvedejs: 'Izvedējs', kurjers: 'Kurjers', plausejs: 'Pļāvējs', darba_devejs: 'Darba devējs' };
 /* Darbu izpildītāja (SIA) pilnvaras pa projektiem: projekts → veids */
@@ -678,7 +679,7 @@ function adminShell(inner, addLabel) {
   s.dataset.tab = A.tab;
   s.innerHTML = `<div class="adm-head"><div class="hd"><h3>Administrēšana</h3>${X}</div>${tabsHtml()}
     ${addLabel !== null ? `<div class="adm-top"><input id="pq" type="search" placeholder="Meklēt…" value="${esc(A.q)}" autocomplete="off">${addLabel ? `<button class="btn" id="pAdd">+ ${addLabel}</button>` : ''}</div>` : ''}</div><div id="aBody">${inner}</div>
-    <p class="copy">Izmaiņas uzreiz darbojas visās lietotnēs un tiek ierakstītas Google tabulā «SH | Dati».</p>`;
+    <p class="copy">Izmaiņas uzreiz darbojas visās lietotnēs.</p>`;
   $('aTabs').onclick = (e) => { const b = e.target.closest('[data-t]'); if (b) { A.tab = b.dataset.t; A.q = ''; A.f = {}; drawAdmin(); s.scrollTop = 0; } };
   let tm = 0; const inp = $('pq'); if (inp) inp.oninput = () => { clearTimeout(tm); tm = setTimeout(() => { A.q = inp.value; A.onlyList = true; drawAdmin(); A.onlyList = false; }, 120); };
   if (A.st) { s.scrollTop = A.st; A.st = 0; }
@@ -729,6 +730,27 @@ function drawAdmin() {
       <h3 class="ah">Darba devēji <small>${emp.length}</small></h3><div class="plist">${emp.map(row).join('') || empty()}</div>`, 'Uzņēmums');
     $('pAdd').onclick = () => editCompany(-1);
     s.querySelectorAll('.plist').forEach(l => l.onclick = (e) => { const r = e.target.closest('[data-c]'); if (r) { remember(); editCompany(+r.dataset.c); } });
+  }
+  if (A.tab === 'mail') {
+    if (!A.mail) { adminShell('<div class="skel"></div>', null); api('mailCfg').then(r => { A.mail = r; drawAdmin(); }).catch(e => toast(netMsg(e), 'err')); return; }
+    const m = A.mail, on = !!m.override;
+    const s = adminShell(`<div class="perm"><div class="pt">Novirzīšana</div>
+      <p class="hint" style="margin:0 0 10px">Kad ieslēgta, <b>visas</b> sistēmas vēstules (Budžets, Personāls u.c.) aiziet uz vienu adresi — tēmā redzams, kam tās bija domātas. Noder, kamēr adresāti vēl nav apstiprināti Cloudflare.</p>
+      <label class="tgl"><input type="checkbox" id="mOn" ${on ? 'checked' : ''}> <b>Novirzīt visas vēstules</b></label>
+      <div class="row2" style="margin-top:10px"><input type="email" id="mTo" value="${esc(m.override)}" placeholder="vards@selectumhome.lv" ${on ? '' : 'disabled'} style="flex:1;height:44px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface);padding:0 12px;min-width:0"><button class="btn" id="mSave" style="height:44px">Saglabāt</button></div>
+      <div class="chips" style="margin-top:10px"><span class="chip">${on ? '● Ieslēgta → ' + esc(m.override) : '○ Izslēgta — vēstules iet īstajiem adresātiem'}</span></div></div>
+      <div class="perm"><div class="pt">Pārbaude</div><p class="hint" style="margin:0 0 10px">Nosūta testa vēstuli no <b>${esc(m.from)}</b>. Adresātam jābūt apstiprinātam Cloudflare → Email Routing → Destination addresses.</p>
+      <div class="row2"><input type="email" id="mTest" placeholder="vards@selectumhome.lv" style="flex:1;height:44px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface);padding:0 12px;min-width:0"><button class="btn ghost" id="mTestGo" style="height:44px">Nosūtīt testu</button></div></div>`, null);
+    s.querySelector('#mOn').onchange = (e) => { const i = s.querySelector('#mTo'); i.disabled = !e.target.checked; if (e.target.checked) i.focus(); };
+    s.querySelector('#mSave').onclick = async () => {
+      const onv = s.querySelector('#mOn').checked, to = s.querySelector('#mTo').value.trim();
+      if (onv && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return toast('Ievadiet e-pasta adresi', 'err');
+      try { A.mail = await api('mailCfgSave', { override: onv ? to : '' }); toast(onv ? 'Novirzīšana ieslēgta → ' + to : 'Novirzīšana izslēgta', 'ok'); drawAdmin(); } catch (e) { toast(netMsg(e), 'err'); }
+    };
+    s.querySelector('#mTestGo').onclick = async () => {
+      const to = s.querySelector('#mTest').value.trim(); if (!to) return toast('Ievadiet adresi', 'err');
+      try { const r = await api('mailTest', { to }); if (r.sent && r.sent.length) toast('Nosūtīts: ' + r.sent.join(', '), 'ok'); else toast('Neizdevās: ' + ((r.failed || [])[0] || {}).error, 'err'); } catch (e) { toast(netMsg(e), 'err'); }
+    };
   }
   if (A.tab === 'lists') {
     const vals = (k) => k === 'types' ? A.M.types.map(t => t.name + (t.group ? ' · ' + t.group : '')) : (A.M.lists[k] || []);

@@ -1175,6 +1175,19 @@ async function masterAdmin(X, a, b, me) {
     await db.batch(groupsStmts(db, list)); X.c = {}; masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
   if (a === 'reviewAutoPrefix') { const r = await autoMergePrefixed(db); X.c = {}; masterDirty(X, 1); return Object.assign({ ok: true }, r, await master(db)); }
   if (a === 'reviewClearInfo') { const n = await clearInfoReview(db); masterDirty(X); return Object.assign({ ok: true, cleared: n }, await master(db)); }
+  /* E-pasts: pagaidu novirzīšana un pārbaude (Administrēšana → E-pasts) */
+  if (a === 'mailCfg') return { ok: true, override: (await kvGet(db, 'mail:override')) || '', from: mail.FROM };
+  if (a === 'mailCfgSave') {
+    const o = String(b.override || '').trim().toLowerCase();
+    if (o && !mail.valid(o)) return { ok: false, error: 'Nepareiza e-pasta adrese' };
+    await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('mail:override', ?)").bind(o).run();
+    return { ok: true, override: o, from: mail.FROM };
+  }
+  if (a === 'mailTest') {
+    const to = String(b.to || '').trim(); if (!mail.valid(to)) return { ok: false, error: 'Ievadiet e-pasta adresi' };
+    const r = await mail.send(X.env, { to, subject: 'SH sistēmas e-pasta pārbaude', fromName: 'SELECTUM HOME', html: '<p>Šī ir SH sistēmas testa vēstule (' + (me && me.name || '') + '). Ja to redzat — e-pasts strādā.</p><p style="color:#6d7672;font-size:12px">© VAITKEVIX, SIA</p>' });
+    return { ok: true, sent: r.sent, failed: r.failed };
+  }
   if (a === 'saveReview') { await db.batch([kvSet(db, 'masterReview', JSON.stringify(b.review || []))]); masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
   return null;
 }
