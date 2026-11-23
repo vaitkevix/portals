@@ -329,6 +329,8 @@ async function dlObj(db, objekts) {
 }
 export async function dlSync(env) {
   const db = env.DB, today = todayIso(), log = [];
+  const on = await db.prepare("SELECT v FROM kv WHERE k = 'pers:dlSync'").first();   // izslēgts (2026-11-23): Darba laika darbiniekus vada vadītāji paši; ieslēgt — kv pers:dlSync = '1'
+  if (!on || on.v !== '1') return log;
   const W = () => all(db, 'SELECT phone, vards, amats, anorm, aktivs FROM dl_worker');
   // 1) apstiprināta pieņemšana → jauns darbinieks (vai atjauno esošo pēc tālruņa)
   for (const h of await all(db, "SELECT * FROM pers_hire WHERE statuss = 'Apstiprināts' AND dl_sync = ''")) {
