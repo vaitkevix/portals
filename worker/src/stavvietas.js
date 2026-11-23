@@ -137,7 +137,7 @@ export async function api(request, env, X, fetchWx) {
   try {
     if (a === 'boot') {
       const t = today(), from = b.from || addDays(t, -7), to = b.to || addDays(t, 21);
-      const objects = (await db.prepare('SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, o.piekluve, s.qty, s.intervals, s.aktivs, s.brigade, s.piezime, s.veidi, s.dati, s.lat, s.lng FROM objects o LEFT JOIN stav_obj s ON s.anorm = o.anorm ORDER BY o.ord').all()).results || [];
+      const objects = (await db.prepare('SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, o.piekluve, s.qty, s.intervals, s.aktivs, s.brigade, s.piezime, s.veidi, s.dati, s.lat, s.lng FROM objects o LEFT JOIN stav_obj s ON s.anorm = o.anorm JOIN obj_info i ON i.anorm = o.anorm AND i.pazemes = 1 ORDER BY o.ord').all()).results || [];   // tikai objekti ar pazemes stāvvietu (Administrēšana → Objekti)
       if (ROLE_W[role] < 1) objects.forEach(o => { o.piekluve = ''; });
       let visits = (await db.prepare("SELECT * FROM stav_visit WHERE (datums >= ? AND datums <= ?) OR (avots = 'pieteikums' AND statuss = 'plan') ORDER BY datums, steidzami DESC, prio DESC, adrese").bind(from, to).all()).results || [];
       if (me.company) visits = visits.filter(v => !v.brigade || v.brigade === me.name);   // SIA redz savus darbus
@@ -163,6 +163,7 @@ export async function api(request, env, X, fetchWx) {
       for (const o of list) {
         const k = anorm(o.adrese || o.anorm); if (!k) continue;
         const act = !(o.aktivs === false || o.aktivs === 0), br = String(o.brigade || '').slice(0, 80);
+        st.push(db.prepare('INSERT INTO obj_info (anorm, pazemes) VALUES (?, 1) ON CONFLICT(anorm) DO UPDATE SET pazemes = 1').bind(k));   // grafikā = ir pazemes stāvvieta
         st.push(db.prepare('INSERT INTO stav_obj (anorm, qty, intervals, aktivs, brigade, piezime, veidi, dati) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET qty = excluded.qty, intervals = excluded.intervals, aktivs = excluded.aktivs, brigade = excluded.brigade, piezime = excluded.piezime, veidi = excluded.veidi, dati = excluded.dati')
           .bind(k, Math.max(0, Math.min(1e6, +o.qty || 0)), Math.max(1, Math.min(MAX_INT, Math.round(+o.intervals || C.interval))), act ? 1 : 0, br, String(o.piezime || '').slice(0, 300),
             (Array.isArray(o.veidi) ? o.veidi : String(o.veidi || '').split(',')).map(x => String(x).trim()).filter(x => (C.veidi || []).indexOf(x) !== -1).join(','), JSON.stringify(cleanObj(o.dati))));

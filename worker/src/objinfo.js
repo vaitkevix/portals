@@ -14,8 +14,8 @@ export async function allAlgas(db) {
 
 export async function info(db, adrese) {
   const k = anorm(adrese), out = { anorm: k };
-  const oi = await first(db, 'SELECT algas, piezimes FROM obj_info WHERE anorm = ?', k).catch(() => null);
-  out.algas = pj(oi && oi.algas, []); out.piezimes = (oi && oi.piezimes) || '';
+  const oi = await first(db, 'SELECT algas, piezimes, pazemes FROM obj_info WHERE anorm = ?', k).catch(() => null);
+  out.algas = pj(oi && oi.algas, []); out.piezimes = (oi && oi.piezimes) || ''; out.pazemes = !!(oi && oi.pazemes);
   const d = await first(db, 'SELECT kods, vajag_uzk, vajag_set, aktivs FROM dl_obj WHERE anorm = ?', k).catch(() => null);
   out.dl = { kods: d && d.aktivs ? d.kods : '', vajag_uzk: d ? !!d.vajag_uzk : true, vajag_set: d ? !!d.vajag_set : true,
     darbinieki: (await all(db, 'SELECT phone, vards, amats, aktivs FROM dl_worker WHERE anorm = ? ORDER BY aktivs DESC, vards', k).catch(() => [])) };
@@ -43,6 +43,10 @@ export async function save(db, b) {
   const now = new Date().toISOString();
   await db.prepare('INSERT INTO obj_info (anorm, algas, piezimes, atjaunots) VALUES (?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET algas = excluded.algas, piezimes = excluded.piezimes, atjaunots = excluded.atjaunots')
     .bind(k, JSON.stringify(algas), String(b.piezimes || '').trim().slice(0, 2000), now).run();
+  if ('pazemes' in b) {   // Pazemes stāvvieta: nav → pazūd no Stāvvietām, grafiks apturēts (vēsture paliek)
+    await db.prepare('UPDATE obj_info SET pazemes = ? WHERE anorm = ?').bind(b.pazemes ? 1 : 0, k).run();
+    if (!b.pazemes) await db.batch([db.prepare('UPDATE stav_obj SET aktivs = 0 WHERE anorm = ?').bind(k), db.prepare("DELETE FROM stav_visit WHERE anorm = ? AND statuss = 'plan' AND avots != 'pieteikums'").bind(k)]).catch(() => 0);
+  }
   if (b.dl) {   // Darba laiks: SMS kods un vajadzība (tā pati loģika kā Darba laika Iestatījumos)
     if (!kods) await db.prepare('UPDATE dl_obj SET aktivs = 0 WHERE anorm = ?').bind(k).run();
     else {
