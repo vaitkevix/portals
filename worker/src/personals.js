@@ -172,7 +172,8 @@ async function pinUser(db, pin, login) {
   pin = String(pin || '').trim(); login = String(login || '').trim().toLowerCase();
   if (!pin) return null;
   const p = await personByPin(db, pin);
-  if (p) { const r = (p.perms && p.perms.pers) || ''; return r ? { name: p.name, role: (r === 'admin' || r === 'skatitajs') ? 'admin' : 'vaditajs', viewer: r === 'skatitajs' } : null; }
+  if (p) { const r = (p.perms && p.perms.pers) || ''; return r ? { name: p.name, role: (r === 'admin' || r === 'skatitajs' || r === 'izpilditajs') ? 'admin' : 'vaditajs', viewer: r === 'skatitajs',
+    label: { admin: 'Administrators', izpilditajs: 'Izpildītājs', skatitajs: 'Skatītājs', vaditajs: 'Pieteicējs' }[r] } : null; }
   const rows = await kvJson(db, 'pers:users', []);
   const u = rows.find(r => String(r[0] || '').trim() && String(r[1] || '').trim() === pin && String(r[3] || '').trim().toUpperCase() !== 'NĒ' &&
     (!login || String(r[0]).trim().toLowerCase() === login));
@@ -442,7 +443,7 @@ async function mailChange(env, d) {
     ['Telefons', d.tel], ['E-pasts', d.epasts], ['Banka', d.banka], ['IBAN', full ? d.iban : (d.iban ? 'mainīts (redzams lietotnē)' : '')], ['Invaliditāte', d.inval], ['Pensionārs', d.pens]] });
   if (end) secs.push({ title: 'DARBA ATTIECĪBU BEIGAS', rows: [['Pēdējā darba diena', d.beigu_datums], ['Iemesls', d.iemesls]] });
   secs.push({ title: 'PIETEIKUMS', rows: [['Iesniedza', d.by], ['Piezīmes', d.piez]] });
-  return sendMail(env, S, recipients(S, 'chg'), (end ? 'Darba attiecību beigas: ' : 'Grozījumi: ') + d.darb + (d.speka ? ' no ' + d.speka : d.beigu_datums ? ' — ' + d.beigu_datums : ''),
+  return sendMail(env, S, await withIzp(env.DB, recipients(S, 'chg')), (end ? 'Darba attiecību beigas: ' : 'Grozījumi: ') + d.darb + (d.speka ? ' no ' + d.speka : d.beigu_datums ? ' — ' + d.beigu_datums : ''),
     end ? 'Darba attiecību beigas' : 'Grozījumi', d.darb + ' · ' + d.id, secs, '', end ? '#8a2a3b' : '#5b3fa0', d.id);
 }
 
@@ -500,6 +501,9 @@ async function getCalendarRange(db, fromStr, toStr) {
 }
 
 /* ---------- e-pasti (tas pats izskats kā GAS sendMail_) ---------- */
+/** Personāla izpildītāji (Pilnvaras → Personāls: Izpildītājs) ar e-pastu — arī saņem jaunos pieteikumus */
+async function izpEmails(db) { return (await people(db)).filter(p => p.active && p.perms && p.perms.pers === 'izpilditajs' && M.valid(p.email)).map(p => p.email.trim().toLowerCase()); }
+const withIzp = async (db, to) => [...new Set(String(to || '').split(',').concat(await izpEmails(db)).map(x => x.trim()).filter(Boolean))].join(',');
 function recipients(S, type) {
   const k = type === 'hire' ? ['EMAIL_PIENEMSANA'] : type === 'chg' ? ['EMAIL_GROZIJUMI', 'EMAIL_PIENEMSANA'] : ['EMAIL_ATVALINAJUMI'];
   const own = k.map(x => S[x] || '').find(x => /@/.test(x)) || '';
@@ -544,7 +548,7 @@ async function sendMail(env, S, to, subject, heading, sub, sections, note, accen
 }
 async function mailHire(env, d) {
   const S = await settings(env.DB), full = yes(S, 'PILNI_DATI_EPASTA', 'NĒ'), objs = splitObj(d.objekts);
-  return sendMail(env, S, recipients(S, 'hire'), 'Pieņemt darbā: ' + d.vards + ' — ' + d.sia + ', sāk ' + d.sakums, 'Pieņemt darbinieku', d.vards + ' · ' + d.id, [
+  return sendMail(env, S, await withIzp(env.DB, recipients(S, 'hire')), 'Pieņemt darbā: ' + d.vards + ' — ' + d.sia + ', sāk ' + d.sakums, 'Pieņemt darbinieku', d.vards + ' · ' + d.id, [
     { title: 'DARBINIEKS', rows: [['Vārds, Uzvārds', d.vards], ['Personas kods', full ? d.pk : ''], ['Deklarētā adrese', full ? d.adrese : ''],
       ['Telefona numurs', d.tel], ['E-pasts', d.epasts], ['Invaliditāte', d.inval], ['Pensionārs', d.pens], ['Veselības pārbaude', d.vesel]] },
     { title: 'DARBS', rows: [['SIA', d.sia], ['Objekti un amati', objs.map(e => objEntry(objPair(e), false)).join('\n')], ['Sāk strādāt', d.sakums], ['Begin Time', d.bt]] },
@@ -555,7 +559,7 @@ async function mailHire(env, d) {
 }
 async function mailVacation(env, d) {
   const S = await settings(env.DB);
-  return sendMail(env, S, recipients(S, 'vac'), 'Atvaļinājums: ' + d.darb + ' ' + d.no + ' – ' + d.lidz, 'Atvaļinājuma pieteikums', d.darb + ' · ' + d.id, [
+  return sendMail(env, S, await withIzp(env.DB, recipients(S, 'vac')), 'Atvaļinājums: ' + d.darb + ' ' + d.no + ' – ' + d.lidz, 'Atvaļinājuma pieteikums', d.darb + ' · ' + d.id, [
     { title: 'DARBINIEKS', rows: [['Vārds, Uzvārds', d.darb], ['SIA', d.sia], ['Objekti un amati', splitObj(d.objekts).join('\n')]] },
     { title: 'ATVAĻINĀJUMS', rows: [['Veids', d.veids], ['No', d.no], ['Līdz', d.lidz], ['Ilgums', d.cal + ' kalendārās dienas, ' + d.work + ' darba dienas'], ['Aizvietotājs', d.aizv]] },
     { title: 'PIETEIKUMS', rows: [['Iesniedza', d.by], ['Piezīmes', d.piez]] }
@@ -578,7 +582,7 @@ export async function api(env, req) {
     const u = await pinUser(db, req.pin, req.login);
     if (!u) { await new Promise(r => setTimeout(r, 600)); return { ok: false, error: 'Nepareizs PIN' }; }
     if (WRITES.indexOf(action) !== -1 && u.viewer) return { ok: false, error: 'Jums ir tikai skatīšanās tiesības' };
-    const user = { name: u.name, role: u.role };
+    const user = { name: u.name, role: u.role, label: u.label || (u.role === 'admin' ? 'Administrators' : 'Pieteicējs') };
     let out;
     if (action === 'login') out = { user, meta: await getInit(db, user) };
     else if (action === 'hire') out = await submitHire(env, user, req.form || {});

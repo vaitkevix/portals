@@ -8,7 +8,7 @@ export const ROLES = {
   aizv: ['', 'admin', 'vaditajs', 'skatitajs'],
   izv: ['', 'admin', 'pieteicejs', 'skatitajs'],
   kais: ['', 'admin', 'pieteicejs', 'skatitajs'],
-  pers: ['', 'admin', 'vaditajs', 'skatitajs'],
+  pers: ['', 'admin', 'vaditajs', 'izpilditajs', 'skatitajs'],   // izpilditajs = apstrādā pieteikumus (personāla speciālists)
   budz: ['', 'admin', 'gatavotājs', 'vadība', 'skatitajs'],
   pl: ['', 'skatitajs', 'admin', 'vaditajs', 'izpilditajs'],
   logi: ['', 'skatitajs', 'admin', 'vaditajs', 'izpilditajs'],
