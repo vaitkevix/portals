@@ -32,7 +32,7 @@ const BEGIN_TIME = ['Kodu kalkulators', 'Aplikācija viedtālrunī'];
 const STATUSES = ['Jauns', 'Apstrādē', 'Apstiprināts', 'Noraidīts'];
 const INVAL = ['NĒ', '1. grupa', '2. grupa', '3. grupa'];
 const OBJ_SEP = '; ', AM_SEP = ' — ';
-const READS = ['login', 'records', 'calendar', 'days', 'pay'], WRITES = ['hire', 'vacation', 'change', 'bonus', 'status'];
+const READS = ['login', 'records', 'calendar', 'days', 'pay', 'employee'], WRITES = ['hire', 'vacation', 'change', 'bonus', 'status'];
 
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? r.v : null; };
@@ -353,6 +353,40 @@ export async function dlSync(env) {
   return log;
 }
 
+/* ---------- DARBINIEKA PROFILS: dati, darbs, Darba laiks, atvaļinājumi, piemaksas, vēsture ---------- */
+async function employee(db, user, vards) {
+  const name = String(vards || '').trim(), k = name.toLowerCase(); if (!name) throw new Error('Nav darbinieka');
+  const mine = (r) => String(r.vards || r.darbinieks || '').trim().toLowerCase() === k;
+  const H = (await rowsOf(db, 'hire')).filter(mine), G = (await rowsOf(db, 'chg')).filter(mine), V = (await rowsOf(db, 'vac')).filter(mine), B = (await rowsOf(db, 'bonus')).filter(mine);
+  if (user.role !== 'admin' && !H.concat(G, V, B).some(r => r.iesniedza === user.name)) throw new Error('Nav piekļuves šim darbiniekam');
+  const admin = user.role === 'admin', h = H.filter(r => r.statuss !== 'Noraidīts').slice(-1)[0] || {};
+  const cur = { sia: h.sia || '', objekts: noAlga(h.objekts || ''), amats: h.amats || '', alga: Number(String(h.alga || '').replace(',', '.')) || 0, slodze: '', sakums: h.sakums || '', beidz: '',
+    tel: h.tel || '', epasts: h.epasts || '', adrese: admin ? h.adrese || '' : '', pk: admin ? h.pk || '' : '', banka: h.banka || '', iban: admin ? h.iban || '' : '', inval: h.inval || '', pens: h.pens || '' };
+  G.filter(g => g.statuss === 'Apstiprināts').forEach(g => {
+    if (g.sia) cur.sia = g.sia; if (g.objekts) { cur.objekts = noAlga(g.objekts); cur.amats = g.amats || cur.amats; } if (g.alga) cur.alga = Number(g.alga) || cur.alga;
+    if (g.slodze) cur.slodze = g.slodze + (g.stundas ? ' · ' + g.stundas + ' h/ned.' : ''); if (g.tel) cur.tel = g.tel; if (g.epasts) cur.epasts = g.epasts;
+    if (g.adrese && admin) cur.adrese = g.adrese; if (g.banka) cur.banka = g.banka; if (g.iban && admin) cur.iban = g.iban; if (g.inval) cur.inval = g.inval; if (g.pens) cur.pens = g.pens;
+    if (g.beigu_datums) cur.beidz = g.beigu_datums; });
+  // Darba laiks: darbinieks pēc tālruņa vai vārda; šī un iepriekšējā mēneša stundas
+  const ph = dlPhone(cur.tel), w = (ph && await db.prepare('SELECT * FROM dl_worker WHERE phone = ?').bind(ph).first()) || await db.prepare('SELECT * FROM dl_worker WHERE lower(trim(vards)) = ?').bind(k).first();
+  let dl = null;
+  if (w) {
+    const o = w.anorm ? await db.prepare('SELECT adrese FROM objects WHERE anorm = ?').bind(w.anorm).first() : null, t = todayIso(), y = +t.slice(0, 4), m = +t.slice(5, 7);
+    const span = (yy, mm) => [yy + '-' + p2(mm) + '-01', iso(new Date(Date.UTC(yy, mm, 0)))], prev = m === 1 ? [y - 1, 12] : [y, m - 1];
+    const hrs = async (a) => { const x = await workerHours(db, a[0], a[1]).catch(() => ({})), r = x[w.phone] || Object.values(x).find(v => String(v.vards || '').trim().toLowerCase() === k); return r ? { h: Math.round(r.min / 6) / 10, d: r.dienas } : { h: 0, d: 0 }; };
+    dl = { phone: w.phone, objekts: o ? o.adrese : '', amats: w.amats === 'set' ? 'Sētnieks' : 'Uzkopējs', aktivs: !!w.aktivs, sis: await hrs(span(y, m)), iepr: await hrs(span(prev[0], prev[1])) };
+  }
+  const ev = [];
+  H.forEach(r => ev.push({ t: 'hire', id: r.id, d: r.iesniegts, txt: 'Pieņemšana darbā · sāk ' + r.sakums, st: r.statuss }));
+  G.forEach(r => ev.push({ t: 'chg', id: r.id, d: r.iesniegts, txt: 'Grozījumi: ' + r.veids + (r.speka_no ? ' · no ' + r.speka_no : '') + (r.beigu_datums ? ' · pēdējā diena ' + r.beigu_datums : ''), st: r.statuss }));
+  V.forEach(r => ev.push({ t: 'vac', id: r.id, d: r.iesniegts, txt: 'Atvaļinājums ' + r.no + ' – ' + r.lidz + ' · ' + r.veids, st: r.statuss }));
+  B.forEach(r => ev.push({ t: 'bonus', id: r.id, d: r.iesniegts, txt: 'Piemaksa ' + eur(Number(r.summa) || 0) + ' · ' + r.iemesls + ' · ' + r.menesis, st: r.statuss }));
+  const key = (s) => { const m = /^(\d{2})\.(\d{2})\.(\d{4})(?: (\d{2}):(\d{2}))?/.exec(String(s || '')); return m ? m[3] + m[2] + m[1] + (m[4] || '00') + (m[5] || '00') : ''; };
+  ev.sort((a, b) => key(b.d).localeCompare(key(a.d)));
+  const vacDays = V.filter(r => r.statuss === 'Apstiprināts' && String(r.no).slice(-4) === todayIso().slice(0, 4)).reduce((n, r) => n + (Number(r.darba_dienas) || 0), 0);
+  return { vards: name, cur, dl, vacDays, piemaksas: B.filter(r => r.statuss === 'Apstiprināts').reduce((n, r) => n + (Number(r.summa) || 0), 0), vesture: ev };
+}
+
 /* ---------- ALGAS UN PIEMAKSAS ---------- */
 const ymOk = (m) => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(m || ''));
 async function submitBonus(env, user, f) {
@@ -598,6 +632,7 @@ export async function api(env, req) {
     else if (action === 'change') out = await submitChange(env, user, req.form || {});
     else if (action === 'bonus') out = await submitBonus(env, user, req.form || {});
     else if (action === 'pay') out = await payMonth(db, user, req.menesis);
+    else if (action === 'employee') out = await employee(db, user, req.vards);
     else if (action === 'days') out = { days: previewDays(req.no, req.lidz) };
     else if (action === 'records') out = { hire: await getRecords(db, user, 'hire'), vac: await getRecords(db, user, 'vac'), chg: await getRecords(db, user, 'chg'), bonus: await getRecords(db, user, 'bonus') };
     else if (action === 'status') { await setStatus(env, user, req.type, req.id, req.status, req.comment); out = {}; }
