@@ -12,7 +12,11 @@ export const UNITS = {
   darz: { name: 'Dārzniecība', unit: 'cilvēkst.' },
   stav: { name: 'Pazemes stāvvietas', unit: 'm²' },
   sniegs: { name: 'Sniega tīrīšana', unit: 'h' },
+  izv: { name: 'Izvešana', unit: 'm³' },
+  kais: { name: 'Kaisāmmateriāls', unit: 'maisi' },
 };
+const dmyIso = (s) => { const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(String(s || '').trim()); return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : ''; };
+const num = (v) => parseFloat(String(v == null ? '' : v).replace(',', '.')) || 0;
 async function all(db, sql, ...a) { try { return (await db.prepare(sql).bind(...a).all()).results || []; } catch (e) { return []; } }
 
 export async function clientsData(db) {
@@ -63,9 +67,40 @@ export async function report(db, clientId, ym) {
   // Sniegs — stundas
   for (const v of await all(db, "SELECT datums, adrese, anorm, izpilditajs, brigade, sakums, laiks, foto, izpilde FROM sniegs_visit WHERE statuss = 'done' AND datums >= ? AND datums <= ?", d0, d1))
     if (inC(v.anorm)) { const iz = J(v.izpilde); rows.push({ app: 'sniegs', datums: v.datums, adrese: v.adrese, daudz: r2(mins(v.sakums, v.laiks) / 60), kas: v.brigade || v.izpilditajs, piez: [iz.tehnika, iz.kaisits && iz.kaisits !== 'Nav' ? iz.kaisits + ' ' + (iz.kg || 0) + ' kg' : '', iz.kravas ? iz.kravas + ' kravas' : ''].filter(Boolean).join(', '), foto: v.foto }); }
+  // Izvešana — izvestie m³ (pēc izpildes datuma)
+  for (const t of await all(db, "SELECT adrese, m3, sia, izpildits, izv_kom, maisi, foto_pec FROM izv_task WHERE statuss = 'Izpildīts'")) {
+    const d = dmyIso(t.izpildits); if (!d || d < d0 || d > d1) continue;
+    if (inC(norm(t.adrese))) rows.push({ app: 'izv', datums: d, adrese: t.adrese, daudz: r2(num(t.m3)), kas: t.sia, piez: [t.maisi, t.izv_kom].filter(Boolean).join(' · '), foto: '' });
+  }
+  // Kaisāmmateriāls — piegādātie maisi
+  for (const t of await all(db, "SELECT adrese, materials, piegadati, kurjers, piegadats, kurj_kom FROM kais_task WHERE statuss = 'Piegādāts'")) {
+    const d = dmyIso(t.piegadats); if (!d || d < d0 || d > d1) continue;
+    if (inC(norm(t.adrese))) rows.push({ app: 'kais', datums: d, adrese: t.adrese, daudz: num(t.piegadati), kas: t.kurjers, piez: [t.materials, t.kurj_kom].filter(Boolean).join(' · '), foto: '' });
+  }
   rows.sort((a, b) => a.datums.localeCompare(b.datums) || a.adrese.localeCompare(b.adrese));
   rows.forEach(r => { r.cena = cen[r.app] || 0; r.summa = r.cena ? r2(r.daudz * r.cena) : 0; });
   const sum = {}; rows.forEach(r => { const s = sum[r.app] = sum[r.app] || { app: r.app, name: UNITS[r.app].name, unit: UNITS[r.app].unit, reizes: 0, daudz: 0, cena: r.cena, summa: 0 }; s.reizes++; s.daudz = r2(s.daudz + r.daudz); s.summa = r2(s.summa + r.summa); });
   const total = r2(Object.values(sum).reduce((a, s) => a + s.summa, 0));
   return { client: c ? Object.assign({}, c, { cenas: cen }) : null, ym, rows, sum: Object.values(sum), total, pvn: r2(total * 0.21), arPvn: r2(total * 1.21) };
+}
+
+/* ---------- Rēķini: mūsu rekvizīti un numerācija (kv) ---------- */
+const FIRMA = ['nosaukums', 'regnr', 'pvnnr', 'adrese', 'banka', 'iban', 'swift', 'epasts', 'talrunis', 'apmaksa_dienas', 'prefikss'];
+export async function firma(db) {
+  const r = await db.prepare("SELECT v FROM kv WHERE k = 'firma'").first(); const o = J(r && r.v);
+  const D = { nosaukums: 'SIA SELECTUM HOME', apmaksa_dienas: '14', prefikss: 'SH' }; Object.keys(o).forEach(k => { if (o[k]) D[k] = o[k]; }); return D;
+}
+export async function saveFirma(db, b) {
+  const o = {}; FIRMA.forEach(k => o[k] = String((b || {})[k] || '').trim().slice(0, 200));
+  await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('firma', ?)").bind(JSON.stringify(o)).run(); return firma(db);
+}
+/** Rēķina numurs klientam un mēnesim: viens un tas pats, ja izrakstīts atkārtoti; jauns — nākamais gada secībā (SH-2026-001) */
+export async function invoiceNo(db, clientId, ym) {
+  if (!/^\d{4}-\d{2}$/.test(ym || '')) throw new Error('Nederīgs mēnesis');
+  const key = 'inv:' + (clientId || 'visi') + ':' + ym, have = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(key).first();
+  if (have) return JSON.parse(have.v);
+  const F = await firma(db), y = new Date().getFullYear(), sk = 'inv:seq:' + y, cur = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(sk).first(), n = (cur ? +cur.v : 0) + 1;
+  const out = { nr: (F.prefikss || 'SH') + '-' + y + '-' + String(n).padStart(3, '0'), datums: new Date().toISOString().slice(0, 10) };
+  await db.batch([db.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind(sk, String(n)), db.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind(key, JSON.stringify(out))]);
+  return out;
 }

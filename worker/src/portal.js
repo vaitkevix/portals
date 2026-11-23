@@ -1,5 +1,5 @@
 import { summary as dlSummary, objStates as dlStates } from './darbalaiks.js';
-import { clientsData, saveClient, delClient, report } from './klienti.js';
+import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo } from './klienti.js';
 import { notify } from './webpush.js';
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
 export const APPS_P = ['aizv', 'izv', 'kais', 'pers', 'budz'];
@@ -207,6 +207,9 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'clients') return pj(Object.assign({ ok: true }, await clientsData(env.DB)));
     if (a === 'saveClient') { await saveClient(env.DB, b.client || {}); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
     if (a === 'delClient') { await delClient(env.DB, String(b.id || '')); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
+    if (a === 'firma') return pj(Object.assign({ ok: true }, { firma: await firma(env.DB) }));
+    if (a === 'firmaSave') return pj({ ok: true, firma: await saveFirma(env.DB, b.firma) });
+    if (a === 'invoiceNo') return pj(Object.assign({ ok: true }, await invoiceNo(env.DB, String(b.client || ''), String(b.ym || ''))));
     if (a === 'clientReport') return pj(Object.assign({ ok: true }, await report(env.DB, String(b.client || ''), String(b.ym || ''))));
     if (hooks.admin) { const r = await hooks.admin(a, b, me); if (r) return pj(r); }
     return pj({ ok: false, error: 'Nezināma darbība' });
