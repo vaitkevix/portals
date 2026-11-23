@@ -260,10 +260,19 @@ async function recipients(db, b) {
   if (k === 'nav') { const S = sessions(await marksOn(db, today())); return W.filter(w => !S.some(s => s.phone === w.phone)); }
   return W;
 }
+/* Vadītāja objekts: objekts.vaditajs = vārds vai tikai priekšvārds (piem. «Rostislavs» ↔ «Rostislavs F.») */
+const nm = (x) => String(x || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+const isMine = (vad, name) => { const a = nm(vad), b = nm(name); return !!a && !!b && (a === b || a === b.split(' ')[0] || b.startsWith(a + ' ') || a.startsWith(b + ' ')); };
+/** Vadītāja darbinieki: strādā viņa objektos vai viņš pievienoja */
+async function myPhones(db, name) {
+  const O = (await all(db, 'SELECT anorm, vaditajs FROM objects')).filter(o => isMine(o.vaditajs, name)).map(o => o.anorm), set = new Set(O);
+  const W = await all(db, 'SELECT phone, anorm, pievienoja FROM dl_worker'), A = await all(db, 'SELECT phone, anorm FROM dl_assign');
+  return { objekti: O, phones: [...new Set(W.filter(w => set.has(w.anorm) || isMine(w.pievienoja, name)).map(w => w.phone).concat(A.filter(a => set.has(a.anorm)).map(a => a.phone)))] };
+}
 async function iestatijumi(db) {
   const all_o = await all(db, `SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, d.kods, d.vajag_uzk, d.vajag_set, d.aktivs FROM objects o LEFT JOIN dl_obj d ON d.anorm = o.anorm ORDER BY o.adrese`);
   return { objekti: all_o.map(o => ({ anorm: o.anorm, adrese: o.adrese, vaditajs: o.vaditajs, grupa: o.grupa, kods: o.kods || '', vajag_uzk: o.kods ? !!o.vajag_uzk : true, vajag_set: o.kods ? !!o.vajag_set : true, aktivs: !!(o.kods && o.aktivs) })),
-    darbinieki: await all(db, 'SELECT phone, vards, amats, anorm, aktivs FROM dl_worker ORDER BY vards, phone'), piesaistes: await all(db, 'SELECT phone, anorm, amats FROM dl_assign'), cfg: await cfgOf(db) };
+    darbinieki: await all(db, 'SELECT phone, vards, amats, anorm, aktivs, pievienoja FROM dl_worker ORDER BY vards, phone'), piesaistes: await all(db, 'SELECT phone, anorm, amats FROM dl_assign'), cfg: await cfgOf(db) };
 }
 export async function api(request, env, X) {
   if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -298,7 +307,7 @@ export async function api(request, env, X) {
       const m = { datums: d, vards: String(b.vards || '').slice(0, 80), anorm: b.anorm, amats: am, phone: normPhone(b.phone), avots: 'labots', kas: me.name };
       await addMark(db, Object.assign({}, m, { veids: 'sak', laiks: b.sak })); if (b.beidz) await addMark(db, Object.assign({}, m, { veids: 'beidz', laiks: b.beidz }));
       return out({ ok: true }); }
-    if (a === 'iestatijumi') { need(3); return out(Object.assign({ ok: true }, await iestatijumi(db))); }
+    if (a === 'iestatijumi') { need(2); const r = await iestatijumi(db), m = await myPhones(db, me.name); return out(Object.assign({ ok: true, mani: m.phones, maniObj: m.objekti }, r)); }
     if (a === 'saveObj') { need(3); const k = String(b.kods || '').trim().toUpperCase();
       if (!b.anorm) throw new Error('Nav objekta');
       if (!k) { await db.prepare('UPDATE dl_obj SET aktivs = 0 WHERE anorm = ?').bind(b.anorm).run(); return out({ ok: true }); }
@@ -309,7 +318,13 @@ export async function api(request, env, X) {
       return out({ ok: true }); }
     if (a === 'delWorker') { need(3); const p = normPhone(b.phone); if (!p) throw new Error('Nav tālruņa');   // atzīmes un SMS vēsture paliek
       await db.batch([db.prepare('DELETE FROM dl_worker WHERE phone = ?').bind(p), db.prepare('DELETE FROM dl_assign WHERE phone = ?').bind(p)]); return out({ ok: true }); }
-    if (a === 'saveWorker') { need(3); const p = normPhone(b.phone); if (!p) throw new Error('Nepareizs tālrunis — 8 cipari vai +371…');
+    if (a === 'saveWorker') { need(2); const p = normPhone(b.phone); if (!p) throw new Error('Nepareizs tālrunis — ievadiet valsts kodu un numuru');
+      if (!String(b.vards || '').trim()) throw new Error('Ierakstiet vārdu un uzvārdu');
+      if (W < 3) {   // vadītājs: jauns darbinieks vai savējais
+        const ex = normPhone(b.oldPhone) || p, mine = (await myPhones(db, me.name)).phones;
+        if ((await workerOf(db, ex)) && mine.indexOf(ex) === -1) throw new Error('Šis darbinieks ir cita vadītāja — labot var administrators');
+        if (!normPhone(b.oldPhone) && await workerOf(db, p)) throw new Error('Darbinieks ar šo numuru jau ir sarakstā');
+      }
       const am = AMS.indexOf(b.amats) !== -1 ? b.amats : 'uzk', old = normPhone(b.oldPhone);
       if (old && old !== p) { if (await workerOf(db, p)) throw new Error('Šis numurs jau ir sarakstā'); await db.batch([db.prepare('UPDATE dl_worker SET phone = ? WHERE phone = ?').bind(p, old), db.prepare('UPDATE dl_assign SET phone = ? WHERE phone = ?').bind(p, old)]); }
       if (Array.isArray(b.objekti)) {   // objekti un amats katrā: [{ anorm, amats }]
@@ -317,8 +332,8 @@ export async function api(request, env, X) {
         await db.batch([db.prepare('DELETE FROM dl_assign WHERE phone = ?').bind(p), ...L.map(x => db.prepare('INSERT OR REPLACE INTO dl_assign (phone, anorm, amats) VALUES (?, ?, ?)').bind(p, x.anorm, x.amats))]);
         if (!b.anorm && L.length) b.anorm = L[0].anorm;
       }
-      await db.prepare('INSERT INTO dl_worker (phone, vards, amats, anorm, aktivs) VALUES (?, ?, ?, ?, ?) ON CONFLICT(phone) DO UPDATE SET vards = excluded.vards, amats = excluded.amats, anorm = excluded.anorm, aktivs = excluded.aktivs')
-        .bind(p, String(b.vards || '').trim().slice(0, 80), am, String(b.anorm || ''), b.aktivs === false ? 0 : 1).run();
+      await db.prepare('INSERT INTO dl_worker (phone, vards, amats, anorm, aktivs, pievienoja) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(phone) DO UPDATE SET vards = excluded.vards, amats = excluded.amats, anorm = excluded.anorm, aktivs = excluded.aktivs')
+        .bind(p, String(b.vards || '').trim().replace(/\s+/g, ' ').slice(0, 80), am, String(b.anorm || ''), b.aktivs === false ? 0 : 1, me.name).run();
       return out({ ok: true, phone: p }); }
     if (a === 'saveCfg') { need(3); const c = Object.assign({}, await cfgOf(db));
       if (okT(b.rits)) c.rits = b.rits; if (okT(b.vakars)) c.vakars = b.vakars; if (typeof b.atgadinat === 'boolean') c.atgadinat = b.atgadinat; if (b.numurs != null) c.numurs = normPhone(b.numurs) || '';
