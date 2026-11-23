@@ -312,7 +312,8 @@ function todayIso() { const p = Object.fromEntries(new Intl.DateTimeFormat('en-G
 async function dlObj(db, objekts) {
   const first = splitObj(objekts).map(objPair)[0]; if (!first) return { anorm: '', amats: '' };
   const k = anorm(first.name), o = await db.prepare('SELECT anorm FROM objects WHERE anorm = ?').bind(k).first();
-  return { anorm: o ? o.anorm : '', amats: first.amati.length ? dlAmats(first.amati[0]) : '' };   // galvenais = pirmais amats
+  const all = [...new Set(splitObj(objekts).map(objPair).flatMap(x => x.amati).map(dlAmats))];   // visos objektos gan uzkopējs, gan sētnieks → «abi»
+  return { anorm: o ? o.anorm : '', amats: all.length > 1 ? 'abi' : all[0] || '' };
 }
 export async function dlSync(env) {
   const db = env.DB, today = todayIso(), log = [];

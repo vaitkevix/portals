@@ -8,7 +8,17 @@ import { today, addDays, dow, nowStr, uid, kv, kvSet, CORS, out } from './util.j
 
 export const KEY = 'dl';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
-const AM = { uzk: 'uzkopējs', set: 'sētnieks' };
+const AM = { uzk: 'uzkopējs', set: 'sētnieks', abi: 'uzkopējs un sētnieks' };
+const AMS = ['uzk', 'set', 'abi'];
+/* Darbiniekam «abi» — amatu šajā reizē nosaka objekts: ko objektam vajag, kuram amatam nav cita darbinieka, kas vēl nav atzīmēts šodien */
+async function roleAt(db, W, o, S) {
+  if (W.amats !== 'abi') return W.amats || 'uzk';
+  let r = ['uzk', 'set'].filter(a => a === 'uzk' ? o.vajag_uzk : o.vajag_set); if (!r.length) r = ['uzk', 'set'];
+  if (r.length > 1) { const other = await all(db, "SELECT amats FROM dl_worker WHERE aktivs = 1 AND anorm = ? AND phone != ? AND amats IN ('uzk', 'set')", o.anorm, W.phone);
+    const f = r.filter(a => !other.some(x => x.amats === a)); if (f.length) r = f; }
+  if (r.length > 1) { const f = r.filter(a => roleState(S, o.anorm, a).statuss === 'nav'); if (f.length) r = f; }
+  return r[0];
+}
 const SMS_API = 'https://api.sms-gate.app/3rdparty/v1';
 const DEF_CFG = { rits: '07:30', vakars: '20:00', atgadinat: true, numurs: '' };   // numurs — SMS telefona numurs uzlīmēm
 async function all(db, sql, ...a) { return (await db.prepare(sql).bind(...a).all()).results || []; }
@@ -117,8 +127,9 @@ export async function handleSms(db, phone, text) {
     const same = open.find(s => s.anorm === o.anorm);
     if (same) return { reply: o.adrese + ': jau esi atzīmēts darbā kopš ' + same.sak + '. Beigās sūti STOP.', anorm: o.anorm };
     for (const s of open) await addMark(db, { datums: d, vards: W.vards, veids: 'beidz', laiks: t, anorm: s.anorm, amats: s.amats, phone, kas: phone });   // pārgāja uz citu objektu
-    await addMark(db, { datums: d, vards: W.vards, veids: 'sak', laiks: t, anorm: o.anorm, amats: W.amats, phone, kas: phone });
-    return { reply: o.adrese + ': ' + am + ' atzīmēts darbā ' + t + '. Beigās sūti STOP.', anorm: o.anorm };
+    const ra = await roleAt(db, W, o, sessions(await marksOn(db, d)));
+    await addMark(db, { datums: d, vards: W.vards, veids: 'sak', laiks: t, anorm: o.anorm, amats: ra, phone, kas: phone });
+    return { reply: o.adrese + ': ' + AM[ra] + ' atzīmēts darbā ' + t + '. Beigās sūti STOP.', anorm: o.anorm };
   }
   if (c.cmd === 'beidz') {
     if (!open.length) return { reply: 'Šodien nav atzīmēts darba sākums. Darbu sākot sūti START un objekta kodu.', anorm: W.anorm };
@@ -171,7 +182,7 @@ export async function reminders(env, force) {
     const O = (await objs(db)).filter(o => o.aktivs), S = sessions(await marksOn(db, d)), W = await all(db, 'SELECT phone, amats, anorm FROM dl_worker WHERE aktivs = 1');
     for (const o of O) for (const am of ['uzk', 'set']) {
       if (!(am === 'uzk' ? o.vajag_uzk : o.vajag_set) || roleState(S, o.anorm, am).statuss !== 'nav') continue;
-      const to = W.filter(w => w.anorm === o.anorm && w.amats === am).map(w => w.phone);
+      const to = W.filter(w => w.anorm === o.anorm && (w.amats === am || w.amats === 'abi')).map(w => w.phone);
       if (to.length) a += await sendSms(env, to, 'Atgādinājums: ' + o.adrese + ' — šodien neesi atzīmējies darbā. Darbu sākot sūti START ' + o.kods + '.', o.anorm);
     }
   }
@@ -233,8 +244,8 @@ export async function workerHours(db, no, lidz) {
 }
 async function recipients(db, b) {
   const W = await all(db, 'SELECT phone, amats, anorm FROM dl_worker WHERE aktivs = 1'), k = b.kam;
-  if (k === 'set' || k === 'uzk') return W.filter(w => w.amats === k);
-  if (k === 'obj') return W.filter(w => w.anorm === b.anorm && (!b.amats || w.amats === b.amats));
+  if (k === 'set' || k === 'uzk') return W.filter(w => w.amats === k || w.amats === 'abi');
+  if (k === 'obj') return W.filter(w => w.anorm === b.anorm && (!b.amats || w.amats === b.amats || w.amats === 'abi'));
   if (k === 'nav') { const S = sessions(await marksOn(db, today())); return W.filter(w => !S.some(s => s.phone === w.phone)); }
   return W;
 }
@@ -285,8 +296,10 @@ export async function api(request, env, X) {
       await db.prepare('INSERT INTO dl_obj (anorm, kods, vajag_uzk, vajag_set, aktivs) VALUES (?, ?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET kods = excluded.kods, vajag_uzk = excluded.vajag_uzk, vajag_set = excluded.vajag_set, aktivs = excluded.aktivs')
         .bind(b.anorm, k, b.vajag_uzk === false ? 0 : 1, b.vajag_set === false ? 0 : 1, b.aktivs === false ? 0 : 1).run();
       return out({ ok: true }); }
+    if (a === 'delWorker') { need(3); const p = normPhone(b.phone); if (!p) throw new Error('Nav tālruņa');   // atzīmes un SMS vēsture paliek
+      await db.prepare('DELETE FROM dl_worker WHERE phone = ?').bind(p).run(); return out({ ok: true }); }
     if (a === 'saveWorker') { need(3); const p = normPhone(b.phone); if (!p) throw new Error('Nepareizs tālrunis — 8 cipari vai +371…');
-      const am = b.amats === 'set' ? 'set' : 'uzk', old = normPhone(b.oldPhone);
+      const am = AMS.indexOf(b.amats) !== -1 ? b.amats : 'uzk', old = normPhone(b.oldPhone);
       if (old && old !== p) { if (await workerOf(db, p)) throw new Error('Šis numurs jau ir sarakstā'); await db.prepare('UPDATE dl_worker SET phone = ? WHERE phone = ?').bind(p, old).run(); }
       await db.prepare('INSERT INTO dl_worker (phone, vards, amats, anorm, aktivs) VALUES (?, ?, ?, ?, ?) ON CONFLICT(phone) DO UPDATE SET vards = excluded.vards, amats = excluded.amats, anorm = excluded.anorm, aktivs = excluded.aktivs')
         .bind(p, String(b.vards || '').trim().slice(0, 80), am, String(b.anorm || ''), b.aktivs === false ? 0 : 1).run();
