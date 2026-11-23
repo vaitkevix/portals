@@ -32,7 +32,7 @@ const BEGIN_TIME = ['Kodu kalkulators', 'Aplikācija viedtālrunī'];
 const STATUSES = ['Jauns', 'Apstrādē', 'Apstiprināts', 'Noraidīts'];
 const INVAL = ['NĒ', '1. grupa', '2. grupa', '3. grupa'];
 const OBJ_SEP = '; ', AM_SEP = ' — ';
-const READS = ['login', 'records', 'calendar', 'days', 'pay', 'employee', 'mailSet'], WRITES = ['hire', 'vacation', 'change', 'bonus', 'status', 'delete', 'saveMailSet'];
+const READS = ['login', 'records', 'calendar', 'days', 'pay', 'employee', 'mailSet'], WRITES = ['hire', 'vacation', 'change', 'bonus', 'status', 'delete', 'saveMailSet', 'resend'];
 
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? r.v : null; };
@@ -493,6 +493,38 @@ async function submitChange(env, user, f) {
   if (mailErr) await db.prepare('UPDATE pers_chg SET mail_err = ? WHERE id = ?').bind(mailErr, id).run();
   return { id, mailErr };
 }
+/** Administrators: nosūtīt pieteikuma e-pastu vēlreiz (piem., pēc pagaidu novirzīšanas izslēgšanas) */
+async function resendMail(env, user, type, id) {
+  if (user.role !== 'admin') throw new Error('Tikai administratoram');
+  const tbl = TBL[type]; if (!tbl || type === 'bonus') throw new Error('Nezināms pieteikuma veids');
+  const r = await env.DB.prepare('SELECT * FROM ' + tbl + ' WHERE id = ?').bind(String(id || '')).first();
+  if (!r) throw new Error('Pieteikums nav atrasts: ' + id);
+  const by = r.iesniedza;
+  let err;
+  if (type === 'hire') err = await mailHire(env, { id: r.id, by, vards: r.vards, pk: r.pk, adrese: r.adrese, tel: r.tel, epasts: r.epasts, inval: r.inval, pens: r.pens, vesel: r.vesel, sia: r.sia,
+    objekts: r.objekts, amats: r.amats, sakums: r.sakums, alga: +r.alga || 0, banka: r.banka, iban: r.iban, piez: r.piezimes, bt: r.begin_time });
+  else if (type === 'vac') err = await mailVacation(env, { id: r.id, by, darb: r.darbinieks, sia: r.sia, objekts: r.objekts, amats: r.amats, veids: r.veids, no: r.no, lidz: r.lidz,
+    cal: r.kal_dienas, work: r.darba_dienas, aizv: r.aizv, piez: r.piezimes, warnings: [] });
+  else err = await mailChange(env, { id: r.id, by, darb: r.darbinieks, veids: String(r.veids || '').split(',').map(x => x.trim()).filter(Boolean), speka: r.speka_no, siaBija: r.sia_bija,
+    objBija: r.objekts_bija, sia: r.sia, objekts: r.objekts, amats: r.amats, alga: r.alga, slodze: r.slodze, stundas: r.stundas, adrese: r.adrese, tel: r.tel, epasts: r.epasts,
+    banka: r.banka, iban: r.iban, inval: r.inval, pens: r.pens, beigu_datums: r.beigu_datums, iemesls: r.iemesls, piez: r.piezimes });
+  await env.DB.prepare('UPDATE ' + tbl + ' SET mail_err = ? WHERE id = ?').bind(err || '', r.id).run();
+  return { id: r.id, mailErr: err || '' };
+}
+
+/** kv «pers:resend» = 'chg:G-0001,hire:P-0003' → cron nosūta šo pieteikumu e-pastus vēlreiz; rezultāts kv «pers:resendOut» */
+export async function resendQueued(env) {
+  const r = await env.DB.prepare("SELECT v FROM kv WHERE k = 'pers:resend'").first();
+  if (!r || !r.v) return;
+  await env.DB.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('pers:resend', '')").run();
+  const out = [];
+  for (const it of String(r.v).split(',').map(x => x.trim()).filter(Boolean)) {
+    const [type, id] = it.split(':');
+    try { const x = await resendMail(env, { role: 'admin' }, type, id); out.push(id + ': ' + (x.mailErr || 'nosūtīts')); } catch (e) { out.push(it + ': ' + (e.message || e)); }
+  }
+  await env.DB.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('pers:resendOut', ?)").bind(new Date().toISOString() + ' ' + out.join('; ')).run();
+}
+
 async function mailChange(env, d) {
   const S = await settings(env.DB), full = yes(S, 'PILNI_DATI_EPASTA', 'NĒ'), end = d.veids.indexOf(CHG_TYPES[3]) >= 0;
   if (!yes(S, 'MAIL_CHG', 'JĀ')) return '';
@@ -679,6 +711,7 @@ export async function api(env, req) {
     else if (action === 'mailSet') out = await mailSet(db, user);
     else if (action === 'saveMailSet') out = await saveMailSet(db, user, req.set);
     else if (action === 'delete') { await delRec(db, user, req.type, req.id); out = {}; }
+    else if (action === 'resend') out = await resendMail(env, user, req.type, req.id);
     else if (action === 'status') { await setStatus(env, user, req.type, req.id, req.status, req.comment); out = {}; }
     else out = await getCalendarRange(db, req.from, req.to);
     return Object.assign({ ok: true }, out || {});

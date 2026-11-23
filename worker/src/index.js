@@ -13,7 +13,7 @@ import * as darznieciba from './darznieciba.js';
 import * as stavvietas from './stavvietas.js';
 import * as darbalaiks from './darbalaiks.js';
 import { fetchWx, wxCron } from './wx.js';
-import { notify as wpNotify } from './webpush.js';
+import { notify as wpNotify, managers as wpManagers } from './webpush.js';
 import { cleanAddr } from './util.js';
 import * as gsheets from './sheets.js';
 import * as ai from './ai.js';
@@ -96,21 +96,35 @@ export default {
 
   /** Cron: lietotāji, darbu veidi un objekti no Google tabulas */
   async scheduled(event, env, ctx) {
-    if (event.cron !== '*/5 * * * *') ctx.waitUntil(syncConfig(new Ctx(env, ctx)).catch(e => console.error('syncConfig', e)));
-    if (event.cron !== '*/5 * * * *') ctx.waitUntil(mirrorSheets(new Ctx(env, ctx)).catch(e => console.error('mirror', e)));
+    const J = (name, f) => ctx.waitUntil(cronJob(env, name, f));
+    if (event.cron !== '*/5 * * * *') { J('syncConfig', () => syncConfig(new Ctx(env, ctx))); J('mirror', () => mirrorSheets(new Ctx(env, ctx))); }
     if (event.cron !== '*/5 * * * *') return;   // :00 un :30 nostrādā abi trigeri — pārējais tikai vienreiz (*/5)
-    ctx.waitUntil(izvDrain(env, ctx, 60000).catch(e => console.error('izvDrain', e)));
-    ctx.waitUntil(plCron(env).catch(e => console.error('plCron', e)));
-    ctx.waitUntil(foto.migrateDrive(env).catch(e => console.error('foto', e)));
-    ctx.waitUntil(gsheets.peek(env, env.DB).catch(e => console.error('peek', e)));
-    ctx.waitUntil(mail.selfTest(env).catch(e => console.error('mail', e)));
-    ctx.waitUntil(izvN.maybeSwitch(env).catch(e => console.error('izv', e)));
-    ctx.waitUntil(persN.maybeSwitch(env).catch(e => console.error('pers', e)));
-    ctx.waitUntil(budzN.maybeSwitch(env).catch(e => console.error('budz', e)));
-    ctx.waitUntil(kais.maybeSwitch(env).then(() => kais.pushSheet(env)).catch(e => console.error('kais', e)));
-    ctx.waitUntil((async () => { await wxCron(env).catch(e => console.error('wx', e)); for (const k in GRAF) await GRAF[k].cron(env).catch(e => console.error('cron ' + k, e)); })());
+    J('izvDrain', () => izvDrain(env, ctx, 60000));
+    J('plCron', () => plCron(env));
+    J('foto', () => foto.migrateDrive(env));
+    J('peek', () => gsheets.peek(env, env.DB));
+    J('mail', () => mail.selfTest(env));
+    J('izv', () => izvN.maybeSwitch(env));
+    J('pers', () => persN.maybeSwitch(env));
+    J('persResend', () => persN.resendQueued(env));
+    J('budz', () => budzN.maybeSwitch(env));
+    J('kais', () => kais.maybeSwitch(env).then(() => kais.pushSheet(env)));
+    ctx.waitUntil((async () => { await cronJob(env, 'wx', () => wxCron(env)); for (const k in GRAF) await cronJob(env, 'cron ' + k, () => GRAF[k].cron(env)); })());
   }
 };
+
+/* Cron stāvoklis: kv health:<darbs> = {ok, err, n, msg}. Pēc 3 kļūdām pēc kārtas — push portāla adminiem (vienreiz, līdz atkal izdodas). */
+async function cronJob(env, name, f) {
+  const k = 'health:' + name;
+  let h = {}; try { h = JSON.parse((await kvGet(env.DB, k)) || '{}'); } catch (e) {}
+  try { await f(); if (h.n || !h.ok || Date.now() - Date.parse(h.ok) > 3600000) await kvSet(env.DB, k, JSON.stringify({ ok: new Date().toISOString(), n: 0 })).run(); }
+  catch (e) {
+    console.error(name, e);
+    h.n = (h.n || 0) + 1; h.err = new Date().toISOString(); h.msg = String(e && e.message || e).slice(0, 300);
+    await kvSet(env.DB, k, JSON.stringify(h)).run().catch(() => {});
+    if (h.n === 3) await wpNotify(env, await wpManagers(env, 'portal'), { title: 'SH: fona darbs nestrādā', body: name + ': ' + h.msg, url: '/sh/' }).catch(() => {});
+  }
+}
 
 /* ---------------- Izvešana un Kaisāmmateriāls: ātrais starpnieks uz Apps Script ----------------
  * Google tabula paliek galvenā (no tās taisa rēķinus). Lasīšana nāk no kešatmiņas D1 (uzreiz), atjaunojas fonā;
