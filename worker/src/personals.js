@@ -23,12 +23,15 @@ const CHG_COLS = ['id', 'iesniegts', 'iesniedza', 'darbinieks', 'veids', 'speka_
   'banka', 'iban', 'inval', 'pens', 'beigu_datums', 'iemesls', 'piezimes', 'statuss', 'komentars'];
 const CHG_TYPES = ['Amats / objekts / SIA', 'Alga / slodze', 'Personas dati', 'Darba attiecību beigas'];
 const SLODZE = ['Pilna slodze', 'Nepilna slodze'];
-const TBL = { hire: 'pers_hire', vac: 'pers_vac', chg: 'pers_chg' }, PFX_TBL = { P: 'pers_hire', A: 'pers_vac', G: 'pers_chg' };
+const TBL = { hire: 'pers_hire', vac: 'pers_vac', chg: 'pers_chg', bonus: 'pers_bonus' }, PFX_TBL = { P: 'pers_hire', A: 'pers_vac', G: 'pers_chg', M: 'pers_bonus' };
+const BONUS_HEADERS = ['ID', 'Iesniegts', 'Iesniedza', 'Darbinieks', 'Mēnesis', 'Iemesls', 'Summa (EUR)', 'Objekts', 'Piezīmes', 'Statuss', 'Admina komentārs'];
+const BONUS_COLS = ['id', 'iesniegts', 'iesniedza', 'darbinieks', 'menesis', 'iemesls', 'summa', 'objekts', 'piezimes', 'statuss', 'komentars'];
+const BONUS_REASONS = ['Par labu darbu', 'Papilddarbs', 'Aizvietošana', 'Strādāja atvaļinājuma laikā', 'Virsstundas', 'Cits'];
 const BEGIN_TIME = ['Kodu kalkulators', 'Aplikācija viedtālrunī'];
 const STATUSES = ['Jauns', 'Apstrādē', 'Apstiprināts', 'Noraidīts'];
 const INVAL = ['NĒ', '1. grupa', '2. grupa', '3. grupa'];
 const OBJ_SEP = '; ', AM_SEP = ' — ';
-const READS = ['login', 'records', 'calendar', 'days'], WRITES = ['hire', 'vacation', 'change', 'status'];
+const READS = ['login', 'records', 'calendar', 'days', 'pay'], WRITES = ['hire', 'vacation', 'change', 'bonus', 'status'];
 
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? r.v : null; };
@@ -218,8 +221,13 @@ async function getInit(db, user) {
     if (name && !employees[name.toLowerCase()]) employees[name.toLowerCase()] = { name, sia: r.sia, objekts: r.objekts, amats: r.amats };
     objNames(r.objekts).forEach(o => objekti.add(o));
   });
+  // esošās algas pa objektiem un amatiem (pēdējā nenoraidītā pieņemšana) — piedāvājums jaunai pieņemšanai
+  const algas = {};
+  (await rowsOf(db, 'hire')).forEach(r => { if (r.statuss === 'Noraidīts') return; splitObj(r.objekts).map(objPair).forEach(o => {
+    if (!(o.alga > 0)) return; const k = o.name.trim().toLowerCase(), a = algas[k] || (algas[k] = {});
+    if (o.amati.length > 1) a[o.amati.join(', ')] = o.alga; else (o.amati.length ? o.amati : ['']).forEach(am => a[am] = o.alga); }); });   // vairāku amatu alga — tikai tieši tādai kombinācijai
   return {
-    user, statuses: STATUSES, inval: INVAL,
+    user, statuses: STATUSES, inval: INVAL, algas,
     lists: { sia: colVals('SIA'), bankas: colVals('Banka'), veidi: colVals('Atvaļinājuma veids'), amati: colVals('Amats'), kodi: colVals('Tālruņa kods'),
       objekti: [...objekti].sort((a, b) => a.localeCompare(b, 'lv')) },
     employees: Object.values(employees).sort((a, b) => a.name.localeCompare(b.name, 'lv'))
@@ -340,6 +348,54 @@ export async function dlSync(env) {
   return log;
 }
 
+/* ---------- ALGAS UN PIEMAKSAS ---------- */
+const ymOk = (m) => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(m || ''));
+async function submitBonus(env, user, f) {
+  const db = env.DB, req = need(f);
+  const darb = req('darbinieks', 'Darbinieks'), men = String(f.menesis || '').trim();
+  if (!ymOk(men)) throw new Error('Izvēlieties mēnesi.');
+  const iem = req('iemesls', 'Iemesls'); if (BONUS_REASONS.indexOf(iem) < 0) throw new Error('Nezināms iemesls.');
+  const sum = parseFloat(String(f.summa || '').replace(',', '.')); if (!(sum > 0 && sum < 100000)) throw new Error('Ievadiet summu (EUR).');
+  const piez = String(f.piezimes || '').trim();
+  if ((iem === 'Cits' || iem === 'Papilddarbs') && !piez) throw new Error('Īsi aprakstiet, par ko piemaksa.');
+  const id = await nextId(db, 'M');
+  await insert(db, 'pers_bonus', BONUS_COLS, [id, stamp(), user.name, darb, men, iem, String(Math.round(sum * 100) / 100), String(f.objekts || '').trim(), piez, 'Jauns', '']);
+  return { id };
+}
+/** Mēneša algas: pamatalga (pieņemšana + apstiprinātie grozījumi līdz mēneša beigām) + piemaksas. Vadītājs redz tikai savas piemaksas. */
+async function payMonth(db, user, men) {
+  if (!ymOk(men)) throw new Error('Nepareizs mēnesis.');
+  const [y, m] = men.split('-').map(Number), start = men + '-01', end = iso(new Date(Date.UTC(y, m, 0)));
+  const bonus = (await rowsOf(db, 'bonus')).filter(b => b.menesis === men && (user.role === 'admin' || b.iesniedza === user.name));
+  const out = bonus.map(b => { const o = {}; BONUS_HEADERS.forEach((h, i) => o[h] = String(b[BONUS_COLS[i]] == null ? '' : b[BONUS_COLS[i]])); return o; });
+  if (user.role !== 'admin') return { menesis: men, bonus: out, rows: null };
+  const emp = {};
+  (await rowsOf(db, 'hire')).filter(h => h.statuss === 'Apstiprināts' && h.vards).forEach(h => {
+    const d = toDate(h.sakums); if (d && iso(d) > end) return;
+    const k = h.vards.trim().toLowerCase();
+    emp[k] = { darbinieks: h.vards, sia: h.sia, objekts: noAlga(h.objekts), alga: Number(String(h.alga).replace(',', '.')) || 0, sakums: h.sakums, beidz: '', slodze: '' };
+  });
+  (await rowsOf(db, 'chg')).filter(g => g.statuss === 'Apstiprināts').forEach(g => {
+    const e = emp[String(g.darbinieks || '').trim().toLowerCase()]; if (!e) return;
+    const sp = g.speka_no ? iso(toDate(g.speka_no)) : '';
+    if (!sp || sp <= end) { if (g.alga) e.alga = Number(g.alga) || e.alga; if (g.slodze) e.slodze = g.slodze + (g.stundas ? ' · ' + g.stundas + ' h/ned.' : ''); if (g.sia) e.sia = g.sia; if (g.objekts) e.objekts = noAlga(g.objekts); }
+    if (g.beigu_datums) e.beidz = g.beigu_datums;
+  });
+  const rows = Object.values(emp).filter(e => !e.beidz || iso(toDate(e.beidz)) >= start);
+  const ok = bonus.filter(b => b.statuss === 'Apstiprināts'), pend = bonus.filter(b => b.statuss === 'Jauns' || b.statuss === 'Apstrādē');
+  rows.forEach(e => { const k = e.darbinieks.trim().toLowerCase(), mine = (x) => x.darbinieks.trim().toLowerCase() === k;
+    e.piemaksas = Math.round(ok.filter(mine).reduce((a, b) => a + (Number(b.summa) || 0), 0) * 100) / 100;
+    e.gaida = Math.round(pend.filter(mine).reduce((a, b) => a + (Number(b.summa) || 0), 0) * 100) / 100;
+    e.kopa = Math.round((e.alga + e.piemaksas) * 100) / 100; });
+  // piemaksas darbiniekiem, kuru nav pieņemšanas ierakstos (piem. pieņemti pirms sistēmas)
+  bonus.forEach(b => { const k = b.darbinieks.trim().toLowerCase(); if (!rows.some(e => e.darbinieks.trim().toLowerCase() === k)) {
+    const r = { darbinieks: b.darbinieks, sia: '', objekts: b.objekts, alga: 0, sakums: '', beidz: '', slodze: '', piemaksas: 0, gaida: 0, kopa: 0, bezAlgas: true }; rows.push(r); }
+    const r = rows.find(e => e.darbinieks.trim().toLowerCase() === k);
+    if (r.bezAlgas) { if (b.statuss === 'Apstiprināts') r.piemaksas += Number(b.summa) || 0; else if (b.statuss !== 'Noraidīts') r.gaida += Number(b.summa) || 0; r.kopa = r.piemaksas; } });
+  rows.sort((a, b) => a.darbinieks.localeCompare(b.darbinieks, 'lv'));
+  return { menesis: men, bonus: out, rows };
+}
+
 /* ---------- GROZĪJUMI (amats/objekts/SIA, alga/slodze, personas dati, darba attiecību beigas) ---------- */
 async function submitChange(env, user, f) {
   const db = env.DB, req = need(f);
@@ -391,7 +447,7 @@ async function mailChange(env, d) {
 }
 
 async function getRecords(db, user, type) {
-  const headers = { hire: HIRE_HEADERS.concat(['Darba laiks']), vac: VAC_HEADERS, chg: CHG_HEADERS.concat(['Darba laiks']) }[type], cols = { hire: HIRE_COLS.concat(['dl_sync']), vac: VAC_COLS, chg: CHG_COLS.concat(['dl_sync']) }[type];
+  const headers = { hire: HIRE_HEADERS.concat(['Darba laiks']), vac: VAC_HEADERS, chg: CHG_HEADERS.concat(['Darba laiks']), bonus: BONUS_HEADERS }[type], cols = { hire: HIRE_COLS.concat(['dl_sync']), vac: VAC_COLS, chg: CHG_COLS.concat(['dl_sync']), bonus: BONUS_COLS }[type];
   let rows = (await rowsOf(db, type)).filter(r => r.id);
   if (user.role !== 'admin') rows = rows.filter(r => r.iesniedza === user.name);
   rows.reverse();
@@ -507,7 +563,7 @@ async function mailVacation(env, d) {
 }
 async function mailStatus(env, to, type, id, name, status, comment) {
   const colors = { 'Apstiprināts': '#1e7a4a', 'Noraidīts': '#b42318', 'Apstrādē': '#9a6a00', 'Jauns': '#1f3a5f' };
-  const L = { hire: ['Pieņemšana', 'Pieņemšana darbā'], vac: ['Atvaļinājums', 'Atvaļinājums'], chg: ['Grozījumi', 'Grozījumi'] }[type] || ['Pieteikums', 'Pieteikums'];
+  const L = { hire: ['Pieņemšana', 'Pieņemšana darbā'], vac: ['Atvaļinājums', 'Atvaļinājums'], chg: ['Grozījumi', 'Grozījumi'], bonus: ['Piemaksa', 'Piemaksa'] }[type] || ['Pieteikums', 'Pieteikums'];
   return sendMail(env, await settings(env.DB), to, L[0] + ' — ' + name + ': ' + status,
     status, L[1] + ' · ' + name + ' · ' + id,
     [{ title: 'STATUSS', rows: [['Pieteikums', id], ['Darbinieks', name], ['Jaunais statuss', status], ['Komentārs', comment]] }], '', colors[status], id);
@@ -528,8 +584,10 @@ export async function api(env, req) {
     else if (action === 'hire') out = await submitHire(env, user, req.form || {});
     else if (action === 'vacation') out = await submitVacation(env, user, req.form || {});
     else if (action === 'change') out = await submitChange(env, user, req.form || {});
+    else if (action === 'bonus') out = await submitBonus(env, user, req.form || {});
+    else if (action === 'pay') out = await payMonth(db, user, req.menesis);
     else if (action === 'days') out = { days: previewDays(req.no, req.lidz) };
-    else if (action === 'records') out = { hire: await getRecords(db, user, 'hire'), vac: await getRecords(db, user, 'vac'), chg: await getRecords(db, user, 'chg') };
+    else if (action === 'records') out = { hire: await getRecords(db, user, 'hire'), vac: await getRecords(db, user, 'vac'), chg: await getRecords(db, user, 'chg'), bonus: await getRecords(db, user, 'bonus') };
     else if (action === 'status') { await setStatus(env, user, req.type, req.id, req.status, req.comment); out = {}; }
     else out = await getCalendarRange(db, req.from, req.to);
     return Object.assign({ ok: true }, out || {});
