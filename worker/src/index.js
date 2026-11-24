@@ -760,9 +760,11 @@ async function problems(X, u) {
 
 /* ---------------- Skati ---------------- */
 
+/* Vadītāja darbs: viņš pieteica VAI viņš ir objekta vadītājs (arī ja darbā palicis vecs vārds) */
+async function mineOf(X, u) { const m = await X.objMgr(); return (j) => j.vaditajs === u.name || m[norm(j.adrese)] === u.name; }
 async function visibleJobs(X, u, date) {
   let jobs = await X.jobsOn(date);
-  if (u.role === 'vaditajs') jobs = jobs.filter(j => j.vaditajs === u.name);
+  if (u.role === 'vaditajs') { const mine = await mineOf(X, u); jobs = jobs.filter(mine); }
   return jobs;
 }
 
@@ -960,7 +962,7 @@ const ACTIONS = {
   stats: async (X, u, r) => {
     if (u.role === 'brigade') throw new Error('Nav atļauts');
     let list = (await X.all('SELECT * FROM jobs WHERE datums >= ? AND datums <= ? ORDER BY datums, seq', r.from, r.to)).map(jobOut);
-    if (u.role === 'vaditajs') list = list.filter(j => j.vaditajs === u.name);
+    if (u.role === 'vaditajs') list = list.filter(await mineOf(X, u));
     return { jobs: list.map(j => ({ datums: j.datums, adrese: j.adrese, tips: j.tips, vaditajs: j.vaditajs, brigade: j.brigade, statuss: j.statuss, lidz: j.lidz, prombutne: j.prombutne, foto: j.foto ? 1 : 0, parbaude: j.parbaude, iemesls: j.iemesls, steidzami: j.steidzami })) };
   },
 
@@ -1051,7 +1053,7 @@ const ACTIONS = {
   review: async (X, u, r) => {
     const job = await X.job(r.id);
     if (!job) throw new Error('Darbs nav atrasts');
-    if (u.role !== 'admin' && job.vaditajs !== u.name) throw new Error('Nav atļauts');
+    if (u.role !== 'admin' && !(await mineOf(X, u))(job)) throw new Error('Nav atļauts');
     if (r.ok) { if (job.statuss !== 'izpildīts') throw new Error('Pieņemt var tikai izpildītu darbu'); job.parbaude = 'pieņemts'; job.parbKom = ''; }
     else if (r.undo) { job.parbaude = ''; job.parbKom = ''; }
     else {
@@ -1067,7 +1069,7 @@ const ACTIONS = {
     const k = norm(r.adrese);
     if (!k) throw new Error('Nav adreses');
     let list = (await X.all('SELECT * FROM jobs WHERE anorm = ? ORDER BY datums DESC, izveidots DESC', k)).map(jobOut);
-    if (u.role === 'vaditajs') list = list.filter(j => j.vaditajs === u.name);
+    if (u.role === 'vaditajs') list = list.filter(await mineOf(X, u));
     const probs = (await X.all('SELECT id, laiks, adrese, vaditajs, vieniba, apraksts, foto, statuss, atrisinats FROM problems WHERE anorm = ? ORDER BY seq DESC LIMIT 20', k))
       .filter(p => u.role === 'admin' || p.vaditajs === u.name || !p.vaditajs);
     return { total: list.length, jobs: list.slice(0, 60), problems: probs };
