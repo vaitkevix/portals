@@ -61,6 +61,14 @@ function matchObj(objs, adr) {
     if (b === a) s = 100; else { if (num && new RegExp('(^|\\s)' + num.replace(/\s/g, '\\s?') + '(\\s|$)').test(b)) s += 40; words.forEach(w => { if (b.indexOf(w) !== -1) s += 20; }); }
     return { adrese: o.adrese, anorm: o.anorm, s }; }).filter(x => x.s >= 50).sort((x, y) => y.s - x.s).slice(0, 5);
 }
+/* Pazemes autostāvvietas platība no kadastra datiem (koplietošanas telpas pagrabā vai telpu grupas ar stāvvietu). 0 = nav */
+const isPark = (x) => /auto\s*st[āa]v|st[āa]vviet|garā[žz]|garaz|auto\s*novietn|transportlīdzekļ|brauktuv|\b124[12]\b/i.test(String(x || ''));
+function parkingM2(d) {
+  let m = 0;
+  (Array.isArray(d.telpas) ? d.telpas : []).forEach(t => { if (isPark(t.nosaukums) && (t.zona === 'Pagrabs' || /pazem/i.test(t.nosaukums))) m += +t.m2 || 0; });
+  (Array.isArray(d.grupas) ? d.grupas : []).forEach(g => { if (isPark(g.nosaukums + ' ' + g.lv) && !/virszem|ārtelp/i.test(g.nosaukums)) m += +g.m2 || 0; });
+  return m;
+}
 async function kadParse(env, db, b) {
   if (b.dati && typeof b.dati === 'object') {   // jau sakārtoti dati no «SH Kadastrs» pogas — AI nevajag
     const objs = await all(db, 'SELECT anorm, adrese FROM objects ORDER BY ord');
@@ -117,7 +125,13 @@ export async function api(request, env) {
       await db.prepare('INSERT INTO ml_kad (anorm, kad_nr, dati, raw, avots, atjaunots, kas) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET kad_nr = excluded.kad_nr, dati = excluded.dati, raw = excluded.raw, avots = excluded.avots, atjaunots = excluded.atjaunots, kas = excluded.kas')
         .bind(k, str(dati.kadastra_nr, 40), js, '', str(b.url, 500), nowStr(), me.name).run();
       await log(db, me.name + ' · kadastra dati · ' + o.adrese);
-      return out({ ok: true });
+      const pk = parkingM2(dati);   // ir pazemes autostāvvieta → objekts parādās Pazemes stāvvietu lietotnē
+      if (pk) {
+        await db.prepare('INSERT INTO obj_info (anorm, pazemes) VALUES (?, 1) ON CONFLICT(anorm) DO UPDATE SET pazemes = 1').bind(k).run();
+        // platību (stav_obj.qty) neliek — qty > 0 pats ieslēdz grafiku; to dara vadītājs Stāvvietu lietotnē
+        await log(db, 'Pazemes stāvvietas ← ' + o.adrese + ' (' + Math.round(pk) + ' m²)');
+      }
+      return out({ ok: true, stav: pk ? Math.round(pk) : 0 });
     }
     if (a === 'docUpload') {
       need('vaditajs'); if (!k) throw new Error('Izvēlieties objektu');
