@@ -190,11 +190,13 @@ export async function reminders(env, force) {
   const mark = async (k) => { const v = await kv(db, k); if (v === d) return false; await kvSet(db, k, d).run(); return true; };
   if ((force ? force === 'rits' : (mins(t) >= mins(C.rits) && mins(t) < mins(C.rits) + 120)) && await mark('dl:remRits')) {
     const O = (await objs(db)).filter(o => o.aktivs), S = sessions(await marksOn(db, d)), W = await allAssign(db);
-    for (const o of O) for (const am of ['uzk', 'set']) {
+    for (const o of O) { const sent = new Set();   // «abi» darbiniekam vienā objektā tikai viena SMS
+      for (const am of ['uzk', 'set']) {
       if (!(am === 'uzk' ? o.vajag_uzk : o.vajag_set) || roleState(S, o.anorm, am).statuss !== 'nav') continue;
-      const to = [...new Set(W.filter(w => w.anorm === o.anorm && fits(w.amats, am) && !S.some(s => s.phone === w.phone && s.anorm === o.anorm)).map(w => w.phone))];
+      const to = [...new Set(W.filter(w => w.anorm === o.anorm && fits(w.amats, am) && !sent.has(w.phone) && !S.some(s => s.phone === w.phone && s.anorm === o.anorm)).map(w => w.phone))];
+      to.forEach(p => sent.add(p));
       if (to.length) a += await sendSms(env, to, 'Atgādinājums: ' + o.adrese + ' — šodien neesi atzīmējies darbā. Darbu sākot sūti START ' + o.kods + '.', o.anorm);
-    }
+    } }
   }
   if ((force ? force === 'vakars' : (mins(t) >= mins(C.vakars) && mins(t) < mins(C.vakars) + 120)) && await mark('dl:remVak')) {
     const O = await objs(db), open = sessions(await marksOn(db, d)).filter(s => !s.beidz && s.phone);
