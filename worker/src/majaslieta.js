@@ -113,7 +113,7 @@ export async function apvList(db) {
 const APV_JS = `(function(L){if(window.__shApv)return;window.__shApv=1;
 var n=function(s){return String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/\\s+/g,' ').trim()},M=Object.create(null);
 L.forEach(function(x){M[n(x.a)]=x.p});
-var st=document.createElement('style');st.textContent='[data-sh-apv]::after{content:"Apvienots";display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:#e2ddf2;color:#3d3466;font:800 11px/1.5 Manrope,system-ui,sans-serif;letter-spacing:0;text-transform:none;text-decoration:none;vertical-align:middle;white-space:nowrap}html[data-theme=dark] [data-sh-apv]::after{background:#2c2840;color:#d9d2f5}@media print{[data-sh-apv]::after{display:none!important;content:none!important}}';
+var st=document.createElement('style');st.textContent='[data-sh-apv]::before{content:"Apvienots";display:inline-block;margin-right:6px;padding:1px 8px;border-radius:999px;background:#e2ddf2;color:#3d3466;font:800 11px/1.5 Manrope,system-ui,sans-serif;letter-spacing:0;text-transform:none;text-decoration:none;vertical-align:middle;white-space:nowrap}html[data-theme=dark] [data-sh-apv]::before{background:#2c2840;color:#d9d2f5}@media print{[data-sh-apv]::before{display:none!important;content:none!important}}';
 (document.head||document.documentElement).appendChild(st);
 var SKIP={SCRIPT:1,STYLE:1,TEXTAREA:1,INPUT:1,SELECT:1,TITLE:1,svg:1,SVG:1};
 function no(el){return el.closest&&el.closest('[data-no-apv],[contenteditable=true],.print,.no-apv')}
