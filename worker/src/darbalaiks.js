@@ -5,6 +5,7 @@
  * Noslēpumi (Worker secrets): SMS_USER, SMS_PASS, DL_HOOK_KEY, pēc izvēles DL_SIGN_KEY (lietotnes Settings → Webhooks → Signing Key). © VAITKEVIX, SIA */
 import { personByPin } from './portal.js';
 import { lvHolidays } from './personals.js';
+import { dlInherit, dlSync } from './majaslieta.js';
 import { today, addDays, dow, nowStr, uid, kv, kvSet, CORS, out } from './util.js';
 
 export const KEY = 'dl';
@@ -136,8 +137,9 @@ export async function handleSms(db, phone, text) {
   const O = await objs(db), adr = (a) => (O.find(o => o.anorm === a) || {}).adrese || a, am = AM[W.amats] || 'darbinieks';
   if (c.cmd === 'sak') {
     let o = null;
-    if (c.kods) { o = O.find(x => x.aktivs && String(x.kods).toUpperCase() === c.kods); if (!o) return { reply: 'Objekts ar kodu ' + c.kods + ' nav atrasts. Pārbaudi kodu uz uzlīmes un sūti vēlreiz, piem. START 104.', anorm: '' }; }
-    else { o = O.find(x => x.aktivs && x.anorm === W.anorm); if (!o) return { reply: 'Sūti START un objekta kodu no uzlīmes, piem. START 104.', anorm: '' }; }
+    const up = async (x) => { if (!x || x.aktivs) return x; const h = (await dlInherit(db).catch(() => ({})))[x.anorm]; return h ? O.find(y => y.aktivs && y.anorm === h.anorm) || x : x; };   // apvienotā objekta māja (vecs mājas kods) → apvienotais objekts
+    if (c.kods) { o = O.find(x => x.aktivs && String(x.kods).toUpperCase() === c.kods) || await up(O.find(x => String(x.kods).toUpperCase() === c.kods)); if (o && !o.aktivs) o = null; if (!o) return { reply: 'Objekts ar kodu ' + c.kods + ' nav atrasts. Pārbaudi kodu uz uzlīmes un sūti vēlreiz, piem. START 104.', anorm: '' }; }
+    else { o = await up(O.find(x => x.anorm === W.anorm) || (W.anorm ? { anorm: W.anorm } : null)); if (o && !o.aktivs) o = null; if (!o) return { reply: 'Sūti START un objekta kodu no uzlīmes, piem. START 104.', anorm: '' }; }
     const same = open.find(s => s.anorm === o.anorm);
     if (same) return { reply: o.adrese + ': jau esi atzīmēts darbā kopš ' + same.sak + '. Beigās sūti STOP.', anorm: o.anorm };
     for (const s of open) await addMark(db, { datums: d, vards: W.vards, veids: 'beidz', laiks: t, anorm: s.anorm, amats: s.amats, phone, kas: phone });   // pārgāja uz citu objektu
@@ -295,7 +297,8 @@ async function myPhones(db, name) {
 }
 async function iestatijumi(db) {
   const all_o = await all(db, `SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, d.kods, d.vajag_uzk, d.vajag_set, d.aktivs FROM objects o LEFT JOIN dl_obj d ON d.anorm = o.anorm ORDER BY o.adrese`);
-  return { objekti: all_o.map(o => ({ anorm: o.anorm, adrese: o.adrese, vaditajs: o.vaditajs, grupa: o.grupa, kods: o.kods || '', vajag_uzk: o.kods ? !!o.vajag_uzk : true, vajag_set: o.kods ? !!o.vajag_set : true, aktivs: !!(o.kods && o.aktivs) })),
+  const inh = await dlInherit(db).catch(() => ({}));
+  return { objekti: all_o.map(o => ({ anorm: o.anorm, adrese: o.adrese, vaditajs: o.vaditajs, grupa: o.grupa, kods: o.kods || '', vajag_uzk: o.kods ? !!o.vajag_uzk : true, vajag_set: o.kods ? !!o.vajag_set : true, aktivs: !!(o.kods && o.aktivs), apv: inh[o.anorm] || null })),
     darbinieki: await all(db, 'SELECT phone, vards, amats, anorm, aktivs, pievienoja FROM dl_worker ORDER BY vards, phone'), piesaistes: await all(db, 'SELECT phone, anorm, amats FROM dl_assign'), cfg: await cfgOf(db) };
 }
 export async function api(request, env, X) {
@@ -334,12 +337,13 @@ export async function api(request, env, X) {
     if (a === 'iestatijumi') { need(2); const r = await iestatijumi(db), m = await myPhones(db, me.name); return out(Object.assign({ ok: true, mani: m.phones, maniObj: m.objekti }, r)); }
     if (a === 'saveObj') { need(3); const k = String(b.kods || '').trim().toUpperCase();
       if (!b.anorm) throw new Error('Nav objekta');
+      const inh = (await dlInherit(db))[b.anorm]; if (inh && k) throw new Error('Šī māja ir apvienotajā objektā «' + inh.adrese + '» — kods ' + inh.kods + ' tiek ņemts no tā');
       if (!k) { await db.prepare('UPDATE dl_obj SET aktivs = 0 WHERE anorm = ?').bind(b.anorm).run(); return out({ ok: true }); }
       if (!/^[0-9A-Z-]{1,8}$/.test(k)) throw new Error('Kods — līdz 8 cipariem/burtiem, piem. 104');
       const other = await db.prepare('SELECT anorm FROM dl_obj WHERE kods = ? AND anorm != ?').bind(k, b.anorm).first(); if (other) throw new Error('Kods ' + k + ' jau ir citam objektam');
       await db.prepare('INSERT INTO dl_obj (anorm, kods, vajag_uzk, vajag_set, aktivs) VALUES (?, ?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET kods = excluded.kods, vajag_uzk = excluded.vajag_uzk, vajag_set = excluded.vajag_set, aktivs = excluded.aktivs')
         .bind(b.anorm, k, b.vajag_uzk === false ? 0 : 1, b.vajag_set === false ? 0 : 1, b.aktivs === false ? 0 : 1).run();
-      return out({ ok: true }); }
+      await dlSync(db, b.anorm); return out({ ok: true }); }
     if (a === 'delWorker') { need(3); const p = normPhone(b.phone); if (!p) throw new Error('Nav tālruņa');   // atzīmes un SMS vēsture paliek
       await db.batch([db.prepare('DELETE FROM dl_worker WHERE phone = ?').bind(p), db.prepare('DELETE FROM dl_assign WHERE phone = ?').bind(p)]); return out({ ok: true }); }
     if (a === 'saveWorker') { need(2); const p = normPhone(b.phone); if (!p) throw new Error('Nepareizs tālrunis — ievadiet valsts kodu un numuru');

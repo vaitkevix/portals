@@ -103,6 +103,23 @@ function partsOf(objs, manual) {   // → { anorm: [{ adrese, anorm }] } tikai a
 }
 const manualParts = async (db) => { const m = {}; (await all(db, 'SELECT anorm, parts FROM ml_parts').catch(() => [])).forEach(r => m[r.anorm] = r.parts); return m; };
 
+/* Darba laika kods apvienotajiem: kods ir apvienotajam objektam (dl_obj.kods ir UNIQUE), sastāvdaļas to manto.
+ * dlInherit → { sastāvdaļas anorm: { kods, adrese, anorm } }; dlSync(k) — ja k apvienots ar kodu, sastāvdaļu savi kodi izslēgti (aktivs=0, rindas paliek). */
+export async function dlInherit(db) {
+  const objs = await all(db, 'SELECT anorm, adrese FROM objects'), P = partsOf(objs, await manualParts(db)), byK = {}, res = {};
+  objs.forEach(o => byK[o.anorm] = o.adrese);
+  const codes = {}; (await all(db, 'SELECT anorm, kods FROM dl_obj WHERE aktivs = 1').catch(() => [])).forEach(r => codes[r.anorm] = r.kods);
+  for (const k of Object.keys(P)) if (codes[k]) P[k].forEach(x => { if (x.anorm && !res[x.anorm]) res[x.anorm] = { kods: codes[k], adrese: byK[k] || k, anorm: k }; });
+  return res;
+}
+export async function dlSync(db, k) {
+  const objs = await all(db, 'SELECT anorm, adrese FROM objects'), L = (partsOf(objs, await manualParts(db))[k] || []).map(x => x.anorm).filter(Boolean);
+  const own = await db.prepare('SELECT kods FROM dl_obj WHERE anorm = ? AND aktivs = 1').bind(k).first();
+  if (!own || !L.length) return 0;
+  await db.batch(L.map(a => db.prepare('UPDATE dl_obj SET aktivs = 0 WHERE anorm = ? AND aktivs = 1').bind(a)));
+  return L.length;
+}
+
 /* Apvienotie objekti visām lietotnēm: GET …/sh/api/apv.js — skripts ar sarakstu (tikai adreses un sastāvdaļas, bez kodiem/personām).
  * Lietotne to ielādē ar <script src defer>; skripts pie katra elementa, kura teksts = apvienotā adrese, pieliek kapsulu «Apvienots». */
 export async function apvList(db) {
@@ -264,6 +281,7 @@ export async function api(request, env, X) {
       const ad = b.adrese || ((await db.prepare('SELECT adrese FROM objects WHERE anorm = ?').bind(k).first()) || {}).adrese;
       if (!ad) throw new Error('Objekts nav atrasts');
       const d = await objinfo.info(db, ad);
+      const inh = (await dlInherit(db).catch(() => ({})))[k]; if (inh) d.dl.apv = { kods: inh.kods, adrese: inh.adrese, anorm: inh.anorm };
       if ((ROLE_W[role] || 0) < 3) { d.algas = []; d.personals = []; d.dl = { kods: (ROLE_W[role] || 0) >= 2 ? d.dl.kods : '', vajag_uzk: d.dl.vajag_uzk, vajag_set: d.dl.vajag_set, darbinieki: [] }; }
       return out(Object.assign({ ok: true }, d));
     }
@@ -310,9 +328,17 @@ export async function api(request, env, X) {
       const v = b.parts === 'auto' ? 'auto' : JSON.stringify((Array.isArray(b.parts) ? b.parts : []).map(x => str(x, 200)).filter(Boolean).slice(0, 30));
       await db.prepare('INSERT INTO ml_parts (anorm, parts, kas, laiks) VALUES (?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET parts = excluded.parts, kas = excluded.kas, laiks = excluded.laiks').bind(k, v, me.name, nowStr()).run();
       await log(db, me.name + ' · sastāvdaļas · ' + k + ' → ' + v.slice(0, 200));
+      await dlSync(db, k).catch(() => 0);
       return out({ ok: true });
     }
-    if (a === 'objInfoSave' || a === 'objSvcBulk' || a === 'objParvBulk') { need('admin'); return out(Object.assign({ ok: true }, await adm(a, b))); }
+    if (a === 'objInfoSave') {   // sastāvdaļai savs Darba laika kods nav — tā manto apvienotā objekta kodu
+      need('admin');
+      const inh = (await dlInherit(db))[k]; if (inh && b.dl) b.dl.kods = '';
+      const r = await adm(a, b); await dlSync(db, k);
+      if (inh && r.dl) r.dl.apv = { kods: inh.kods, adrese: inh.adrese, anorm: inh.anorm };
+      return out(Object.assign({ ok: true }, r));
+    }
+    if (a === 'objSvcBulk' || a === 'objParvBulk') { need('admin'); return out(Object.assign({ ok: true }, await adm(a, b))); }
 
     if (a === 'kadParse') { need('vaditajs'); return out(Object.assign({ ok: true }, await kadParse(env, db, b))); }
     if (a === 'kadSave') {
