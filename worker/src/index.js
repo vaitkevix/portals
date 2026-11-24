@@ -101,6 +101,7 @@ export default {
     if (event.cron !== '*/5 * * * *') { J('syncConfig', () => syncConfig(new Ctx(env, ctx))); J('mirror', () => mirrorSheets(new Ctx(env, ctx))); }
     if (event.cron !== '*/5 * * * *') return;   // :00 un :30 nostrādā abi trigeri — pārējais tikai vienreiz (*/5)
     J('izvDrain', () => izvDrain(env, ctx, 60000));
+    J('aizvCarry', () => carryOver(new Ctx(env, ctx)));
     J('plCron', () => plCron(env));
     J('foto', () => foto.migrateDrive(env));
     J('peek', () => gsheets.peek(env, env.DB));
@@ -729,6 +730,27 @@ async function standingFor(X, u) {
   return (await readStanding(X)).filter(s => (!s.beigas || s.beigas >= t) && allowedStand(u, s))
     .map(s => ({ id: s.id, adrese: s.adrese, tips: s.tips, prombutne: s.prombutne, vaditajs: s.vaditajs, no: s.no, beigas: s.beigas }));
 }
+/* Neatzīmēti darbi (jauns / piešķirts) no pagājušām dienām → uz šodienu. Sērijas (vairāku dienu, pastāvīgie) nepārceļ —
+ * tām katrai dienai savs darbs. Vienība paliek, ja tāda šodien ir; citādi darbs atkal «jauns» (admins piešķir). Apraksts: «↻ no DD.MM.» */
+async function carryOver(X) {
+  const t = today();
+  const rows = (await X.all("SELECT * FROM jobs WHERE datums < ? AND datums >= ? AND statuss IN ('jauns', 'piešķirts') AND serija = '' ORDER BY datums, seq", t, addDays(t, -14))).map(jobOut);
+  if (!rows.length) return 0;
+  const unitNames = (await X.units(t)).map(x => x.name), st = [], byMgr = {};
+  for (const j of rows) {
+    const from = j.apraksts.match(/^↻ no (\d\d\.\d\d\.) · /), first = from ? from[1] : lvDate(j.datums);
+    j.apraksts = '↻ no ' + first + ' · ' + j.apraksts.replace(/^↻ no \d\d\.\d\d\. · /, '');
+    const br = brigs(j.brigade).filter(b => unitNames.indexOf(b) !== -1).join(' | ');
+    if (br !== j.brigade) { j.brigade = br; j.publicets = ''; }
+    j.statuss = j.brigade ? 'piešķirts' : 'jauns'; j.datums = t;
+    st.push(updJob(X, j));
+    if (j.vaditajs) (byMgr[j.vaditajs] = byMgr[j.vaditajs] || []).push(j.adrese);
+  }
+  await X.db.batch(st);
+  for (const m in byMgr) X.notify([m], '↻ Pārcelti uz šodienu: ' + byMgr[m].length, 'Vienība neatzīmēja: ' + byMgr[m].slice(0, 5).join(', ') + (byMgr[m].length > 5 ? '…' : ''));
+  return rows.length;
+}
+
 async function ensureStanding(X, date) {
   if (!isDate(date) || date < today()) return;
   const w = wday(date);
