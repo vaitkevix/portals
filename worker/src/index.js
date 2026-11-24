@@ -747,7 +747,13 @@ function seriesDates(start, lidz, brivdienas) {
   return out;
 }
 
-async function addObjects(X, addrs, vaditajs) {
+/* 2026-11-24: objektus veido TIKAI Mājas lietā (admins). Darba pieteikumā adresei jābūt objektu sarakstā — agrāk nezināma adrese izveidoja jaunu objektu. */
+async function needKnown(X, addrs) {
+  const known = new Set((await X.objects()).map(o => norm(o.adrese)));
+  const bad = [...new Set(addrs.filter(a => a && !known.has(norm(a))))];
+  if (bad.length) throw new Error((bad.length === 1 ? 'Adrese «' + bad[0] + '» nav' : 'Adreses «' + bad.slice(0, 3).join('», «') + '»' + (bad.length > 3 ? ' u.c.' : '') + ' nav') + ' objektu sarakstā. Izvēlies adresi no saraksta — jaunu objektu pievieno admins Mājas lietā.');
+}
+async function addObjects(X, addrs, vaditajs) {   // vairs netiek saukta (paliek arhīvam)
   const known = new Set((await X.objects()).map(o => norm(o.adrese)));
   const add = [];
   addrs.forEach(a => { const k = norm(a); if (a && !known.has(k)) { known.add(k); add.push(a); } });
@@ -956,17 +962,18 @@ const ACTIONS = {
       if (!job) throw new Error('Darbs nav atrasts');
       if (u.role !== 'admin' && job.vaditajs !== u.name) throw new Error('Šo darbu pieteica cits vadītājs — mainīt var viņš vai admins');
       if (u.role !== 'admin' && job.brigade) throw new Error('Darbu, kas jau piešķirts vienībai, var mainīt tikai admins');
+      if (norm(cleanAddr(j.adrese)) !== norm(job.adrese)) await needKnown(X, [cleanAddr(j.adrese)]);   // vecs darbs ar nezināmu adresi drīkst palikt, bet jaunu nezināmu ielikt nevar
       job.datums = j.datums; job.adrese = cleanAddr(j.adrese); job.tips = j.tips || job.tips; job.apraksts = j.apraksts || '';
       if (j.vaditajs && u.role === 'admin') job.vaditajs = String(j.vaditajs);
       if (j.prombutne !== undefined) job.prombutne = PROMBUTNE.indexOf(j.prombutne) !== -1 ? j.prombutne : '';
       if (j.steidzami !== undefined) job.steidzami = j.steidzami ? '1' : '';
       if (j.laiks !== undefined) job.laiks = cleanTime(j.laiks);
       await updJob(X, job).run();
-      await addObjects(X, [job.adrese], job.vaditajs);
       return { job };
     }
     const job = { id: uid(), datums: j.datums, adrese: cleanAddr(j.adrese), tips: j.tips || 'Sētnieks', apraksts: j.apraksts || '', vaditajs: j.vaditajs || u.name,
       brigade: j.brigade || '', statuss: j.brigade ? 'piešķirts' : 'jauns', izveidots: now() };
+    await needKnown(X, [job.adrese]);
     await insJob(X, job).run();
     if (u.role !== 'admin') X.notify(await X.names('admin'), 'Jauns darbs · ' + lvDate(job.datums), job.adrese + ' — ' + u.name);
     return { job: jobOut(job) };
@@ -978,6 +985,7 @@ const ACTIONS = {
     if (!list.length) throw new Error('Pievieno vismaz vienu adresi');
     if (list.some(j => /^grupa:/i.test(String(j.adrese).trim()))) throw new Error('Grupa jāizvērš adresēs — atjaunojiet lapu');
     if (!r.date) throw new Error('Norādi datumu');
+    await needKnown(X, list.map(j => cleanAddr(j.adrese)));
     const types = (await X.types()).map(t => t.name);
     for (const j of list) {
       if ((await X.groupOf(j.tips)) === 'Aizvietošana' && PROMBUTNE.indexOf(j.prombutne) === -1) throw new Error('Norādiet aizvietošanas iemeslu adresei ' + j.adrese + ': atvaļinājums, DNL vai vakance');
@@ -1004,7 +1012,6 @@ const ACTIONS = {
     }
     if (st.length > 900) throw new Error('Pārāk daudz darbu vienā reizē (' + st.length + ') — sadaliet pa mazākām daļām vai saīsiniet periodu');
     await X.db.batch(st);
-    await addObjects(X, list.map(j => cleanAddr(j.adrese)), u.role === 'admin' ? String(r.vaditajs || '') : u.name);
     if (u.role !== 'admin') {
       X.notify(await X.names('admin'), 'Jauni darbi · ' + lvDate(r.date) + ' · ' + u.name,
         list.length === 1 ? list[0].adrese + ' — ' + list[0].tips + (list[0].lidz ? ' (atvaļinājums līdz ' + lvDate(list[0].lidz) + ')' : '')
