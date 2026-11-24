@@ -128,7 +128,8 @@ export async function api(request, env) {
       const pk = parkingM2(dati);   // ir pazemes autostāvvieta → objekts parādās Pazemes stāvvietu lietotnē
       if (pk) {
         await db.prepare('INSERT INTO obj_info (anorm, pazemes) VALUES (?, 1) ON CONFLICT(anorm) DO UPDATE SET pazemes = 1').bind(k).run();
-        // platību (stav_obj.qty) neliek — qty > 0 pats ieslēdz grafiku; to dara vadītājs Stāvvietu lietotnē
+        // platība no kadastra → Stāvvietu lietotnē (ja tur vēl nav ievadīta); qty > 0 ieslēdz grafiku
+        await db.prepare('INSERT INTO stav_obj (anorm, qty) VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET qty = CASE WHEN stav_obj.qty > 0 THEN stav_obj.qty ELSE excluded.qty END').bind(k, Math.round(pk * 10) / 10).run();
         await log(db, 'Pazemes stāvvietas ← ' + o.adrese + ' (' + Math.round(pk) + ' m²)');
       }
       return out({ ok: true, stav: pk ? Math.round(pk) : 0 });
