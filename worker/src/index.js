@@ -5,7 +5,7 @@
  * © VAITKEVIX, SIA
  */
 
-import { portal, people, personByPin, seedFrom, peopleStmts, usersStmts, session } from './portal.js';
+import { portal, people, personByPin, seedFrom, peopleStmts, usersStmts, session, cleanSessions } from './portal.js';
 import { plausana, plCron } from './plausana.js';
 import * as logi from './logi.js';
 import * as sniegs from './sniegs.js';
@@ -30,7 +30,7 @@ const noGoogle = async (db) => (await kvGet(db, 'noGoogle')) === '1';
 const GS_OPS = new Set(['config', 'people', 'master', 'addObjects', 'importObjects']);
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
 const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas, dl: darbalaiks, ml: majaslieta };
-import { master, importAll as importMaster, legacyPayload, publicLists, objectsStmts, personCanon, companiesStmts, listsStmts, typesStmts, kvGet, kvSet, resolveReview, clearInfoReview, autoMergePrefixed, groupsOf, groupsStmts } from './master.js';
+import { master, objMoveStmts, importAll as importMaster, legacyPayload, publicLists, objectsStmts, personCanon, companiesStmts, listsStmts, typesStmts, kvGet, kvSet, resolveReview, clearInfoReview, autoMergePrefixed, groupsOf, groupsStmts } from './master.js';
 const TZ = 'Europe/Riga';
 const PROMBUTNE = ['Atvaļinājums', 'DNL', 'Vakance'];
 const STAND_PROMB = ['DNL', 'Vakance'];
@@ -39,8 +39,65 @@ const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods
 
 /* ---------------- HTTP ---------------- */
 
+/* PIN minēšanas aizsardzība visiem API maršrutiem: neveiksmīgi PIN/paroles mēģinājumi pēc IP (kv rl:<ip>).
+ * 20 kļūmes 15 min logā (birojā daudzi aiz viena IP) → 15 min bloķēts (429). Skaita tikai kļūmes; veiksme skaitītāju nenomet. */
+const RL_MAX = 20, RL_WIN = 15 * 60 * 1000;
+function rlIp(request) { return (request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || '').split(',')[0].trim().slice(0, 64); }
+async function rlGet(env, ip) { if (!ip) return null; try { const v = JSON.parse((await kvGet(env.DB, 'rl:' + ip)) || 'null'); return v && Date.now() - v.t < RL_WIN ? v : null; } catch (e) { return null; } }
+function rlFailed(url, o) {
+  if (!o || typeof o !== 'object') return false;
+  if (o.known === false) return true;
+  const fn = url.searchParams.get('fn') || '';
+  if (fn === 'checkCarrierPin' && o.ok && o.result === false) return true;
+  if (o.result && typeof o.result === 'object' && o.result.code === 'pin') return true;
+  if (o.ok !== false) return false;
+  if (['auth', 'pin', 'teamkey'].indexOf(o.code) !== -1) return true;
+  const e = String(o.error || o.message || '');
+  if (/šai lietotnei|skatīšanās/i.test(e)) return false;   // PIN derīgs, tikai nav tiesību — neskaita (birojā viens IP visiem)
+  return /nepareiz[sa]? (pin|parol)|nav piekļuves|pin nav derīgs/i.test(e);
+}
+async function rlAfter(env, ip, url, res) {
+  const len = +(res.headers.get('Content-Length') || 0); if (len > 4000) return;
+  const txt = await res.text(); if (txt.length > 4000) return;
+  let o; try { o = JSON.parse(txt); } catch (e) { return; }
+  if (!rlFailed(url, o)) return;
+  const v = (await rlGet(env, ip)) || { n: 0, t: Date.now() }; v.n++;
+  await kvSet(env.DB, 'rl:' + ip, JSON.stringify(v)).run();
+}
+
 export default {
   async fetch(request, env, ctx) {
+    const u0 = new URL(request.url), ip = rlIp(request);
+    const guard = request.method === 'POST' && ip && !/\/dl\/sms$/.test(u0.pathname);
+    if (guard) { const v = await rlGet(env, ip); if (v && v.n >= RL_MAX)
+      return new Response(JSON.stringify({ ok: false, error: 'Pārāk daudz nepareizu mēģinājumu — mēģiniet pēc 15 min', code: 'rate' }), { status: 429, headers: Object.assign({ 'Content-Type': 'application/json;charset=utf-8' }, CORS) }); }
+    const res = await handleFetch(request, env, ctx);
+    if (guard && res && (res.headers.get('Content-Type') || '').indexOf('json') !== -1) ctx.waitUntil(rlAfter(env, ip, u0, res.clone()).catch(() => 0));
+    return res;
+  },
+
+  /** Cron: lietotāji, darbu veidi un objekti no Google tabulas */
+  async scheduled(event, env, ctx) {
+    const J = (name, f) => ctx.waitUntil(cronJob(env, name, f));
+    if (event.cron !== '*/5 * * * *') { J('syncConfig', () => syncConfig(new Ctx(env, ctx))); J('mirror', () => mirrorSheets(new Ctx(env, ctx))); }
+    if (event.cron !== '*/5 * * * *') return;   // :00 un :30 nostrādā abi trigeri — pārējais tikai vienreiz (*/5)
+    J('izvDrain', () => izvDrain(env, ctx, 60000));
+    J('aizvCarry', () => carryOver(new Ctx(env, ctx)));
+    J('sessClean', async () => { const t = today(); if ((await kvGet(env.DB, 'sessClean:last')) === t) return; await cleanSessions(env.DB); await kvSet(env.DB, 'sessClean:last', t).run(); });
+    J('plCron', () => plCron(env));
+    J('foto', () => foto.migrateDrive(env));
+    J('peek', () => gsheets.peek(env, env.DB));
+    J('mail', () => mail.selfTest(env));
+    J('izv', () => izvN.maybeSwitch(env));
+    J('pers', () => persN.maybeSwitch(env));
+    J('persResend', () => persN.resendQueued(env));
+    J('budz', () => budzN.maybeSwitch(env));
+    J('kais', () => kais.maybeSwitch(env).then(() => kais.pushSheet(env)));
+    ctx.waitUntil((async () => { await cronJob(env, 'wx', () => wxCron(env)); for (const k in GRAF) await cronJob(env, 'cron ' + k, () => GRAF[k].cron(env)); })());
+  }
+};
+
+async function handleFetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/sh/api/')) url.pathname = url.pathname.slice(7);   // API savā domēnā: vaitkevix.cloud/sh/api/… (Worker nosaukums vairs nav adresē)
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -94,27 +151,7 @@ export default {
     } catch (err) {
       return json({ ok: false, error: String((err && err.message) || err) });
     }
-  },
-
-  /** Cron: lietotāji, darbu veidi un objekti no Google tabulas */
-  async scheduled(event, env, ctx) {
-    const J = (name, f) => ctx.waitUntil(cronJob(env, name, f));
-    if (event.cron !== '*/5 * * * *') { J('syncConfig', () => syncConfig(new Ctx(env, ctx))); J('mirror', () => mirrorSheets(new Ctx(env, ctx))); }
-    if (event.cron !== '*/5 * * * *') return;   // :00 un :30 nostrādā abi trigeri — pārējais tikai vienreiz (*/5)
-    J('izvDrain', () => izvDrain(env, ctx, 60000));
-    J('aizvCarry', () => carryOver(new Ctx(env, ctx)));
-    J('plCron', () => plCron(env));
-    J('foto', () => foto.migrateDrive(env));
-    J('peek', () => gsheets.peek(env, env.DB));
-    J('mail', () => mail.selfTest(env));
-    J('izv', () => izvN.maybeSwitch(env));
-    J('pers', () => persN.maybeSwitch(env));
-    J('persResend', () => persN.resendQueued(env));
-    J('budz', () => budzN.maybeSwitch(env));
-    J('kais', () => kais.maybeSwitch(env).then(() => kais.pushSheet(env)));
-    ctx.waitUntil((async () => { await cronJob(env, 'wx', () => wxCron(env)); for (const k in GRAF) await cronJob(env, 'cron ' + k, () => GRAF[k].cron(env)); })());
-  }
-};
+}
 
 /* Cron stāvoklis: kv health:<darbs> = {ok, err, n, msg}. Pēc 3 kļūdām pēc kārtas — push portāla adminiem (vienreiz, līdz atkal izdodas). */
 async function cronJob(env, name, f) {
@@ -334,13 +371,14 @@ async function izv(request, url, env, ctx, app) {
       if (r !== undefined) return new Response(JSON.stringify({ ok: true, result: r }), { headers: H });
     }
     if (app === 'kais' && await kais.isNative(env)) {   // bez Apps Script (D1 + tabulas kopija)
+      let me = null;
       if (A.open.indexOf(fn) === -1) {
-        const me = await session(env, url.searchParams.get('t') || '');
+        me = await session(env, url.searchParams.get('t') || '');
         if (!me || !((me.perms || {}).kais || (me.perms || {}).portal === 'admin')) throw Object.assign(new Error('Lai pieteiktu vai atzīmētu, ienāciet portālā vaitkevix.cloud/sh'), { code: 'login' });
         if ((me.perms || {}).kais === 'skatitajs' && (me.perms || {}).portal !== 'admin') throw new Error('Jums ir tikai skatīšanās tiesības');
       }
       let a = []; try { a = JSON.parse((await request.text()) || '[]'); } catch (e) {}
-      const r = await kais.handle(env, ctx, fn, a, (f, body) => appGas(env, 'kais', f, body));
+      const r = await kais.handle(env, ctx, fn, a, (f, body) => appGas(env, 'kais', f, body), me);
       if (r !== undefined) return new Response(JSON.stringify({ ok: true, result: r }), { headers: H });
     }
     if (!env[A.gas]) throw new Error('Serveris nav iestatīts');
@@ -688,9 +726,9 @@ function pubUser(u) { return { name: u.name, role: u.role, color: u.color }; }
 function jobOut(r) { const j = {}; JOB_F.forEach(f => j[f] = r[f] == null ? '' : String(r[f])); return j; }
 let SEQ = 0;
 function seq() { return Date.now() * 100 + (SEQ++ % 100); }
-function insJob(X, j) {
+function insJob(X, j, orIgnore) {
   const v = JOB_F.map(f => j[f] == null ? '' : String(j[f]));
-  return X.st(`INSERT INTO jobs (${JOB_F.join(',')}, anorm, seq) VALUES (${JOB_F.map(() => '?').join(',')}, ?, ?)`, ...v, norm(j.adrese), seq());
+  return X.st(`INSERT${orIgnore ? ' OR IGNORE' : ''} INTO jobs (${JOB_F.join(',')}, anorm, seq) VALUES (${JOB_F.map(() => '?').join(',')}, ?, ?)`, ...v, norm(j.adrese), seq());
 }
 function updJob(X, j) {
   const f = JOB_F.slice(1);
@@ -731,29 +769,38 @@ async function standingFor(X, u) {
   return (await readStanding(X)).filter(s => (!s.beigas || s.beigas >= t) && allowedStand(u, s))
     .map(s => ({ id: s.id, adrese: s.adrese, tips: s.tips, prombutne: s.prombutne, vaditajs: s.vaditajs, no: s.no, beigas: s.beigas }));
 }
-/* Neatzīmēti darbi (jauns / piešķirts) no pagājušām dienām → uz šodienu. Sērijas (vairāku dienu, pastāvīgie) nepārceļ —
- * tām katrai dienai savs darbs. Vienība paliek, ja tāda šodien ir; citādi darbs atkal «jauns» (admins piešķir). Apraksts: «↻ no DD.MM.» */
+/* Neatzīmēti papilddarbi (jauns / piešķirts) no pagājušām dienām → uz šodienu. Reizi dienā pēc 05:00.
+ * NEPĀRCEĻ: aizvietošanas (prombūtne konkrētā dienā — nākamajā dienā vairs nav jēgas), sērijas (katrai dienai savs darbs),
+ * darbus, kas ievadīti ar pagātnes datumu (izveidots pēc datuma), un ja šodien tai adresei jau ir tāda paša veida darbs.
+ * Vienība paliek, ja šodien vienības vēl nav sastādītas vai tā pati ir šodienas sarakstā. Apraksts: «↻ no DD.MM.» */
 async function carryOver(X) {
-  const t = today();
+  const t = today(), h = +now().slice(11, 13);
+  if (h < 5 || (await kvGet(X.db, 'aizvCarry:last')) === t) return 0;
   const rows = (await X.all("SELECT * FROM jobs WHERE datums < ? AND datums >= ? AND statuss IN ('jauns', 'piešķirts') AND serija = '' ORDER BY datums, seq", t, addDays(t, -14))).map(jobOut);
-  if (!rows.length) return 0;
-  const unitNames = (await X.units(t)).map(x => x.name), st = [], byMgr = {};
+  const todayKeys = new Set((await X.all('SELECT anorm, tips FROM jobs WHERE datums = ?', t)).map(r => r.anorm + '|' + r.tips));
+  const unitNames = (await X.units(t)).map(x => x.name), st = [], byMgr = {}, moved = [];
   for (const j of rows) {
-    const from = j.apraksts.match(/^↻ no (\d\d\.\d\d\.) · /), first = from ? from[1] : lvDate(j.datums);
-    j.apraksts = '↻ no ' + first + ' · ' + j.apraksts.replace(/^↻ no \d\d\.\d\d\. · /, '');
-    const br = brigs(j.brigade).filter(b => unitNames.indexOf(b) !== -1).join(' | ');
-    if (br !== j.brigade) { j.brigade = br; j.publicets = ''; }
-    j.statuss = j.brigade ? 'piešķirts' : 'jauns'; j.datums = t;
-    st.push(updJob(X, j));
-    if (j.vaditajs) (byMgr[j.vaditajs] = byMgr[j.vaditajs] || []).push(j.adrese);
+    if (j.prombutne || (await X.groupOf(j.tips)) === 'Aizvietošana') continue;
+    if (String(j.izveidots || '').slice(0, 10) > j.datums) continue;   // ievadīts ar pagātnes datumu (jau notikušs darbs)
+    const key = norm(j.adrese) + '|' + j.tips; if (todayKeys.has(key)) continue; todayKeys.add(key);
+    const from = j.apraksts.match(/^↻ no (\d\d\.\d\d\.)(?: · |$)/), first = from ? from[1] : lvDate(j.datums);
+    const rest = j.apraksts.replace(/^↻ no \d\d\.\d\d\.(?: · |$)/, '').trim();
+    const had = !!j.brigade;
+    let br = j.brigade, pub = j.publicets;
+    if (unitNames.length) { const keep = brigs(j.brigade).filter(b => unitNames.indexOf(b) !== -1).join(' | '); if (keep !== br) { br = keep; pub = ''; } }
+    st.push(X.st("UPDATE jobs SET datums = ?, apraksts = ?, brigade = ?, publicets = ?, statuss = ? WHERE id = ? AND datums < ? AND statuss IN ('jauns', 'piešķirts')",
+      t, '↻ no ' + first + (rest ? ' · ' + rest : ''), br, pub, br ? 'piešķirts' : 'jauns', j.id, t));
+    moved.push(j);
+    if (had && j.vaditajs) (byMgr[j.vaditajs] = byMgr[j.vaditajs] || []).push(j.adrese);
   }
-  await X.db.batch(st);
+  for (let k = 0; k < st.length; k += 90) await X.db.batch(st.slice(k, k + 90));
+  await kvSet(X.db, 'aizvCarry:last', t).run();
   for (const m in byMgr) X.notify([m], '↻ Pārcelti uz šodienu: ' + byMgr[m].length, 'Vienība neatzīmēja: ' + byMgr[m].slice(0, 5).join(', ') + (byMgr[m].length > 5 ? '…' : ''));
-  return rows.length;
+  return moved.length;
 }
 
 async function ensureStanding(X, date) {
-  if (!isDate(date) || date < today()) return;
+  if (!isDate(date) || date < today() || date > addDays(today(), 62)) return;
   const w = wday(date);
   const due = (await readStanding(X)).filter(s => s.no <= date && (!s.beigas || date <= s.beigas) && s.izlaistas.indexOf(date) === -1 && (s.brivdienas || (w !== 0 && w !== 6)));
   if (!due.length) return;
@@ -766,7 +813,7 @@ async function ensureStanding(X, date) {
     const prev = await X.first('SELECT brigade FROM jobs WHERE serija = ? AND datums < ? ORDER BY datums DESC LIMIT 1', s.id, date);
     const br = prev ? brigs(prev.brigade).filter(b => unitNames.indexOf(b) !== -1).join(' | ') : '';
     stmts.push(insJob(X, { id: uid(), datums: date, adrese: s.adrese, tips: s.tips, apraksts: s.apraksts, vaditajs: s.vaditajs, brigade: br, statuss: br ? 'piešķirts' : 'jauns',
-      izveidots: now(), serija: s.id, foto: s.foto, prombutne: s.prombutne, steidzami: s.steidzami, laiks: s.laiks }));
+      izveidots: now(), serija: s.id, foto: s.foto, prombutne: s.prombutne, steidzami: s.steidzami, laiks: s.laiks }, true));
   }
   // vēlreiz pārbauda tieši pirms ieraksta (vienlaicīgi pieprasījumi)
   const again = new Set((await X.all("SELECT serija FROM jobs WHERE datums = ? AND serija != ''", date)).map(r => r.serija));
@@ -784,7 +831,7 @@ async function problems(X, u) {
 /* ---------------- Skati ---------------- */
 
 /* Vadītāja darbs: viņš pieteica VAI viņš ir objekta vadītājs (arī ja darbā palicis vecs vārds) */
-async function mineOf(X, u) { const m = await X.objMgr(); return (j) => j.vaditajs === u.name || m[norm(j.adrese)] === u.name; }
+async function mineOf(X, u) { const m = await X.objMgr(), canon = await personCanon(X.db); return (j) => j.vaditajs === u.name || (!!j.vaditajs && canon(j.vaditajs) === u.name) || m[norm(j.adrese)] === u.name; }   // arī vecs vārds darbā («Silvestrs» → «Silvestrs V.»)
 async function visibleJobs(X, u, date) {
   let jobs = await X.jobsOn(date);
   if (u.role === 'vaditajs') { const mine = await mineOf(X, u); jobs = jobs.filter(mine); }
@@ -907,7 +954,8 @@ const ACTIONS = {
     if (j.id) {
       const job = await X.job(j.id);
       if (!job) throw new Error('Darbs nav atrasts');
-      if (u.role !== 'admin' && (job.vaditajs !== u.name || job.brigade)) throw new Error('Darbu, kas jau piešķirts vienībai, var mainīt tikai admins');
+      if (u.role !== 'admin' && job.vaditajs !== u.name) throw new Error('Šo darbu pieteica cits vadītājs — mainīt var viņš vai admins');
+      if (u.role !== 'admin' && job.brigade) throw new Error('Darbu, kas jau piešķirts vienībai, var mainīt tikai admins');
       job.datums = j.datums; job.adrese = cleanAddr(j.adrese); job.tips = j.tips || job.tips; job.apraksts = j.apraksts || '';
       if (j.vaditajs && u.role === 'admin') job.vaditajs = String(j.vaditajs);
       if (j.prombutne !== undefined) job.prombutne = PROMBUTNE.indexOf(j.prombutne) !== -1 ? j.prombutne : '';
@@ -954,6 +1002,7 @@ const ACTIONS = {
         izveidots: now(), lidz: j.lidz && dates.length > 1 ? j.lidz : '', serija, foto: j.fotoIds || '', prombutne: PROMBUTNE.indexOf(j.prombutne) !== -1 ? j.prombutne : '',
         steidzami: j.steidzami ? '1' : '', laiks: cleanTime(j.laiks), grupa: String(j.grupa || '').slice(0, 120) })); });
     }
+    if (st.length > 900) throw new Error('Pārāk daudz darbu vienā reizē (' + st.length + ') — sadaliet pa mazākām daļām vai saīsiniet periodu');
     await X.db.batch(st);
     await addObjects(X, list.map(j => cleanAddr(j.adrese)), u.role === 'admin' ? String(r.vaditajs || '') : u.name);
     if (u.role !== 'admin') {
@@ -1082,6 +1131,7 @@ const ACTIONS = {
     else {
       const kom = String(r.komentars || '').trim();
       if (!kom) throw new Error('Uzrakstiet, kas jāizlabo');
+      if (job.statuss !== 'izpildīts') throw new Error('Atgriezt var tikai izpildītu darbu');
       job.parbaude = 'atgriezts'; job.parbKom = kom + ' — ' + u.name; job.statuss = job.brigade ? 'piešķirts' : 'jauns'; job.izpildits = '';
     }
     await updJob(X, job).run();
@@ -1137,7 +1187,7 @@ async function teamOk(X, r) { if (r.key && r.key === await teamKey(X)) return tr
 async function teamView(X, r, full) {
   const date = String(r.date || '');
   if (!isDate(date)) throw new Error('Nav datuma');
-  await ensureStanding(X, date);
+  if (full && date <= addDays(today(), 14)) await ensureStanding(X, date);   // bez atslēgas D1 neraksta; tālu nākotnē neveido
   const [units, all, objs, users, types] = await Promise.all([X.units(date), X.jobsOn(date), X.objects(), X.users(), X.types()]);
   const jobs = all.filter(j => j.brigade).map(j => ({ id: j.id, datums: j.datums, adrese: j.adrese, tips: j.tips, apraksts: j.apraksts, vaditajs: j.vaditajs,
     brigade: j.brigade, statuss: j.statuss, lidz: j.lidz, prombutne: j.prombutne, foto: j.foto, komentars: j.komentars, iemesls: j.iemesls, izpildits: j.izpildits,
@@ -1212,18 +1262,29 @@ async function masterAdmin(X, a, b, me) {
   const db = X.db;
   if (a === 'master') return Object.assign({ ok: true }, await master(db));
   if (a === 'import') { const r = await masterImport(X); X.bg(pushMaster(X)); X.bg(pushPeople(X, await people(db))); return Object.assign({ ok: true, imported: r }, await master(db)); }
+  if (a === 'renameObject') {   // { old: vecā adrese vai anorm, adrese: jaunā } — pārnes visas saites (darbi, grafiki, kadastrs, dokumenti, Darba laiks, klients…)
+    const cur = await db.prepare('SELECT * FROM objects WHERE anorm = ?').bind(norm(b.old)).first(); if (!cur) return { ok: false, error: 'Objekts nav atrasts — atjaunojiet lapu' };
+    const na = cleanAddr(b.adrese), nk = norm(na); if (!na) return { ok: false, error: 'Ierakstiet adresi' };
+    if (nk !== cur.anorm && await db.prepare('SELECT 1 FROM objects WHERE anorm = ?').bind(nk).first()) return { ok: false, error: 'Šāda adrese jau ir' };
+    const st = [db.prepare('UPDATE objects SET anorm = ?, adrese = ? WHERE anorm = ?').bind(nk, na, cur.anorm), ...await objMoveStmts(db, cur.adrese, na)];
+    for (let j = 0; j < st.length; j += 90) await db.batch(st.slice(j, j + 90));
+    X.c = {}; masterDirty(X, 1); return { ok: true, anorm: nk, adrese: na };
+  }
   if (a === 'saveObjects') { const list = (b.objects || []).filter(o => o && String(o.adrese || '').trim()); if (!list.length) return { ok: false, error: 'Saraksts ir tukšs' };
+    const hadO = (await db.prepare('SELECT COUNT(*) n FROM objects').first()).n; if (hadO >= 10 && list.length < hadO * 0.5) return { ok: false, error: 'Objektu saraksts sarucis no ' + hadO + ' uz ' + list.length + ' — nesaglabāju. Atjaunojiet lapu un mēģiniet vēlreiz.' };
     await db.batch(objectsStmts(db, list, await personCanon(db))); X.c = {}; masterDirty(X, 1); return Object.assign({ ok: true }, await master(db)); }
   if (a === 'saveCompanies') { const list = (b.companies || []).filter(c => c && String(c.name || '').trim());
     const had = (await master(db)).companies.length; if (had && (!list.length || (had >= 10 && list.length < had * 0.5))) return { ok: false, error: 'Uzņēmumu saraksts sarucis no ' + had + ' uz ' + list.length + ' — nesaglabāju. Atjaunojiet lapu un mēģiniet vēlreiz.' };
     const pw = list.filter(c => c.pass).map(c => String(c.pass).trim().toUpperCase()); if (new Set(pw).size !== pw.length) return { ok: false, error: 'Divām firmām ir vienāda parole' };
+    { const pins = new Set(((await db.prepare("SELECT pin FROM people WHERE pin != ''").all()).results || []).map(r => String(r.pin).trim().toUpperCase())); const clash = list.find(c => c.pass && pins.has(String(c.pass).trim().toUpperCase()));
+      if (clash) return { ok: false, error: 'Firmas «' + clash.name + '» parole sakrīt ar kāda cilvēka PIN — izvēlieties citu paroli' }; }
     await db.batch(companiesStmts(db, list)); masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
   if (a === 'saveLists') { const cnt = (L) => Object.keys(L || {}).reduce((n, k) => n + ((L[k] || []).length), 0), had = cnt((await master(db)).lists), now = cnt(b.lists);
     if (had && (!now || (had >= 10 && now < had * 0.5))) return { ok: false, error: 'Saraksti saruka no ' + had + ' uz ' + now + ' vērtībām — nesaglabāju. Atjaunojiet lapu.' };
     await db.batch(listsStmts(db, b.lists || {})); masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
   if (a === 'saveTypes') { const list = (b.types || []).filter(t => t && t.name); if (!list.length) return { ok: false, error: 'Saraksts ir tukšs' };
     await db.batch(typesStmts(db, list)); X.c = {}; masterDirty(X); return Object.assign({ ok: true }, await master(db)); }
-  if (a === 'reviewResolve') { const r = await resolveReview(db, +b.i, b.keep === 0 || b.keep === 1 ? b.keep : -1); if (!r.ok) return r;
+  if (a === 'reviewResolve') { const r = await resolveReview(db, +b.i, b.keep === 0 || b.keep === 1 ? b.keep : -1, b.txt); if (!r.ok) return r;
     X.c = {}; if (r.people) await peopleSaved(X, await people(db)); masterDirty(X, !r.people); return Object.assign({ ok: true }, await master(db)); }
   if (a === 'saveGroups') { const list = (b.groups || []).filter(g => g && String(g.name || '').trim());
     await db.batch(groupsStmts(db, list)); X.c = {}; masterDirty(X); return Object.assign({ ok: true }, await master(db)); }

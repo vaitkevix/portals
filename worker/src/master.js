@@ -171,9 +171,24 @@ export { kvGet, kvSet, cleanPerms };
 
 /* ---------- «Pārbaudīt»: dublikātu apvienošana (paturētais saņem visu; atsauces pārceltas, nekas netiek zaudēts) ---------- */
 const PAIR = '  ↔  ';
-export async function resolveReview(db, i, keep) {
+/* Tabulas, kurās objekts ir piesaistīts pēc anorm (pārdēvējot / apvienojot pārnes visur) */
+export const OBJ_TABLES = { av: ['jobs', 'problems', 'pl_visit', 'logi_visit', 'darz_visit', 'stav_visit', 'sniegs_visit'], a: ['standing', 'izv_task', 'kais_task'],
+  n: ['pl_obj', 'logi_obj', 'darz_obj', 'stav_obj', 'sniegs_obj', 'client_obj', 'dl_obj', 'dl_worker', 'dl_assign', 'dl_mark', 'dl_sms', 'obj_info', 'ml_kad', 'ml_doc', 'ml_parts'] };
+/** Pārnes visas saites no vecās adreses uz jauno (viens batch saraksts). Grupu sastāvu arī. */
+export async function objMoveStmts(db, oldAdr, newAdr) {
+  const ok = anorm(oldAdr), nk = anorm(newAdr), st = [];
+  OBJ_TABLES.av.forEach(t => st.push(db.prepare(`UPDATE OR IGNORE ${t} SET adrese = ?, anorm = ? WHERE anorm = ?`).bind(newAdr, nk, ok)));
+  OBJ_TABLES.a.forEach(t => st.push(db.prepare(`UPDATE ${t} SET adrese = ? WHERE adrese = ?`).bind(newAdr, oldAdr)));
+  if (nk !== ok) OBJ_TABLES.n.forEach(t => st.push(db.prepare(`UPDATE OR IGNORE ${t} SET anorm = ? WHERE anorm = ?`).bind(nk, ok)));
+  const G = (await db.prepare('SELECT id, members FROM groups').all().catch(() => ({ results: [] }))).results || [];
+  G.forEach(g => { let m = []; try { m = JSON.parse(g.members || '[]'); } catch (e) {} if (m.indexOf(ok) === -1 || nk === ok) return;
+    st.push(db.prepare('UPDATE groups SET members = ? WHERE id = ?').bind(JSON.stringify([...new Set(m.map(x => x === ok ? nk : x))]), g.id)); });
+  return st;
+}
+export async function resolveReview(db, i, keep, txt) {
   const R = JSON.parse((await kvGet(db, 'masterReview')) || '[]');
   const it = R[i]; if (!it) return { ok: false, error: 'Ieraksts vairs nav — atjaunojiet' };
+  if (txt != null && String(it[1] || '') !== String(txt)) return { ok: false, error: 'Saraksts ir mainījies — atjaunojiet lapu un izvēlieties vēlreiz' };
   let people = false;
   if (keep === 0 || keep === 1) {
     const pair = String(it[1] || '').split(PAIR); if (pair.length !== 2) return { ok: false, error: 'Šim ierakstam nav pāra' };
@@ -186,9 +201,7 @@ export async function resolveReview(db, i, keep) {
       if (dobj) st.push(db.prepare('UPDATE objects SET vaditajs = ?, grupa = ?, piekluve = ? WHERE anorm = ?')
         .bind(ko.vaditajs || dobj.vaditajs, ko.grupa || dobj.grupa, ko.piekluve || dobj.piekluve, ko.anorm),
         db.prepare('DELETE FROM objects WHERE anorm = ?').bind(dobj.anorm));
-      st.push(db.prepare('UPDATE jobs SET adrese = ?, anorm = ? WHERE anorm = ?').bind(ko.adrese, ko.anorm, anorm(D)),
-        db.prepare('UPDATE problems SET adrese = ?, anorm = ? WHERE anorm = ?').bind(ko.adrese, ko.anorm, anorm(D)),
-        db.prepare('UPDATE standing SET adrese = ? WHERE adrese = ?').bind(ko.adrese, D));
+      st.push(...await objMoveStmts(db, dobj ? dobj.adrese : D, ko.adrese));
       await db.batch(st);
     } else if (it[0] === 'Cilvēks') {
       const all = await db.prepare('SELECT * FROM people').all().then(r => r.results || []);

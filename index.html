@@ -916,7 +916,7 @@ function drawAdmin() {
       if (e.target.closest('#rvInfo')) { if (confirm('Notīrīt ' + info + ' informatīvos ierakstus? Dati netiek mainīti.')) saveM('reviewClearInfo', {}); return; }
       const b = e.target.closest('[data-keep]'); if (!b) return; const keep = +b.dataset.keep, i = +b.dataset.i, r = R[i];
       if (keep >= 0) { const p = String(r[1]).split(PR); if (!confirm('Paturēt «' + p[keep].trim() + '» un apvienot ar to «' + p[1 - keep].trim() + '»?\n\nOtrs ieraksts tiks dzēsts, tā darbi un tiesības pārcelti.')) return; }
-      saveM('reviewResolve', { i, keep });
+      saveM('reviewResolve', { i, keep, txt: String(r[1] || '') });
     });
   }
 

@@ -9,6 +9,14 @@ const GRAF = [['pl', 'pl_obj', 'Zāles pļaušana'], ['logi', 'logi_obj', 'Logu 
 export const SVC = { pazemes: ['stav_obj', 'stav_visit', 'Pazemes stāvvieta', 'stav'], zale: ['pl_obj', 'pl_visit', 'Zāliens (pļaušana)', 'pl'], logi: ['logi_obj', 'logi_visit', 'Logu mazgāšana', 'logi'],
   darz: ['darz_obj', 'darz_visit', 'Dārzniecība', 'darz'], sniegs: ['sniegs_obj', 'sniegs_visit', 'Sniega tīrīšana', 'sniegs'] };
 const IP = ['stavi', 'kapnu', 'lifti', 'dzivokli'];
+/* Pakalpojuma ieslēgšana kā vaicājumu saraksts (masveidam — batch) */
+function svcStmts(db, k, key, on) {
+  const [tbl, vis] = SVC[key];
+  const st = [db.prepare('INSERT INTO obj_info (anorm, ' + key + ') VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET ' + key + ' = excluded.' + key).bind(k, on ? 1 : 0)];
+  if (!on) st.push(db.prepare('UPDATE ' + tbl + ' SET aktivs = 0 WHERE anorm = ?').bind(k),
+    db.prepare('DELETE FROM ' + vis + " WHERE anorm = ? AND statuss = 'plan' AND avots != 'pieteikums'").bind(k));
+  return st;
+}
 async function setSvc(db, k, key, on) {
   const [tbl, vis] = SVC[key];
   await db.prepare('INSERT INTO obj_info (anorm, ' + key + ') VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET ' + key + ' = excluded.' + key).bind(k, on ? 1 : 0).run();
@@ -77,8 +85,10 @@ export async function save(db, b) {
 /** Vairākiem objektiem uzreiz: ieslēgt/izslēgt pakalpojumu. adreses → on (true/false) */
 export async function bulk(db, key, list) {
   if (!SVC[key]) throw new Error('Nezināms pakalpojums');
-  let n = 0; for (const x of (list || []).slice(0, 1000)) { const k = anorm(x.adrese); if (!k) continue; await setSvc(db, k, key, !!x.on); n++; }
-  return n;
+  const L = (list || []).filter(x => anorm(x && x.adrese)); if (L.length > 300) throw new Error('Vienā reizē līdz 300 objektiem — sadaliet sarakstu');
+  const st = []; L.forEach(x => st.push(...svcStmts(db, anorm(x.adrese), key, !!x.on)));
+  for (let i = 0; i < st.length; i += 90) await db.batch(st.slice(i, i + 90));   // D1: ≤1000 vaicājumu uz izsaukumu
+  return L.length;
 }
 /** Kopsavilkums objektu sarakstam: { anorm: { pazemes, zale, ... } } */
 export async function svcMap(db) {
@@ -88,7 +98,8 @@ export async function svcMap(db) {
 /** Vairākiem objektiem uzreiz: pārvaldnieks */
 export async function bulkParv(db, parv, list) {
   const v = String(parv || '').trim().slice(0, 120); let n = 0;
-  for (const a of (list || []).slice(0, 2000)) { const k = anorm(a); if (!k) continue;
-    await db.prepare('INSERT INTO obj_info (anorm, parv) VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET parv = excluded.parv').bind(k, v).run(); n++; }
+  const ks = [...new Set((list || []).map(anorm).filter(Boolean))]; if (ks.length > 900) throw new Error('Vienā reizē līdz 900 objektiem — sadaliet sarakstu');
+  const st = ks.map(k => db.prepare('INSERT INTO obj_info (anorm, parv) VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET parv = excluded.parv').bind(k, v));
+  for (let i = 0; i < st.length; i += 90) await db.batch(st.slice(i, i + 90)); n = ks.length;
   return n;
 }

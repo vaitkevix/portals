@@ -137,10 +137,16 @@ export async function completeTask(env, d, me) {
     d.m3Hauled = Math.round(bags * BAG_M3 * (1 + coef) * 100) / 100;
     coefNote = [d.heavy ? '+10% smagi maisi' : '', d.mixed ? '+5% sadzīves atkritumi' : ''].filter(Boolean).join('; ');
   }
-  const pb = d.photosBefore;
-  if (!pb || (Array.isArray(pb) && !pb.length)) return fail('Pievienojiet bildi pirms savākšanas');
-  const ph = d.photosAfter || d.photoAfter;
-  if (!ph || (Array.isArray(ph) && !ph.length)) return fail('Pievienojiet bildi pēc izvešanas');
+  /* Izvedēja bildes: tikai tikko uzņemtas (data:image) vai jau mūsu R2 (/img?id=r2-…) — svešas saites neder */
+  const okPh = (x) => /^data:image\/[\w.+-]+;base64,/.test(String(x || '')) || /^https:\/\/vaitkevix\.cloud\/sh\/api\/img\?id=r2-[\w-]+/.test(String(x || ''));
+  const asL = (x) => (Array.isArray(x) ? x : [x]).filter(Boolean);
+  const pb = asL(d.photosBefore).filter(okPh);
+  if (!pb.length) return fail('Pievienojiet bildi pirms savākšanas');
+  const ph = asL(d.photosAfter || d.photoAfter).filter(okPh);
+  if (!ph.length) return fail('Pievienojiet bildi pēc izvešanas');
+  { const st0 = t0.statuss || ST_PENDING;   // pārbauda PIRMS bilžu saglabāšanas (citādi R2 paliek liekas bildes)
+    if (st0 === ST_DONE) return fail('Šis pieteikums jau ir atzīmēts kā izpildīts');
+    if (st0 === ST_CANCELLED) return fail('Šis pieteikums ir atcelts'); }
   const photoB = await savePhotos(env, pb, t0.id, 'Pirms');
   const photo = await savePhotos(env, ph, t0.id, 'Izvests');
   const t = await byId(db, d.id); if (!t) return fail('Pieteikums nav atrasts — iespējams, tas ir izdzēsts');
@@ -354,7 +360,8 @@ export async function ai(env, fn, a, me) {
       const d = a[0] || {}; if (!await login(db, d.pin, me)) return { status: 'error', code: 'pin', message: 'Nepareiza parole' };
       const t = await byId(db, d.id); if (!t) return aiErr('Pieteikums nav atrasts');
       const first = String(t.foto_pirms || '').split(/\s+/).filter(Boolean)[0] || '';
-      const before = first ? await photoData(env, first) : null;
+      const own = /^data:image\/[\w.+-]+;base64,/.test(String(d.before || '')) && String(d.before).length < 1500000 ? d.before : null;   // izvedēja bilde «pirms savākšanas»
+      const before = own || (first ? await photoData(env, first) : null);
       if (!before) return { status: 'success', data: { clean: null, note: 'Nav bildes "pirms", ar ko salīdzināt' } };
       if (before === 'big') return { status: 'success', data: { clean: null, note: 'Bilde "pirms" par lielu salīdzināšanai' } };
       const prompt = 'Pirmā bilde: atkritumi PIRMS izvešanas. Otrā bilde: tā pati vieta PĒC izvešanas. Vai atkritumi ir izvesti? Atbildi TIKAI ar JSON: {"clean":true/false, "note":"ļoti īsi latviski, ko redzi"}. ' +

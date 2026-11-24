@@ -104,12 +104,22 @@ export async function imports(env) {
 }
 
 /** /kais?fn=… bez Apps Script. Atgriež Response teksta saturu vai null (→ vecais ceļš) */
-export async function handle(env, ctx, fn, args, gas) {
+/* Kas ir sesijā: kurjers (SIA ar kais='kurjers'), admins (portāla vai kais), pieteicējs */
+const isAdm = (me) => !!me && !me.company && ((me.perms || {}).portal === 'admin' || (me.perms || {}).kais === 'admin');
+export async function handle(env, ctx, fn, args, gas, me) {
   const db = env.DB, a = Array.isArray(args) ? args : [];
   if (fn === 'getTasks') return await tasks(db);
   if (fn === 'getInitialData') return await initialData(db);
-  if (fn === 'saveTask') return await saveTask(env, ctx, gas, a[0] || {});
-  if (fn === 'completeTask') return await completeTask(env, ctx, gas, a[0] || {});
+  if (fn === 'saveTask') { const d = Object.assign({}, a[0] || {}); if (me && !isAdm(me)) d.requester = me.name; return await saveTask(env, ctx, gas, d); }
+  if (fn === 'completeTask') {
+    const d = Object.assign({}, a[0] || {});
+    if (me) {
+      const kurj = (me.perms || {}).kais === 'kurjers';
+      if (!kurj && !isAdm(me)) return { status: 'error', message: 'Piegādi atzīmēt var tikai kurjers vai administrators' };
+      if (!isAdm(me)) d.sia = me.name;   // kurjers atzīmē tikai uz sava vārda
+    }
+    return await completeTask(env, ctx, gas, d);
+  }
   if (fn === 'saveFileToDrive') return await savePhoto(env, gas, a[0], a[1] || 'bilde.jpg');
   return undefined;
 }

@@ -99,8 +99,12 @@ export async function invoiceNo(db, clientId, ym) {
   if (!/^\d{4}-\d{2}$/.test(ym || '')) throw new Error('Nederīgs mēnesis');
   const key = 'inv:' + (clientId || 'visi') + ':' + ym, have = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(key).first();
   if (have) return JSON.parse(have.v);
-  const F = await firma(db), y = new Date().getFullYear(), sk = 'inv:seq:' + y, cur = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(sk).first(), n = (cur ? +cur.v : 0) + 1;
-  const out = { nr: (F.prefikss || 'SH') + '-' + y + '-' + String(n).padStart(3, '0'), datums: new Date().toISOString().slice(0, 10) };
-  await db.batch([db.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind(sk, String(n)), db.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind(key, JSON.stringify(out))]);
-  return out;
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Riga' }).format(new Date()), y = today.slice(0, 4), sk = 'inv:seq:' + y;   // izrakstīšanas gads (Rīgas laiks)
+  const F = await firma(db);
+  const r = await db.prepare("INSERT INTO kv (k, v) VALUES (?, '1') ON CONFLICT(k) DO UPDATE SET v = CAST(v AS INTEGER) + 1 RETURNING v").bind(sk).first();   // atomiski — divi vienlaicīgi rēķini nesaņem vienu numuru
+  const n = +((r && r.v) || 1);
+  const out = { nr: (F.prefikss || 'SH') + '-' + y + '-' + String(n).padStart(3, '0'), datums: today };
+  await db.prepare('INSERT OR IGNORE INTO kv (k, v) VALUES (?, ?)').bind(key, JSON.stringify(out)).run();
+  const fin = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(key).first();   // ja paralēli jau izrakstīts — tas pats numurs
+  return fin ? JSON.parse(fin.v) : out;
 }

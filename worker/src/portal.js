@@ -59,9 +59,12 @@ export async function session(env, t) {
   if (!t) return null;
   const r = await env.DB.prepare('SELECT v FROM kv WHERE k = ?').bind('sess:' + await h(t)).first();
   const s = r && parse(r.v); if (!s || !(s.name || s.company) || s.exp < Date.now()) return null;
-  if (s.company) return companyBy(env.DB, 'name', s.company);
-  return (await people(env.DB)).find(p => p.active && p.name === s.name) || null;
+  const me = s.company ? await companyBy(env.DB, 'name', s.company) : ((await people(env.DB)).find(p => p.active && p.name === s.name) || null);
+  if (me && s.fp && s.fp !== await fpOf(me)) return null;   // PIN / parole nomainīta → vecā sesija vairs neder
+  return me;
 }
+/** Sesijas nospiedums: hash no PIN vai SIA paroles — mainot tos, sesijas beidzas */
+export async function fpOf(me) { return (await h('fp|' + String(me.company ? me.pass : me.pin || ''))).slice(0, 24); }
 /** Izvedējs / kurjers (uzņēmums) ienāk ar savu SIA paroli */
 export async function companyBy(db, field, v) {
   const c = await db.prepare('SELECT name, kinds, pass FROM companies WHERE active = 1 AND ' + (field === 'pass' ? 'pass' : 'name') + ' = ?').bind(String(v || '').trim().toUpperCase() && field === 'pass' ? String(v).trim().toUpperCase() : v).first();
@@ -158,7 +161,7 @@ export async function portal(request, env, ctx, hooks) {
       const me = await personByPin(env.DB, b.pin) || await companyBy(env.DB, 'pass', b.pin);
       if (!me) { await new Promise(r => setTimeout(r, 700)); return pj({ ok: false, error: 'Nepareizs PIN vai parole' }); }
       const t = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-      await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind('sess:' + await h(t), JSON.stringify(me.company ? { company: me.name, exp: Date.now() + 60 * 864e5 } : { name: me.name, exp: Date.now() + 60 * 864e5 })).run();
+      await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind('sess:' + await h(t), JSON.stringify(Object.assign(me.company ? { company: me.name } : { name: me.name }, { fp: await fpOf(me), exp: Date.now() + 30 * 864e5 }))).run();
       return pj({ ok: true, token: t, me: pub(me), dash: await dash(env, me) });
     }
     if (a === 'check') {   // Personāls / Budžets pārbauda vienoto PIN
@@ -179,7 +182,7 @@ export async function portal(request, env, ctx, hooks) {
         .bind(String(sb.endpoint).slice(0, 800), me.name, String(k.p256dh).slice(0, 200), String(k.auth).slice(0, 100), String(b.device || '').slice(0, 120), new Date().toISOString()).run();
       return pj({ ok: true });
     }
-    if (a === 'pushOff') { await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ?').bind(String(b.endpoint || '')).run(); return pj({ ok: true }); }
+    if (a === 'pushOff') { await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ? AND name = ?').bind(String(b.endpoint || ''), me.name).run(); return pj({ ok: true }); }
     if (a === 'pushTest') return pj({ ok: true, sent: await notify(env, [me.name], { title: 'SH | Portāls', body: 'Paziņojumi strādā ✓', url: '/sh/' }) });
     if (a === 'logout') { await env.DB.prepare('DELETE FROM kv WHERE k = ?').bind('sess:' + await h(b.t)).run(); return pj({ ok: true }); }
     if (me.perms.portal !== 'admin') return pj({ ok: false, error: 'Tikai administratoram' });
@@ -191,6 +194,7 @@ export async function portal(request, env, ctx, hooks) {
       if (!/^[0-9A-Za-z]{4,12}$/.test(pin)) return pj({ ok: false, error: 'PIN — 4 līdz 12 cipari vai burti' });
       if (list.some(x => x.name !== old && x.name.toLowerCase() === name.toLowerCase())) return pj({ ok: false, error: 'Šāds vārds jau ir' });
       if (list.some(x => x.name !== old && x.pin === pin)) return pj({ ok: false, error: 'Šāds PIN jau ir citam — izvēlieties citu' });
+      if (await env.DB.prepare('SELECT 1 FROM companies WHERE UPPER(pass) = UPPER(?) AND pass != \'\'').bind(pin).first()) return pj({ ok: false, error: 'Šāds PIN sakrīt ar kāda uzņēmuma paroli — izvēlieties citu' });
       const rec = { name, pin, color: String(p.color || '').slice(0, 20), phone: String(p.phone || '').trim().slice(0, 40), email: String(p.email || '').trim().slice(0, 120), active: p.active !== false, perms: cleanPerms(p.perms) };
       if (old === me.name && rec.perms.portal !== 'admin') return pj({ ok: false, error: 'Sev administratora tiesības noņemt nevar' });
       const i = list.findIndex(x => x.name === old);
@@ -215,4 +219,15 @@ export async function portal(request, env, ctx, hooks) {
     if (hooks.admin) { const r = await hooks.admin(a, b, me); if (r) return pj(r); }
     return pj({ ok: false, error: 'Nezināma darbība' });
   } catch (e) { return pj({ ok: false, error: String(e && e.message || e) }); }
+}
+
+/** Cron 1× dienā: izdzēš beigušās sesijas un vecos PIN mēģinājumu skaitītājus (rl:) */
+export async function cleanSessions(db) {
+  const now = Date.now(), del = [];
+  for (const r of (await db.prepare("SELECT k, v FROM kv WHERE k LIKE 'sess:%' OR k LIKE 'rl:%'").all()).results || []) {
+    const v = parse(r.v) || {};
+    if (r.k.startsWith('sess:') ? !(v.exp > now) : !(now - (v.t || 0) < 864e5)) del.push(db.prepare('DELETE FROM kv WHERE k = ?').bind(r.k));
+  }
+  for (let i = 0; i < del.length; i += 90) await db.batch(del.slice(i, i + 90));
+  return del.length;
 }
