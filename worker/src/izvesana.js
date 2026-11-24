@@ -32,7 +32,7 @@ const fail = (message, code) => ({ status: 'error', message, code: code || '' })
 
 /* ---------- dati ---------- */
 const out = (t) => ({ rowIndex: t.row, id: t.id, date: t.datums, address: t.adrese, requester: t.pasutitajs, bagsEst: t.maisi, comment: t.komentars, photoBefore: t.foto_pirms,
-  status: t.statuss || ST_PENDING, sia: t.sia, photoAfter: t.foto_pec, m3Hauled: t.m3, carrierComment: t.izv_kom, urgent: !!t.steidzami, deadline: t.termins, problem: t.problema,
+  status: t.statuss || ST_PENDING, sia: t.sia, photoAfter: t.foto_pec, photoCarrierBefore: t.foto_izv_pirms || '', m3Hauled: t.m3, carrierComment: t.izv_kom, urgent: !!t.steidzami, deadline: t.termins, problem: t.problema,
   history: t.vesture, doneAt: t.izpildits, bagsHauled: t.maisi_izv, coefNote: t.koef });
 export async function getTasks(db) { return (await all(db, 'SELECT * FROM izv_task ORDER BY row')).map(out); }
 export async function getInitialData(env) {
@@ -137,8 +137,11 @@ export async function completeTask(env, d, me) {
     d.m3Hauled = Math.round(bags * BAG_M3 * (1 + coef) * 100) / 100;
     coefNote = [d.heavy ? '+10% smagi maisi' : '', d.mixed ? '+5% sadzīves atkritumi' : ''].filter(Boolean).join('; ');
   }
+  const pb = d.photosBefore;
+  if (!pb || (Array.isArray(pb) && !pb.length)) return fail('Pievienojiet bildi pirms savākšanas');
   const ph = d.photosAfter || d.photoAfter;
   if (!ph || (Array.isArray(ph) && !ph.length)) return fail('Pievienojiet bildi pēc izvešanas');
+  const photoB = await savePhotos(env, pb, t0.id, 'Pirms');
   const photo = await savePhotos(env, ph, t0.id, 'Izvests');
   const t = await byId(db, d.id); if (!t) return fail('Pieteikums nav atrasts — iespējams, tas ir izdzēsts');
   const st = t.statuss || ST_PENDING;
@@ -147,8 +150,8 @@ export async function completeTask(env, d, me) {
   const m3 = d.m3Hauled === 0 ? '0' : String(d.m3Hauled || '');
   let v = log(t, 'Izpildīts · ' + (bags ? bags + ' maisi × 150 l' + (coefNote ? ' (' + coefNote + ')' : '') + ' = ' : '') + fmt(num(d.m3Hauled)) + ' m³ (izvedējs)');
   if (d.aiNote) v += '\n' + stamp() + ' · AI pārbaude: ' + String(d.aiNote).slice(0, 200);
-  await db.prepare('UPDATE izv_task SET statuss = ?, sia = ?, foto_pec = ?, m3 = ?, izv_kom = ?, izpildits = ?, maisi_izv = ?, koef = ?, vesture = ? WHERE id = ?')
-    .bind(ST_DONE, lg.sia || t.sia || '', photo || t.foto_pec || '', m3, String(d.carrierComment || ''), stamp(), bags ? String(bags) : t.maisi_izv, bags ? coefNote : t.koef, v, t.id).run();
+  await db.prepare('UPDATE izv_task SET statuss = ?, sia = ?, foto_izv_pirms = ?, foto_pec = ?, m3 = ?, izv_kom = ?, izpildits = ?, maisi_izv = ?, koef = ?, vesture = ? WHERE id = ?')
+    .bind(ST_DONE, lg.sia || t.sia || '', photoB || t.foto_izv_pirms || '', photo || t.foto_pec || '', m3, String(d.carrierComment || ''), stamp(), bags ? String(bags) : t.maisi_izv, bags ? coefNote : t.koef, v, t.id).run();
   return withTasks(env, { status: 'success' });
 }
 export async function reportProblem(env, d, me) {
@@ -199,7 +202,7 @@ export async function reportData(db, year, month) {
     a.n++; a[k] += v; a.total += v; mo.n++; mo[k] += v; mo.total += v; o.count++;
     const dn = pd(t.izpildits); if (dn && dn >= d) { o.speedH += (dn - d) / 36e5; o.speedN++; }
     o.items.push({ date: dmy(d), done: dn ? dmy(dn) : '', address, kind: k, m3: v,
-      before: String(t.foto_pirms || '').split(/\s+/).filter(u => /^https?:/.test(u)), after: String(t.foto_pec || '').split(/\s+/).filter(u => /^https?:/.test(u)) });
+      before: String((t.foto_izv_pirms || '') + '\n' + (t.foto_pirms || '')).split(/\s+/).filter(u => /^https?:/.test(u)), after: String(t.foto_pec || '').split(/\s+/).filter(u => /^https?:/.test(u)) });
   }
   return o;
 }
