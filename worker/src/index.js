@@ -50,7 +50,7 @@ export default {
     if (url.pathname === '/budz' || url.pathname.endsWith('/budz')) return budz(request, env, ctx);
     if (url.pathname === '/pl' || url.pathname.endsWith('/pl')) return plausana(request, env, new Ctx(env, ctx));
     if (url.pathname === '/dl/sms' || url.pathname.endsWith('/dl/sms')) return darbalaiks.hook(request, env, new Ctx(env, ctx), url);   // SMS vārtejas webhook
-    { const sk = url.pathname.replace(/^.*\//, ''); if (GRAF[sk] && !url.pathname.startsWith('/sh')) return GRAF[sk].api(request, env, new Ctx(env, ctx), fetchWx); }
+    { const sk = url.pathname.replace(/^.*\//, ''); if (GRAF[sk] && !url.pathname.startsWith('/sh')) { const X = new Ctx(env, ctx); X.adm = (act, b, me) => masterAdmin(X, act, b, me); return GRAF[sk].api(request, env, X, fetchWx); } }   // X.adm — Mājas lietai (objekti caur to pašu administrēšanas loģiku)
     if (url.pathname === '/who' || url.pathname.endsWith('/who')) return who(request, env);
     if (url.pathname === '/portal' || url.pathname.endsWith('/portal')) { const X = new Ctx(env, ctx); return portal(request, env, ctx, { saved: (list) => peopleSaved(X, list), admin: (a, b, me) => masterAdmin(X, a, b, me), lists: async () => publicLists(await master(env.DB)) }); }
     if (url.pathname === '/img' || url.pathname.endsWith('/img')) return img(url, ctx, env);

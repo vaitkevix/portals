@@ -699,6 +699,8 @@ $('menuBtn').onclick = () => {
 
 /* ---------- Administrēšana: cilvēki un pilnvaras + pamatdati (viens saraksts visām lietotnēm) ---------- */
 const TABS = [['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['companies', 'Uzņēmumi'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['review', 'Pārbaudīt']];
+/* Objekti pārcelti uz Mājas lietu (2026-11-24): cilne paslēpta, kods paliek (atgriezt — izņemt 'objects' no ADM_HIDE) */
+const ADM_HIDE = ['objects'];
 const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kaisāmmateriāls)', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
 const KN = { izvedejs: 'Izvedējs', kurjers: 'Kurjers', plausejs: 'Pļāvējs', darba_devejs: 'Darba devējs' };
 /* Darbu izpildītāja (SIA) pilnvaras pa projektiem: projekts → veids */
@@ -707,6 +709,8 @@ const objByParv = (n) => A.svc && A.svc.map ? Object.values(A.svc.map).filter(x 
 const isDoer = (c) => CPERM.some(x => c.kinds.includes(x[1]));
 const A = { tab: 'people', q: '', M: null, f: {} };
 async function openAdmin(tab) {
+  if (ADM_HIDE.indexOf(A.tab) !== -1) A.tab = 'people';
+  if (tab && ADM_HIDE.indexOf(tab) !== -1) { closeSheet(); return openApp('ml'); }
   if (tab && tab !== A.tab) { A.tab = tab; A.q = ''; A.f = {}; }
   const s = sheet(`<div class="hd"><h3>Administrēšana</h3>${X}</div><div class="skel"></div>`);
   try { const [r, m] = await Promise.all([api('people'), api('master')]); S.people = r.people; S.roles = r.roles; A.M = m; drawAdmin(); }
@@ -714,7 +718,7 @@ async function openAdmin(tab) {
 }
 function tabsHtml() {
   const n = (A.M && A.M.review || []).length;
-  return `<div class="seg" id="aTabs" style="margin:0 0 12px">${TABS.map(([k, l]) => `<button type="button" data-t="${k}" class="${A.tab === k ? 'on' : ''}">${l}${k === 'review' && n ? ' · ' + n : ''}</button>`).join('')}</div>`;
+  return `<div class="seg" id="aTabs" style="margin:0 0 12px">${TABS.filter(([k]) => ADM_HIDE.indexOf(k) === -1).map(([k, l]) => `<button type="button" data-t="${k}" class="${A.tab === k ? 'on' : ''}">${l}${k === 'review' && n ? ' · ' + n : ''}</button>`).join('')}<button type="button" data-go="ml" title="Objekti tagad ir Mājas lietā">Objekti ↗</button></div>`;
 }
 HTMLElement.prototype.onClick = function (f) { (this._clk || (this._clk = [])).push(f); this.addEventListener('click', f); };
 function adminShell(inner, addLabel) {
@@ -725,7 +729,7 @@ function adminShell(inner, addLabel) {
   s.innerHTML = `<div class="adm-head"><div class="hd"><h3>Administrēšana</h3>${X}</div>${tabsHtml()}
     ${addLabel !== null ? `<div class="adm-top"><input id="pq" type="search" placeholder="Meklēt…" value="${esc(A.q)}" autocomplete="off">${addLabel ? `<button class="btn" id="pAdd">+ ${addLabel}</button>` : ''}</div>` : ''}</div><div id="aBody">${inner}</div>
     <p class="copy">Izmaiņas uzreiz darbojas visās lietotnēs.</p>`;
-  $('aTabs').onclick = (e) => { const b = e.target.closest('[data-t]'); if (b) { A.tab = b.dataset.t; A.q = ''; A.f = {}; drawAdmin(); s.scrollTop = 0; } };
+  $('aTabs').onclick = (e) => { if (e.target.closest('[data-go]')) { closeSheet(); return openApp('ml'); } const b = e.target.closest('[data-t]'); if (b) { A.tab = b.dataset.t; A.q = ''; A.f = {}; drawAdmin(); s.scrollTop = 0; } };
   let tm = 0; const inp = $('pq'); if (inp) inp.oninput = () => { clearTimeout(tm); tm = setTimeout(() => { A.q = inp.value; A.onlyList = true; drawAdmin(); A.onlyList = false; }, 120); };
   if (A.st) { s.scrollTop = A.st; A.st = 0; }
   return s;

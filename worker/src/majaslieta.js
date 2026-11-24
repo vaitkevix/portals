@@ -1,7 +1,11 @@
 /* SH | Mājas lieta — viss par māju vienuviet: kadastra dati (no kadastrs.lv caur Safari pogu + AI), dokumenti (R2), darbu vēsture no visām lietotnēm. © VAITKEVIX, SIA
  * Maršruts POST /ml { pin, action, … }. Lomas portālā: perms.ml = admin | vaditajs | skatitajs; portāla admins = admin.
- * Savas tabulas ml_kad, ml_doc, ml_log. Citu lietotņu tabulas tikai lasa. */
-import { personByPin } from './portal.js';
+ * Savas tabulas ml_kad, ml_doc, ml_log. Citu lietotņu tabulas tikai lasa.
+ * Objekti (agrāk portāla Administrēšana → Objekti) — rediģē tikai ml admin; saglabāšana iet caur TO PAŠU loģiku:
+ * X.adm(action) = index.js masterAdmin (saveObjects, objInfoSave, objSvcBulk, objParvBulk), objinfo.js — tabulas objects, obj_info, dl_obj. */
+import { personByPin, people } from './portal.js';
+import { master } from './master.js';
+import * as objinfo from './objinfo.js';
 import { aiCall } from './ai.js';
 import { today, nowStr, anorm, CORS, out } from './util.js';
 
@@ -61,6 +65,37 @@ function matchObj(objs, adr) {
     if (b === a) s = 100; else { if (num && new RegExp('(^|\\s)' + num.replace(/\s/g, '\\s?') + '(\\s|$)').test(b)) s += 40; words.forEach(w => { if (b.indexOf(w) !== -1) s += 20; }); }
     return { adrese: o.adrese, anorm: o.anorm, s }; }).filter(x => x.s >= 50).sort((x, y) => y.s - x.s).slice(0, 5);
 }
+/* ---------- Apvienotie objekti: «Aglonas 11 / Prūšu 4b», «Dumbrāja 18, 18 k-1, 18 k-2» — vairākas mājas zem vienas adreses.
+ * Adrese visur paliek tāda pati; šeit tikai parāda, no kurām mājām tas sastāv. Admins var norādīt ar roku (ml_parts). */
+const PFX = /^\s*([A-ZĀČĒĢĪĶĻŅŠŪŽ]{1,4}\s*\|\s*)/;
+export function splitAddr(a) {
+  let s = String(a || '').trim(); const pm = s.match(PFX), pfx = pm ? pm[1] : ''; if (pm) s = s.slice(pm[0].length);
+  const raw = s.split(/\s+\/\s+|\s*;\s*|\s*,\s*/).map(x => x.trim()).filter(x => x && !/^(lv-?\s?\d{4}|rīga|riga|latvija)$/i.test(x));   // «24/26» = viena māja
+  if (raw.length < 2) return [];
+  let street = '', base = ''; const out = [];
+  for (const p of raw) {
+    if (!/\d/.test(p)) return [];
+    if (/^k-?\s*\d/i.test(p)) { if (!base) return []; out.push(base + ' k-' + p.replace(/^k-?\s*/i, '')); }   // «Jomas 57, k-1», «K2»
+    else if (/^\d/.test(p)) { if (!street) return []; const x = street + ' ' + p; out.push(x); base = x.replace(/\s+k-?\s*\d+\S*$/i, ''); }
+    else { street = p.replace(/\s+\d[^\s]*(\s+k-?\s*\d+\S*)?$/i, '').trim(); out.push(p); base = p.replace(/\s+k-?\s*\d+\S*$/i, ''); }
+  }
+  return out.map(x => ({ adrese: x, pfx }));
+}
+function partsOf(objs, manual) {   // → { anorm: [{ adrese, anorm }] } tikai apvienotajiem
+  const byK = {}, byA = {}; objs.forEach(o => { byK[o.anorm] = o; const k = akey(o.adrese); if (k && !byA[k]) byA[k] = o; });
+  const find = (x, pfx) => byK[anorm(pfx + x)] || byK[anorm(x)] || byA[akey(x)] || null;
+  const res = {};
+  objs.forEach(o => {
+    const m = manual[o.anorm]; let L;
+    if (m && m !== 'auto') { try { L = JSON.parse(m).map(x => ({ adrese: String(x), pfx: '' })); } catch (e) { L = []; } }
+    else L = splitAddr(o.adrese);
+    if (L.length < (m && m !== 'auto' ? 1 : 2)) return;
+    res[o.anorm] = L.map(x => { const f = find(x.adrese, x.pfx); return f && f.anorm !== o.anorm ? { adrese: f.adrese, anorm: f.anorm } : { adrese: x.adrese, anorm: '' }; });
+  });
+  return res;
+}
+const manualParts = async (db) => { const m = {}; (await all(db, 'SELECT anorm, parts FROM ml_parts').catch(() => [])).forEach(r => m[r.anorm] = r.parts); return m; };
+
 /* Pazemes autostāvvietas platība no kadastra datiem (koplietošanas telpas pagrabā vai telpu grupas ar stāvvietu). 0 = nav */
 const isPark = (x) => /auto\s*st[āa]v|st[āa]vviet|garā[žz]|garaz|auto\s*novietn|transportlīdzekļ|brauktuv|\b124[12]\b/i.test(String(x || ''));
 function parkingM2(d) {
@@ -93,7 +128,7 @@ async function docPut(env, b) {
   return { key, ct, size: bin.length };
 }
 
-export async function api(request, env) {
+export async function api(request, env, X) {
   if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
   let b = {}; try { b = await request.json(); } catch (e) { return out({ ok: false, error: 'Nederīgs pieprasījums' }, 400); }
   const db = env.DB, me = await personByPin(db, b.pin);
@@ -103,8 +138,10 @@ export async function api(request, env) {
   const a = b.action, k = anorm(b.anorm || b.adrese);
   try {
     if (a === 'boot') {
-      const objects = await all(db, 'SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, k.kad_nr, k.atjaunots kad_t, (SELECT COUNT(*) FROM ml_doc d WHERE d.anorm = o.anorm AND d.dzests = 0) docs FROM objects o LEFT JOIN ml_kad k ON k.anorm = o.anorm ORDER BY o.ord, o.adrese');
-      return out({ ok: true, me: { name: me.name, role }, objects, kinds: DOC_KINDS });
+      const objects = await all(db, 'SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, CASE WHEN o.piekluve != \'\' THEN 1 ELSE 0 END pk, k.kad_nr, k.atjaunots kad_t, (SELECT COUNT(*) FROM ml_doc d WHERE d.anorm = o.anorm AND d.dzests = 0) docs FROM objects o LEFT JOIN ml_kad k ON k.anorm = o.anorm ORDER BY o.ord, o.adrese');
+      if (ROLE_W[role] < 2) objects.forEach(o => { delete o.pk; });
+      const parts = partsOf(objects, await manualParts(db));
+      return out({ ok: true, me: { name: me.name, role }, objects, kinds: DOC_KINDS, parts, svc: await objinfo.svcMap(db).catch(() => ({})), names: Object.fromEntries(Object.keys(objinfo.SVC).map(x => [x, objinfo.SVC[x][2]])) });
     }
     if (a === 'obj') {
       if (!k) throw new Error('Nav objekta');
@@ -115,8 +152,69 @@ export async function api(request, env) {
       const kad = await db.prepare('SELECT kad_nr, dati, avots, atjaunots, kas FROM ml_kad WHERE anorm = ?').bind(k).first();
       if (kad) { try { kad.dati = JSON.parse(kad.dati || '{}'); } catch (e) { kad.dati = {}; } }
       const docs = await all(db, 'SELECT id, nosaukums, tips, izmers, pievienoja, laiks FROM ml_doc WHERE anorm = ? AND dzests = 0 ORDER BY laiks DESC', k);
-      return out({ ok: true, obj: o, kad: kad || null, docs, hist: await history(db, k, o.adrese) });
+      const allO = await all(db, 'SELECT anorm, adrese FROM objects'), man = await manualParts(db), P = partsOf(allO, man)[k] || null;
+      let parts = null, histParts = [];
+      if (P) {
+        parts = [];
+        for (const x of P) {
+          const r = x.anorm ? await db.prepare('SELECT dati, atjaunots FROM ml_kad WHERE anorm = ?').bind(x.anorm).first() : null;
+          let d = null; if (r) { try { d = JSON.parse(r.dati || '{}'); } catch (e) { d = {}; } }
+          parts.push({ adrese: x.adrese, anorm: x.anorm, kad: d, kad_t: r ? r.atjaunots : '' });
+          if (x.anorm) (await history(db, x.anorm, x.adrese)).forEach(h => histParts.push(Object.assign(h, { part: x.adrese })));
+        }
+        histParts.sort((a, b) => String(b.datums).localeCompare(String(a.datums))); histParts = histParts.slice(0, 300);
+      }
+      return out({ ok: true, obj: o, kad: kad || null, docs, hist: await history(db, k, o.adrese), parts, manual: !!(man[k] && man[k] !== 'auto'), histParts });
     }
+    /* ---------- Objekti ---------- */
+    const adm = async (act, body) => { if (!X || !X.adm) throw new Error('Nav pieejams'); const r = await X.adm(act, body, me); if (r && r.ok === false) throw new Error(r.error || 'Kļūda'); return r || {}; };
+    const objList = async () => (await master(db)).objects;
+    const saveList = async (list) => { await adm('saveObjects', { objects: list }); return out({ ok: true, objects: await objList() }); };
+    if (a === 'objInfo') {   // objekta kartīte; algas un darbinieki (personas dati) — tikai adminam
+      const ad = b.adrese || ((await db.prepare('SELECT adrese FROM objects WHERE anorm = ?').bind(k).first()) || {}).adrese;
+      if (!ad) throw new Error('Objekts nav atrasts');
+      const d = await objinfo.info(db, ad);
+      if (ROLE_W[role] < 3) { d.algas = []; d.personals = []; d.dl = { kods: d.dl.kods, vajag_uzk: d.dl.vajag_uzk, vajag_set: d.dl.vajag_set, darbinieki: [] }; }
+      return out(Object.assign({ ok: true }, d));
+    }
+    if (a === 'objMeta') {
+      need('admin');
+      const m = await master(db), P = await people(db);
+      const mgrs = [...new Set(P.filter(p => p.active && (p.perms.portal === 'admin' || Object.keys(p.perms).some(x => x !== 'portal' && (p.perms[x] === 'vaditajs' || p.perms[x] === 'admin')))).map(p => p.name))].sort((x, y) => x.localeCompare(y, 'lv'));
+      const parv = m.companies.filter(c => c.active !== false && c.kinds.includes('darba_devejs')).map(c => c.name);
+      return out({ ok: true, objects: m.objects, mgrs, parv, amati: (m.lists && m.lists.amati) || [], svc: await objinfo.svcMap(db), names: Object.fromEntries(Object.keys(objinfo.SVC).map(x => [x, objinfo.SVC[x][2]])) });
+    }
+    if (a === 'objSave') {   // { old: anorm vai '' (jauns), obj: { adrese, vaditajs, grupa, piekluve } }
+      need('admin');
+      const o = b.obj || {}, n = { adrese: str(o.adrese, 200), vaditajs: str(o.vaditajs, 80), grupa: str(o.grupa, 80) || 'SH objekti', piekluve: str(o.piekluve, 2000) };
+      if (!n.adrese) throw new Error('Ierakstiet adresi');
+      const list = await objList(), i = b.old ? list.findIndex(x => anorm(x.adrese) === b.old) : -1;
+      if (b.old && i < 0) throw new Error('Objekts nav atrasts — atjaunojiet lapu');
+      if (list.some((x, j) => j !== i && anorm(x.adrese) === anorm(n.adrese))) throw new Error('Šāda adrese jau ir');
+      if (i >= 0) list[i] = n; else list.unshift(n);
+      await log(db, me.name + ' · objekts ' + (i >= 0 ? 'labots' : 'pievienots') + ' · ' + n.adrese);
+      return await saveList(list);
+    }
+    if (a === 'objDel') {
+      need('admin');
+      const list = await objList(), i = list.findIndex(x => anorm(x.adrese) === k); if (i < 0) throw new Error('Objekts nav atrasts');
+      const [g] = list.splice(i, 1); await log(db, me.name + ' · objekts izņemts no saraksta · ' + g.adrese);
+      return await saveList(list);
+    }
+    if (a === 'objMgrBulk') {   // darbu vadītājs vairākiem objektiem
+      need('admin');
+      const set = new Set((b.list || []).map(anorm)), v = str(b.vaditajs, 80);
+      return await saveList((await objList()).map(o => set.has(anorm(o.adrese)) ? Object.assign({}, o, { vaditajs: v }) : o));
+    }
+    if (a === 'partsSave') {   // { anorm, parts: [adreses] | 'auto' } — [] = nav apvienots
+      need('admin'); if (!k) throw new Error('Nav objekta');
+      const v = b.parts === 'auto' ? 'auto' : JSON.stringify((Array.isArray(b.parts) ? b.parts : []).map(x => str(x, 200)).filter(Boolean).slice(0, 30));
+      await db.prepare('INSERT INTO ml_parts (anorm, parts, kas, laiks) VALUES (?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET parts = excluded.parts, kas = excluded.kas, laiks = excluded.laiks').bind(k, v, me.name, nowStr()).run();
+      await log(db, me.name + ' · sastāvdaļas · ' + k + ' → ' + v.slice(0, 200));
+      return out({ ok: true });
+    }
+    if (a === 'objInfoSave' || a === 'objSvcBulk' || a === 'objParvBulk') { need('admin'); return out(Object.assign({ ok: true }, await adm(a, b))); }
+
     if (a === 'kadParse') { need('vaditajs'); return out(Object.assign({ ok: true }, await kadParse(env, db, b))); }
     if (a === 'kadSave') {
       need('vaditajs'); if (!k) throw new Error('Izvēlieties objektu');
