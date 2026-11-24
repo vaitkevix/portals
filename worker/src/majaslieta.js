@@ -137,7 +137,7 @@ const isPark = (x) => /auto\s*st[āa]v|st[āa]vviet|garā[žz]|garaz|auto\s*novi
 function parkingM2(d) {
   let m = 0;
   (Array.isArray(d.telpas) ? d.telpas : []).forEach(t => { if (isPark(t.nosaukums) && (t.zona === 'Pagrabs' || /pazem/i.test(t.nosaukums))) m += +t.m2 || 0; });
-  (Array.isArray(d.grupas) ? d.grupas : []).forEach(g => { if (isPark(g.nosaukums + ' ' + g.lv) && !/virszem|ārtelp/i.test(g.nosaukums)) m += +g.m2 || 0; });
+  (Array.isArray(d.grupas) ? d.grupas : []).forEach(g => { const p = g.park === true || (g.park !== false && (isPark(g.nosaukums + ' ' + g.lv) || (Array.isArray(g.telpas_n) && g.telpas_n.some(isPark)))); if (p && !/virszem|ārtelp/i.test(g.nosaukums)) m += +g.m2 || 0; });
   return m;
 }
 /* Ēkas dati (obj_info.ip: stāvi, kāpņu telpas, lifti, dzīvokļi) no kadastra. Kāpņu telpas un lifti — novērtējums:
