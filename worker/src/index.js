@@ -11,6 +11,7 @@ import * as logi from './logi.js';
 import * as sniegs from './sniegs.js';
 import * as darznieciba from './darznieciba.js';
 import * as stavvietas from './stavvietas.js';
+import * as majaslieta from './majaslieta.js';
 import * as darbalaiks from './darbalaiks.js';
 import { fetchWx, wxCron } from './wx.js';
 import { notify as wpNotify, managers as wpManagers } from './webpush.js';
@@ -28,7 +29,7 @@ import * as budzN from './budzets.js';
 const noGoogle = async (db) => (await kvGet(db, 'noGoogle')) === '1';
 const GS_OPS = new Set(['config', 'people', 'master', 'addObjects', 'importObjects']);
 /* Grafika lietotnes — katra savā failā: maršruts /<KEY> → modulis */
-const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas, dl: darbalaiks };
+const GRAF = { logi, sniegs, darz: darznieciba, stav: stavvietas, dl: darbalaiks, ml: majaslieta };
 import { master, importAll as importMaster, legacyPayload, publicLists, objectsStmts, personCanon, companiesStmts, listsStmts, typesStmts, kvGet, kvSet, resolveReview, clearInfoReview, autoMergePrefixed, groupsOf, groupsStmts } from './master.js';
 const TZ = 'Europe/Riga';
 const PROMBUTNE = ['Atvaļinājums', 'DNL', 'Vakance'];
@@ -575,8 +576,8 @@ async function budz(request, env, ctx) {
   }
 }
 
-const SITES = { '/shaizvietosana': 'https://vaitkevix.github.io/aizvietosana', '/shizvesana': 'https://vaitkevix.github.io/izvesana', '/shkaisammaterials': 'https://vaitkevix.github.io/kaisammaterials', '/shpersonals': 'https://vaitkevix.github.io/personals', '/shbudzets': 'https://vaitkevix.github.io/budzets', '/shplausana': 'https://vaitkevix.github.io/plausana', '/shlogi': 'https://vaitkevix.github.io/logi', '/shsniegs': 'https://vaitkevix.github.io/sniegs', '/shdarznieciba': 'https://vaitkevix.github.io/darznieciba', '/shstavvietas': 'https://vaitkevix.github.io/stavvietas', '/shdarbalaiks': 'https://vaitkevix.github.io/darbalaiks', '/sh': 'https://vaitkevix.github.io/portals' };
-const SITE_KEY = { '/shaizvietosana': 'aizv', '/shizvesana': 'izv', '/shkaisammaterials': 'kais', '/shpersonals': 'pers', '/shbudzets': 'budz', '/shplausana': 'pl', '/shlogi': 'logi', '/shsniegs': 'sniegs', '/shdarznieciba': 'darz', '/shstavvietas': 'stav', '/shdarbalaiks': 'dl' };
+const SITES = { '/shaizvietosana': 'https://vaitkevix.github.io/aizvietosana', '/shizvesana': 'https://vaitkevix.github.io/izvesana', '/shkaisammaterials': 'https://vaitkevix.github.io/kaisammaterials', '/shpersonals': 'https://vaitkevix.github.io/personals', '/shbudzets': 'https://vaitkevix.github.io/budzets', '/shplausana': 'https://vaitkevix.github.io/plausana', '/shlogi': 'https://vaitkevix.github.io/logi', '/shsniegs': 'https://vaitkevix.github.io/sniegs', '/shdarznieciba': 'https://vaitkevix.github.io/darznieciba', '/shstavvietas': 'https://vaitkevix.github.io/stavvietas', '/shdarbalaiks': 'https://vaitkevix.github.io/darbalaiks', '/shmajaslieta': 'https://vaitkevix.github.io/majaslieta', '/sh': 'https://vaitkevix.github.io/portals' };
+const SITE_KEY = { '/shaizvietosana': 'aizv', '/shizvesana': 'izv', '/shkaisammaterials': 'kais', '/shpersonals': 'pers', '/shbudzets': 'budz', '/shplausana': 'pl', '/shlogi': 'logi', '/shsniegs': 'sniegs', '/shdarznieciba': 'darz', '/shstavvietas': 'stav', '/shdarbalaiks': 'dl', '/shmajaslieta': 'ml' };
 /** Lietotnes faili no GitHub Pages zem tava domēna */
 async function site(request, url, base) {
   if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });

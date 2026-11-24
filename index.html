@@ -204,8 +204,8 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .foot{padding:8px 0 calc(28px + var(--safe-b, env(safe-area-inset-bottom)));text-align:center;font-size:11.5px;font-weight:700;color:var(--ink-3)}
 
 /* ===== Kopskats (koncepts: lieli pasteļkrāsu bloki, SELECTUM HOME zaļais) ===== */
-:root{--mint:#d6e8e1;--sand:#f4e4b4;--sky:#d8e6f2;--rose:#f5dbe3;--lilac:#e2ddf2;--lime:#dcecc4;--aqua:#cbe9ef;--frost:#e0e6ec;--olive:#e6e7c6;--peach:#f8dcc6;--mauve:#ecd8ee;--ink-strong:#16201b;--pill:#fff}
-:root[data-theme="dark"]{--mint:#1e3a32;--sand:#3d3520;--sky:#1e2f3d;--rose:#3d2530;--lilac:#2c2840;--lime:#27381c;--aqua:#173a40;--frost:#262d34;--olive:#33341c;--peach:#40291b;--mauve:#382540;--ink-strong:#eef2ef;--pill:#1b2521}
+:root{--mint:#d6e8e1;--sand:#f4e4b4;--sky:#d8e6f2;--rose:#f5dbe3;--lilac:#e2ddf2;--lime:#dcecc4;--aqua:#cbe9ef;--frost:#e0e6ec;--olive:#e6e7c6;--peach:#f8dcc6;--mauve:#ecd8ee;--clay:#eadfd3;--ink-strong:#16201b;--pill:#fff}
+:root[data-theme="dark"]{--mint:#1e3a32;--sand:#3d3520;--sky:#1e2f3d;--rose:#3d2530;--lilac:#2c2840;--lime:#27381c;--aqua:#173a40;--frost:#262d34;--olive:#33341c;--peach:#40291b;--mauve:#382540;--clay:#3a3027;--ink-strong:#eef2ef;--pill:#1b2521}
 #vHome{background:var(--bg);min-height:100%}
 .shell{display:flex;min-height:100vh}
 .rail{display:none}
@@ -255,7 +255,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .sw .ib{width:100%;height:100%;border-radius:8px}
 .perm .pt .ib{width:26px;height:26px;border-radius:8px}
 .ni i,.wide .t1 i{color:#16201b}:root[data-theme="dark"] .ni i{color:var(--ink-strong)}
-.c-aizv{background:var(--mint)}.c-izv{background:var(--sand)}.c-kais{background:var(--sky)}.c-pers{background:var(--rose)}.c-budz{background:var(--lilac)}.c-pl{background:var(--lime)}.c-logi{background:var(--aqua)}.c-sniegs{background:var(--frost)}.c-darz{background:var(--olive)}.c-stav{background:var(--peach)}.c-dl{background:var(--mauve)}.c-adm{background:#17201c;color:#fff}
+.c-aizv{background:var(--mint)}.c-izv{background:var(--sand)}.c-kais{background:var(--sky)}.c-pers{background:var(--rose)}.c-budz{background:var(--lilac)}.c-pl{background:var(--lime)}.c-logi{background:var(--aqua)}.c-sniegs{background:var(--frost)}.c-darz{background:var(--olive)}.c-stav{background:var(--peach)}.c-dl{background:var(--mauve)}.c-ml{background:var(--clay)}.c-adm{background:#17201c;color:#fff}
 :root[data-theme="dark"] .ac{color:var(--ink)}
 :root[data-theme="dark"] .ac .chip,:root[data-theme="dark"] .arrow{background:var(--surface);color:var(--ink)}
 .c-adm .arrow{background:#2b3732;color:#fff}.c-adm small{opacity:.7}
@@ -425,14 +425,15 @@ const APPS = {
   sniegs: { name: 'Sniega tīrīšana', sub: 'Traktoristu maršruti', path: '/shsniegs/' },
   darz: { name: 'Dārzniecība', sub: 'Grafiks · izpilde ar bildi', path: '/shdarznieciba/' },
   stav: { name: 'Pazemes stāvvietas', sub: 'Mazgāšana · tīrīšana', path: '/shstavvietas/' },
-  dl: { name: 'Darba laiks', sub: 'Objekti pa adresēm', path: '/shdarbalaiks/' }
+  dl: { name: 'Darba laiks', sub: 'Objekti pa adresēm', path: '/shdarbalaiks/' },
+  ml: { name: 'Mājas lieta', sub: 'Kadastrs · dokumenti · darbi', path: '/shmajaslieta/' }
 };
 /* #lietotne/papildu → papildu nodod lietotnei rāmī (piem. #budz/kadastrs=…) */
 const HX = (function () { const m = location.hash.match(/^#(\w+)\/(.+)$/); if (!m) return null; history.replaceState(history.state, '', '#' + m[1]); return { k: m[1], x: m[2] }; })();
-const ORDER = ['aizv', 'izv', 'kais', 'pers', 'budz', 'pl', 'logi', 'sniegs', 'darz', 'stav', 'dl'];
+const ORDER = ['aizv', 'izv', 'kais', 'pers', 'budz', 'pl', 'logi', 'sniegs', 'darz', 'stav', 'dl', 'ml'];
 /* Grafika lietotnes: tās redz visi portāla cilvēki (skatīšanās); tiesības dod labošanu */
 const GRAF = ['pl', 'logi', 'sniegs', 'darz', 'stav', 'dl'], DARBI = ['logi', 'sniegs', 'darz', 'stav', 'dl'];
-const GLY = {aizv: '<path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M3.5 11V9.5A3.5 3.5 0 0 1 7 6h13.5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M20.5 13v1.5A3.5 3.5 0 0 1 17 18H3.5"/>', izv: '<path d="M14 16.5V6H2.5v10.5h2"/><path d="M14 9.5h4l3.5 4v3h-2"/><path d="M9.3 16.5h5.4"/><circle cx="7" cy="16.8" r="2.3"/><circle cx="17" cy="16.8" r="2.3"/>', kais: '<path d="M12.00 12.00L12.00 2.50M12.00 7.25L9.88 5.13M12.00 7.25L14.12 5.13M12.00 12.00L3.77 7.25M7.89 9.62L4.99 10.40M7.89 9.62L7.11 6.73M12.00 12.00L3.77 16.75M7.89 14.38L7.11 17.27M7.89 14.38L4.99 13.60M12.00 12.00L12.00 21.50M12.00 16.75L14.12 18.87M12.00 16.75L9.88 18.87M12.00 12.00L20.23 16.75M16.11 14.38L19.01 13.60M16.11 14.38L16.89 17.27M12.00 12.00L20.23 7.25M16.11 9.62L16.89 6.73M16.11 9.62L19.01 10.40"/>', pers: '<circle cx="9.5" cy="8" r="4"/><path d="M2.5 21a7 7 0 0 1 14 0"/><path d="M19.5 8v6M16.5 11h6"/>', budz: '<path d="M5.5 2.5h13v19l-3.2-2.1-3.3 2.1-3.3-2.1-3.2 2.1z"/><path d="M9 8h6M9 12h6M9 16h3.5"/>', pl: '<path d="M3 20h18"/><path d="M6 20c0-5 1-9 3-12M10 20c0-4 1-7 3-9M14 20c0-3 1-6 4-8"/>', logi: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v18M4 12h16"/>', sniegs: '<path d="M5 17V10h7l2 3h5v4"/><path d="M12 10V6h3l2 7"/><circle cx="8" cy="17.5" r="2"/><circle cx="16.5" cy="17.5" r="2"/><path d="M10 17.5h4.5"/><path d="M2.5 9.5v9"/>', darz: '<path d="M12 21v-8"/><path d="M12 13c0-4 3-7 8-7 0 5-3 7-8 7z"/><path d="M12 15.5c0-3-2.5-5-7-5 0 4 2.5 5 7 5z"/>', stav: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9.5 17V7h3.5a3 3 0 0 1 0 6H9.5"/>', dl: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'};
+const GLY = {aizv: '<path d="M17 2.5l3.5 3.5L17 9.5"/><path d="M3.5 11V9.5A3.5 3.5 0 0 1 7 6h13.5"/><path d="M7 21.5L3.5 18 7 14.5"/><path d="M20.5 13v1.5A3.5 3.5 0 0 1 17 18H3.5"/>', izv: '<path d="M14 16.5V6H2.5v10.5h2"/><path d="M14 9.5h4l3.5 4v3h-2"/><path d="M9.3 16.5h5.4"/><circle cx="7" cy="16.8" r="2.3"/><circle cx="17" cy="16.8" r="2.3"/>', kais: '<path d="M12.00 12.00L12.00 2.50M12.00 7.25L9.88 5.13M12.00 7.25L14.12 5.13M12.00 12.00L3.77 7.25M7.89 9.62L4.99 10.40M7.89 9.62L7.11 6.73M12.00 12.00L3.77 16.75M7.89 14.38L7.11 17.27M7.89 14.38L4.99 13.60M12.00 12.00L12.00 21.50M12.00 16.75L14.12 18.87M12.00 16.75L9.88 18.87M12.00 12.00L20.23 16.75M16.11 14.38L19.01 13.60M16.11 14.38L16.89 17.27M12.00 12.00L20.23 7.25M16.11 9.62L16.89 6.73M16.11 9.62L19.01 10.40"/>', pers: '<circle cx="9.5" cy="8" r="4"/><path d="M2.5 21a7 7 0 0 1 14 0"/><path d="M19.5 8v6M16.5 11h6"/>', budz: '<path d="M5.5 2.5h13v19l-3.2-2.1-3.3 2.1-3.3-2.1-3.2 2.1z"/><path d="M9 8h6M9 12h6M9 16h3.5"/>', pl: '<path d="M3 20h18"/><path d="M6 20c0-5 1-9 3-12M10 20c0-4 1-7 3-9M14 20c0-3 1-6 4-8"/>', logi: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v18M4 12h16"/>', sniegs: '<path d="M5 17V10h7l2 3h5v4"/><path d="M12 10V6h3l2 7"/><circle cx="8" cy="17.5" r="2"/><circle cx="16.5" cy="17.5" r="2"/><path d="M10 17.5h4.5"/><path d="M2.5 9.5v9"/>', darz: '<path d="M12 21v-8"/><path d="M12 13c0-4 3-7 8-7 0 5-3 7-8 7z"/><path d="M12 15.5c0-3-2.5-5-7-5 0 4 2.5 5 7 5z"/>', stav: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M9.5 17V7h3.5a3 3 0 0 1 0 6H9.5"/>', dl: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', ml: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v11.5h14V9"/><path d="M9.5 20.5v-5h5v5"/>'};
 const gl = (k, n) => `<svg class="gl" width="${n || 22}" height="${n || 22}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLY[k]}</svg>`;
 const ib = (k, n) => `<span class="ib ${COLOR[k] || 'c-' + k}">${gl(k, n)}</span>`;
 const RL = { admin: 'Administrators', vaditajs: 'Pieteicējs', izpilditajs: 'Izpildītājs', skatitajs: 'Skatītājs', pieteicejs: 'Pieteicējs', 'gatavotājs': 'Izpildītājs', 'vadība': 'Pieteicējs' };
@@ -441,7 +442,7 @@ const RL = { admin: 'Administrators', vaditajs: 'Pieteicējs', izpilditajs: 'Izp
    Katras lietotnes lomas atslēga kolonnā (pieteicējs = agrākais «darbu vadītājs»; Budžetā vadība apstiprina, gatavotājs sagatavo) */
 const RCOL = [['', 'Nav piekļuves'], ['skatitajs', 'Skatītājs'], ['P', 'Pieteicējs'], ['I', 'Izpildītājs'], ['admin', 'Administrators']];
 const RKEY = { P: ['pieteicejs', 'vaditajs', 'vadība'], I: ['izpilditajs', 'gatavotājs'] };
-const RNO = { dl: 'Darba laiku sētnieki un uzkopēji atzīmē ar SMS', aizv: 'Aizvietošanā darbus izpilda brigādes ar brigāžu saiti', izv: 'Izvedēji ir uzņēmumi (SIA) ar savu paroli', kais: 'Kurjeri ir uzņēmumi (SIA) ar savu paroli', pers: 'Personālā nav izpildītāja lomas' };
+const RNO = { dl: 'Darba laiku sētnieki un uzkopēji atzīmē ar SMS', aizv: 'Aizvietošanā darbus izpilda brigādes ar brigāžu saiti', izv: 'Izvedēji ir uzņēmumi (SIA) ar savu paroli', kais: 'Kurjeri ir uzņēmumi (SIA) ar savu paroli', pers: 'Personālā nav izpildītāja lomas', ml: 'Mājas lietā: skatītājs redz, pieteicējs (vadītājs) pievieno kadastra datus un dokumentus' };
 const rcol = (k, c) => { const L = S.roles[k] || []; return RKEY[c] ? RKEY[c].find(r => L.indexOf(r) !== -1) : (L.indexOf(c) !== -1 ? c : null); };
 const COLORS = ['#0f6b5c', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#475569'];
 
@@ -505,12 +506,12 @@ async function logout() {
 /* Zāles pļaušanu redz visi portāla cilvēki (skatīšanās); tiesības pl dod labošanu */
 const gRole = (k) => S.me && !S.me.company ? (S.me.perms[k] || (S.me.perms.portal === 'admin' ? 'admin' : '')) : '';
 const plRole = () => gRole('pl');
-const hasApp = (k) => !!(S.me && (S.me.guest ? GUEST.indexOf(k) !== -1 : (S.me.perms[k] || (GRAF.indexOf(k) !== -1 && gRole(k)))));
+const hasApp = (k) => !!(S.me && (S.me.guest ? GUEST.indexOf(k) !== -1 : (S.me.perms[k] || (GRAF.indexOf(k) !== -1 && gRole(k)) || (k === 'ml' && gRole(k)))));
 /* Skatīšanās bez ielogošanās (pārvaldniekiem): tikai lietotnes, kuru saraksti ir publiski redzami */
 const GUEST = ['aizv', 'izv', 'kais', 'pl', 'logi', 'sniegs', 'darz', 'stav', 'dl'];   // Personāls un Budžets — tikai ar PIN (personas dati, cenas)
 function guest() { ['shx_izv_user', 'shx_kais_user', 'carrierPin', 'carrierUser', 'shx_kais_courier', 'darbi_pin', 'shd_pin', 'plausana_pin', 'personals_pin', 'budzets_pin'].forEach(ls.del); ls.set('sh_guest', '1'); S.me = { name: 'Pārvaldnieks', guest: true, perms: Object.fromEntries(GUEST.map(k => [k, 'skatitajs'])), color: '' }; S.dash = {}; home(); }
 function apps() { return ORDER.filter(hasApp); }
-const COLOR = { aizv: 'c-aizv', izv: 'c-izv', kais: 'c-kais', pers: 'c-pers', budz: 'c-budz', pl: 'c-pl', logi: 'c-logi', sniegs: 'c-sniegs', darz: 'c-darz', stav: 'c-stav', dl: 'c-dl' };
+const COLOR = { aizv: 'c-aizv', izv: 'c-izv', kais: 'c-kais', pers: 'c-pers', budz: 'c-budz', pl: 'c-pl', logi: 'c-logi', sniegs: 'c-sniegs', darz: 'c-darz', stav: 'c-stav', dl: 'c-dl', ml: 'c-ml' };
 const ARROW = '<span class="arrow"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg></span>';
 const GRID = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="7.5" cy="7.5" r="3.5"/><circle cx="16.5" cy="7.5" r="3.5"/><circle cx="7.5" cy="16.5" r="3.5"/><circle cx="16.5" cy="16.5" r="3.5"/></svg>';
 const SHIELD = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3Z"/><path d="M9 12l2 2 4-4"/></svg>';
