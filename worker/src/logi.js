@@ -98,7 +98,7 @@ export async function geocode(db, max) {
   let ok = 0, miss = 0;
   for (const o of L) {
     try {
-      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=lv&q=' + encodeURIComponent(geoQuery(o.adrese)), { headers: { 'User-Agent': 'SH-logi/1.0 (+https://vaitkevix.cloud/sh/)', 'Accept-Language': 'lv' } });
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=lv&q=' + encodeURIComponent(geoQuery(o.adrese)), { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'SH-logi/1.0 (+https://vaitkevix.cloud/sh/)', 'Accept-Language': 'lv' } });
       const j = r.ok ? await r.json() : [];
       if (j && j[0]) { await db.prepare('UPDATE logi_obj SET lat = ?, lng = ? WHERE anorm = ?').bind(+j[0].lat, +j[0].lon, o.anorm).run(); ok++; }
       else { await db.prepare('UPDATE logi_obj SET lat = 0, lng = 0 WHERE anorm = ?').bind(o.anorm).run(); miss++; }
@@ -120,6 +120,8 @@ export async function cron(env) {
 
 /* ---------- API ---------- */
 const ROLE_W = { admin: 3, vaditajs: 2, izpilditajs: 1, skatitajs: 0 };
+/* Bezsaistē atzīmēts: izpildes laiks no telefona (kad), ja ≤3 dienas vecs un nav nākotnē; citādi tagad */
+const kadOf = (b) => { const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(String((b && b.kad) || '')), t = today(); return m && m[1] <= t && m[1] >= addDays(t, -3) ? { d: m[1], t: m[2] } : { d: t, t: nowStr().slice(11) }; };
 export async function api(request, env, X, fetchWx) {
   if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
   let b = {}; try { b = await request.json(); } catch (e) { return out({ ok: false, error: 'Nederīgs pieprasījums' }, 400); }
@@ -210,6 +212,7 @@ export async function api(request, env, X, fetchWx) {
       need('izpilditajs');
       const v = await db.prepare('SELECT * FROM logi_visit WHERE id = ?').bind(String(b.id || '')).first();
       if (!v) throw new Error('Nav atrasts — atjaunojiet');
+      if (me.company && v.brigade && v.brigade !== me.name) throw new Error('Šis darbs nav jūsu brigādei');
       if (v.statuss === 'done') return out({ ok: true, already: true });
       if (a === 'done') {
         const C = await cfgOf(db), photos = (b.photos || []).filter(p => /^data:image\/(jpeg|png|webp);base64,/.test(String(p))).slice(0, 4);
@@ -219,7 +222,7 @@ export async function api(request, env, X, fetchWx) {
         const ids = photos.length ? await X.savePhotos({ datums: v.datums, adrese: NAME + ' · ' + v.adrese }, photos) : [];
         const idsB = before.length ? await X.savePhotos({ datums: v.datums, adrese: NAME + ' · pirms · ' + v.adrese }, before) : [];
         await db.batch([db.prepare("UPDATE logi_visit SET statuss = 'done', datums = ?, laiks = ?, sakums = CASE WHEN sakums = '' THEN ? ELSE sakums END, izpilditajs = ?, foto = ?, foto_pirms = CASE WHEN ? = '' THEN foto_pirms ELSE ? END, piezime = ?, izpilde = ? WHERE id = ?")
-          .bind(today(), nowStr().slice(11), String(b.sakums || '').slice(0, 5), me.name, ids.join(','), idsB.join(','), idsB.join(','), String(b.piezime || '').slice(0, 300), JSON.stringify(cleanDone(b.izpilde)), v.id)]);
+          .bind(kadOf(b).d, kadOf(b).t, String(b.sakums || '').slice(0, 5), me.name, ids.join(','), idsB.join(','), idsB.join(','), String(b.piezime || '').slice(0, 300), JSON.stringify(cleanDone(b.izpilde)), v.id)]);
       } else {
         const why = String(b.iemesls || 'Nepaspēja').slice(0, 60), C = await cfgOf(db), wx = (await kv(db, 'wx')) || {};
         const d = nextDay(addDays(v.datums > today() ? v.datums : today(), 1), C, wx);

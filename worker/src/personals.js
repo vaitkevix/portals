@@ -376,7 +376,7 @@ async function employee(db, user, vards) {
   const mine = (r) => String(r.vards || r.darbinieks || '').trim().toLowerCase() === k;
   const H = (await rowsOf(db, 'hire')).filter(mine), G = (await rowsOf(db, 'chg')).filter(mine), V = (await rowsOf(db, 'vac')).filter(mine), B = (await rowsOf(db, 'bonus')).filter(mine);
   if (user.role !== 'admin' && !H.concat(G, V, B).some(r => r.iesniedza === user.name)) throw new Error('Nav piekļuves šim darbiniekam');
-  const admin = user.role === 'admin', h = H.filter(r => r.statuss !== 'Noraidīts').slice(-1)[0] || {};
+  const admin = user.role === 'admin' && !user.viewer, h = H.filter(r => r.statuss !== 'Noraidīts').slice(-1)[0] || {};
   const cur = { sia: h.sia || '', objekts: noAlga(h.objekts || ''), amats: h.amats || '', alga: Number(String(h.alga || '').replace(',', '.')) || 0, slodze: '', sakums: h.sakums || '', beidz: '',
     tel: h.tel || '', epasts: h.epasts || '', adrese: admin ? h.adrese || '' : '', pk: admin ? h.pk || '' : '', banka: h.banka || '', iban: admin ? h.iban || '' : '', inval: h.inval || '', pens: h.pens || '' };
   G.filter(g => g.statuss === 'Apstiprināts').forEach(g => {
@@ -384,6 +384,7 @@ async function employee(db, user, vards) {
     if (g.slodze) cur.slodze = g.slodze + (g.stundas ? ' · ' + g.stundas + ' h/ned.' : ''); if (g.tel) cur.tel = g.tel; if (g.epasts) cur.epasts = g.epasts;
     if (g.adrese && admin) cur.adrese = g.adrese; if (g.banka) cur.banka = g.banka; if (g.iban && admin) cur.iban = g.iban; if (g.inval) cur.inval = g.inval; if (g.pens) cur.pens = g.pens;
     if (g.beigu_datums) cur.beidz = g.beigu_datums; });
+  if (user.viewer) { cur.alga = 0; cur.banka = ''; }
   // Darba laiks: darbinieks pēc tālruņa vai vārda; šī un iepriekšējā mēneša stundas
   const ph = dlPhone(cur.tel), w = (ph && await db.prepare('SELECT * FROM dl_worker WHERE phone = ?').bind(ph).first()) || await db.prepare('SELECT * FROM dl_worker WHERE lower(trim(vards)) = ?').bind(k).first();
   let dl = null;
@@ -397,11 +398,11 @@ async function employee(db, user, vards) {
   H.forEach(r => ev.push({ t: 'hire', id: r.id, d: r.iesniegts, txt: 'Pieņemšana darbā · sāk ' + r.sakums, st: r.statuss }));
   G.forEach(r => ev.push({ t: 'chg', id: r.id, d: r.iesniegts, txt: 'Grozījumi: ' + r.veids + (r.speka_no ? ' · no ' + r.speka_no : '') + (r.beigu_datums ? ' · pēdējā diena ' + r.beigu_datums : ''), st: r.statuss }));
   V.forEach(r => ev.push({ t: 'vac', id: r.id, d: r.iesniegts, txt: 'Atvaļinājums ' + r.no + ' – ' + r.lidz + ' · ' + r.veids, st: r.statuss }));
-  B.forEach(r => ev.push({ t: 'bonus', id: r.id, d: r.iesniegts, txt: 'Piemaksa ' + eur(Number(r.summa) || 0) + ' · ' + r.iemesls + ' · ' + r.menesis, st: r.statuss }));
+  B.forEach(r => ev.push({ t: 'bonus', id: r.id, d: r.iesniegts, txt: 'Piemaksa ' + (user.viewer ? '' : eur(Number(r.summa) || 0) + ' · ') + r.iemesls + ' · ' + r.menesis, st: r.statuss }));
   const key = (s) => { const m = /^(\d{2})\.(\d{2})\.(\d{4})(?: (\d{2}):(\d{2}))?/.exec(String(s || '')); return m ? m[3] + m[2] + m[1] + (m[4] || '00') + (m[5] || '00') : ''; };
   ev.sort((a, b) => key(b.d).localeCompare(key(a.d)));
   const vacDays = V.filter(r => r.statuss === 'Apstiprināts' && String(r.no).slice(-4) === todayIso().slice(0, 4)).reduce((n, r) => n + (Number(r.darba_dienas) || 0), 0);
-  return { vards: name, cur, dl, vacDays, piemaksas: B.filter(r => r.statuss === 'Apstiprināts').reduce((n, r) => n + (Number(r.summa) || 0), 0), vesture: ev };
+  return { vards: name, cur, dl, vacDays, piemaksas: user.viewer ? 0 : B.filter(r => r.statuss === 'Apstiprināts').reduce((n, r) => n + (Number(r.summa) || 0), 0), vesture: ev };
 }
 
 /* ---------- ALGAS UN PIEMAKSAS ---------- */
@@ -420,6 +421,7 @@ async function submitBonus(env, user, f) {
 }
 /** Mēneša algas: pamatalga (pieņemšana + apstiprinātie grozījumi līdz mēneša beigām) + piemaksas. Vadītājs redz tikai savas piemaksas. */
 async function payMonth(db, user, men) {
+  if (user.viewer) throw new Error('Algu pārskats nav pieejams skatītājam.');
   if (!ymOk(men)) throw new Error('Nepareizs mēnesis.');
   const [y, m] = men.split('-').map(Number), start = men + '-01', end = iso(new Date(Date.UTC(y, m, 0)));
   const bonus = (await rowsOf(db, 'bonus')).filter(b => b.menesis === men && (user.role === 'admin' || b.iesniedza === user.name));
@@ -539,12 +541,14 @@ async function mailChange(env, d) {
     end ? 'Darba attiecību beigas' : 'Grozījumi', d.darb + ' · ' + d.id, secs, '', end ? '#8a2a3b' : '#5b3fa0', d.id);
 }
 
+const SENS_RE = /personas kods|adrese|banka|iban|alga|summa|likme/i;
 async function getRecords(db, user, type) {
   const headers = { hire: HIRE_HEADERS.concat(['Darba laiks']), vac: VAC_HEADERS, chg: CHG_HEADERS.concat(['Darba laiks']), bonus: BONUS_HEADERS }[type], cols = { hire: HIRE_COLS.concat(['dl_sync']), vac: VAC_COLS, chg: CHG_COLS.concat(['dl_sync']), bonus: BONUS_COLS }[type];
   let rows = (await rowsOf(db, type)).filter(r => r.id);
   if (user.role !== 'admin') rows = rows.filter(r => r.iesniedza === user.name);
   rows.reverse();
-  return rows.slice(0, 400).map(r => { const o = {}; headers.forEach((h, i) => o[h] = String(r[cols[i]] == null ? '' : r[cols[i]])); return o; });
+  const hide = user.viewer ? (h) => SENS_RE.test(h) : () => false;   // skatītājs: bez personas koda, adreses, bankas, algām
+  return rows.slice(0, 400).map(r => { const o = {}; headers.forEach((h, i) => o[h] = hide(h) ? '' : String(r[cols[i]] == null ? '' : r[cols[i]])); return o; });
 }
 
 /** Admins izdzēš pieteikumu: paslēpj visur (statuss «Dzēsts»), ieraksts paliek datubāzē atjaunošanai */
@@ -697,7 +701,7 @@ export async function api(env, req) {
     const u = await pinUser(db, req.pin, req.login);
     if (!u) { await new Promise(r => setTimeout(r, 600)); return { ok: false, error: 'Nepareizs PIN' }; }
     if (WRITES.indexOf(action) !== -1 && u.viewer) return { ok: false, error: 'Jums ir tikai skatīšanās tiesības' };
-    const user = { name: u.name, role: u.role, label: u.label || (u.role === 'admin' ? 'Administrators' : 'Pieteicējs') };
+    const user = { name: u.name, role: u.role, viewer: !!u.viewer, label: u.label || (u.role === 'admin' ? 'Administrators' : 'Pieteicējs') };
     let out;
     if (action === 'login') out = { user, meta: await getInit(db, user) };
     else if (action === 'hire') out = await submitHire(env, user, req.form || {});

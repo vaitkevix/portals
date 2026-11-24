@@ -61,7 +61,7 @@ export async function geocode(db, max) {
   let ok = 0, miss = 0;
   for (const o of L) {
     try {
-      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=lv&q=' + encodeURIComponent(geoQuery(o.adrese)), { headers: { 'User-Agent': 'SH-sniegs/1.0 (+https://vaitkevix.cloud/sh/)', 'Accept-Language': 'lv' } });
+      const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=lv&q=' + encodeURIComponent(geoQuery(o.adrese)), { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'SH-sniegs/1.0 (+https://vaitkevix.cloud/sh/)', 'Accept-Language': 'lv' } });
       const j = r.ok ? await r.json() : [];
       if (j && j[0]) { await db.prepare('UPDATE sniegs_obj SET lat = ?, lng = ? WHERE anorm = ?').bind(+j[0].lat, +j[0].lon, o.anorm).run(); ok++; }
       else { await db.prepare('UPDATE sniegs_obj SET lat = 0, lng = 0 WHERE anorm = ?').bind(o.anorm).run(); miss++; }
@@ -82,6 +82,8 @@ export async function cron(env) {
 
 /* ---------- API ---------- */
 const ROLE_W = { admin: 3, vaditajs: 2, izpilditajs: 1, skatitajs: 0 };
+/* Bezsaistē atzīmēts: izpildes laiks no telefona (kad), ja ≤3 dienas vecs un nav nākotnē; citādi tagad */
+const kadOf = (b) => { const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(String((b && b.kad) || '')), t = today(); return m && m[1] <= t && m[1] >= addDays(t, -3) ? { d: m[1], t: m[2] } : { d: t, t: nowStr().slice(11) }; };
 export async function api(request, env, X, fetchWx) {
   if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
   let b = {}; try { b = await request.json(); } catch (e) { return out({ ok: false, error: 'Nederīgs pieprasījums' }, 400); }
@@ -159,7 +161,7 @@ export async function api(request, env, X, fetchWx) {
         if (C.photoReq && !photos.length) throw new Error('Pievienojiet bildi pēc tīrīšanas');
         const ids = photos.length ? await X.savePhotos({ datums: v.datums, adrese: NAME + ' · ' + v.adrese }, photos) : [];
         await db.batch([db.prepare("UPDATE sniegs_visit SET statuss = 'done', sakums = CASE WHEN sakums = '' THEN ? ELSE sakums END, laiks = ?, izpilditajs = ?, foto = ?, piezime = ?, izpilde = ? WHERE id = ?")
-          .bind(nowStr().slice(11), nowStr().slice(11), me.name, ids.join(','), String(b.piezime || '').slice(0, 300), JSON.stringify(cleanDone(b.izpilde)), v.id)]);
+          .bind(kadOf(b).t, kadOf(b).t, me.name, ids.join(','), String(b.piezime || '').slice(0, 300), JSON.stringify(cleanDone(b.izpilde)), v.id)]);
       } else {
         const why = String(b.iemesls || 'Nevar').slice(0, 60);
         await db.batch([db.prepare("UPDATE sniegs_visit SET statuss = 'cant', iemesls = ?, izpilditajs = ?, laiks = ? WHERE id = ?").bind(why, me.name, nowStr().slice(11), v.id), log(db, v.adrese + ': ' + why.toLowerCase() + ' (' + me.name + ')')]);
