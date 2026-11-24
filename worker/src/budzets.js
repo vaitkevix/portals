@@ -236,7 +236,7 @@ export async function handle(env, req) {
   const user = { name: u.name, role: u.role, email: u.email };
   try {
     switch (a) {
-      case 'login': await log(db, u.name, 'Pieteicās'); return { ok: true, user, settings: { vadibasEpasti: listOf((await settings(db))['Vadības e-pasti']) } };
+      case 'login': await log(db, u.name, 'Pieteicās'); return { ok: true, user, settings: { vadibasEpasti: listOf((await settings(db))['Vadības e-pasti']) }, objekti: (await all(db, 'SELECT adrese FROM objects ORDER BY adrese')).map(o => o.adrese) };   // adrešu ieteikumi no Mājas lietas
       case 'list': { const L = (await all(db, "SELECT id, nosaukums, adrese, pasutitajs, izpilditajs, sagatavots, derigs, autors, statuss, bez_pvn, ar_pvn, versija, izveidots, atjaunots, komentars, izskatija, plat, serija FROM budz_budget WHERE statuss != 'Dzēsts'")).map(meta).filter(m => canSee(u, m));
         L.sort((x, y) => String(y.atjaunots).localeCompare(String(x.atjaunots))); return { ok: true, items: L }; }
       case 'get': {
