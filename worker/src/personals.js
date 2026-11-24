@@ -168,17 +168,14 @@ export function countDays(from, to) {
 const settings = (db) => kvJson(db, 'pers:set', {});
 const yes = (S, key, def) => { const v = (String(S[key] || '').trim() || def).toUpperCase(); return v === 'JĀ' || v === 'JA' || v === 'YES'; };
 
-/** PIN → { name, role } (portāla pilnvaras perms.pers; ja PIN portālā nav — vecā lapa «Lietotāji», kv pers:users) */
+/** PIN → { name, role } — tikai portāla PIN un pilnvaras perms.pers */
 async function pinUser(db, pin, login) {
   pin = String(pin || '').trim(); login = String(login || '').trim().toLowerCase();
   if (!pin) return null;
   const p = await personByPin(db, pin);
   if (p) { const r = (p.perms && p.perms.pers) || ''; return r ? { name: p.name, role: (r === 'admin' || r === 'skatitajs' || r === 'izpilditajs') ? 'admin' : 'vaditajs', viewer: r === 'skatitajs',
     label: { admin: 'Administrators', izpilditajs: 'Izpildītājs', skatitajs: 'Skatītājs', vaditajs: 'Pieteicējs' }[r] } : null; }
-  const rows = await kvJson(db, 'pers:users', []);
-  const u = rows.find(r => String(r[0] || '').trim() && String(r[1] || '').trim() === pin && String(r[3] || '').trim().toUpperCase() !== 'NĒ' &&
-    (!login || String(r[0]).trim().toLowerCase() === login));
-  return u ? { name: String(u[0]).trim(), role: String(u[2] || '').trim().toLowerCase() === 'admin' ? 'admin' : 'vaditajs' } : null;
+  return null;   // 2026-11-24: vecais saraksts kv pers:users vairs nedod piekļuvi — tikai portāla PIN un pilnvaras (dati kv paliek kā arhīvs)
 }
 async function userEmail(db, name) {
   const n = String(name || '').trim().toLowerCase();
