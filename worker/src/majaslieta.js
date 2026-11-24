@@ -12,7 +12,7 @@ import { today, nowStr, anorm, CORS, out } from './util.js';
 export const KEY = 'ml', NAME = 'Mājas lieta';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
 const IMG = 'https://vaitkevix.cloud/sh/api/img?sz=w1600&id=';
-const MAX_DOC = 15e6, MAX_RAW = 40000;
+const MAX_DOC = 10e6, MAX_RAW = 40000, MAX_KAD = 200000;
 const DOC_TYPES = { 'application/pdf': 'PDF', 'image/jpeg': 'Bilde', 'image/png': 'Bilde', 'image/webp': 'Bilde', 'image/heic': 'Bilde', 'image/heif': 'Bilde',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word', 'application/msword': 'Word',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel', 'application/vnd.ms-excel': 'Excel' };
@@ -33,8 +33,9 @@ const fotos = (v) => String(v || '').split(/[\s,]+/).filter(Boolean).map(x => /^
 /* Darbu vēsture: visas lietotnes, jaunākie pirmie */
 const VISITS = [['pl_visit', 'pl', 'Zāles pļaušana'], ['logi_visit', 'logi', 'Logu mazgāšana'], ['darz_visit', 'darz', 'Dārzniecība'], ['stav_visit', 'stav', 'Pazemes stāvvieta'], ['sniegs_visit', 'sniegs', 'Sniega tīrīšana']];
 const VST = { plan: 'Plānots', done: 'Izpildīts', cant: 'Nevarēja', skip: 'Izlaists', moved: 'Pārcelts' };
-async function history(db, k, adrese) {
+async function history(db, k, adrese, pre) {   // pre = { izv, kais } — vienreiz nolasītas tabulas (apvienotajiem objektiem)
   const t = today(), ak = akey(adrese), rows = [];
+  pre = pre || {};
   for (const [tbl, app, name] of VISITS) {
     (await all(db, 'SELECT datums, statuss, izpilditajs, foto, iemesls, piezime FROM ' + tbl + " WHERE anorm = ? AND (statuss != 'plan' OR datums >= ?) ORDER BY datums DESC LIMIT 60", k, t).catch(() => []))
       .forEach(r => rows.push({ app, name, datums: r.datums, statuss: VST[r.statuss] || r.statuss, kas: r.izpilditajs || '', teksts: [r.piezime, r.iemesls].filter(Boolean).join(' · '), foto: fotos(r.foto), plan: r.statuss === 'plan' }));
@@ -42,10 +43,12 @@ async function history(db, k, adrese) {
   (await all(db, 'SELECT datums, tips, apraksts, statuss, brigade, foto, komentars, iemesls FROM jobs WHERE anorm = ? OR lower(adrese) = lower(?) ORDER BY datums DESC LIMIT 80', k, adrese).catch(() => []))
     .forEach(r => rows.push({ app: 'aizv', name: 'Aizvietošana' + (r.tips ? ' · ' + r.tips : ''), datums: r.datums, statuss: r.statuss, kas: r.brigade || '', teksts: [r.apraksts, r.komentars, r.iemesls].filter(Boolean).join(' · '), foto: fotos(r.foto) }));
   // Izvešana un Kaisāmmateriāls glabā tikai adresi → salīdzina pēc normalizētas adreses
-  (await all(db, "SELECT datums, adrese, maisi, statuss, sia, m3, izv_kom, foto_pec, problema FROM izv_task WHERE statuss != 'Dzēsts'").catch(() => []))
+  if (!pre.izv) pre.izv = await all(db, "SELECT datums, adrese, maisi, statuss, sia, m3, izv_kom, foto_pec, problema FROM izv_task WHERE statuss != 'Dzēsts'").catch(() => []);
+  if (!pre.kais) pre.kais = await all(db, 'SELECT datums, adrese, materials, statuss, kurjers, piegadati, kurj_kom, foto_pec FROM kais_task').catch(() => []);
+  pre.izv
     .filter(r => akey(r.adrese) === ak).forEach(r => rows.push({ app: 'izv', name: 'Izvešana' + (r.maisi ? ' · ' + r.maisi : ''), datums: iso(r.datums), statuss: r.statuss, kas: r.sia || '',
       teksts: [r.m3 ? r.m3 + ' m³' : '', r.izv_kom, r.problema].filter(Boolean).join(' · '), foto: fotos(r.foto_pec) }));
-  (await all(db, 'SELECT datums, adrese, materials, statuss, kurjers, piegadati, kurj_kom, foto_pec FROM kais_task').catch(() => []))
+  pre.kais
     .filter(r => akey(r.adrese) === ak).forEach(r => rows.push({ app: 'kais', name: 'Kaisāmmateriāls' + (r.materials ? ' · ' + r.materials : ''), datums: iso(r.datums), statuss: r.statuss, kas: r.kurjers || '',
       teksts: [r.piegadati ? r.piegadati + ' maisi' : '', r.kurj_kom].filter(Boolean).join(' · '), foto: fotos(r.foto_pec) }));
   return rows.sort((a, b) => String(b.datums).localeCompare(String(a.datums))).slice(0, 300);
@@ -74,11 +77,14 @@ export function splitAddr(a) {
   if (raw.length < 2) return [];
   let street = '', base = ''; const out = [];
   for (const p of raw) {
-    if (!/\d/.test(p)) return [];
+    if (!/\d/.test(p) || /st[āa]v|^(dz|dzīv|kv|telpa)\b\.?|^\d+\.\s/i.test(p)) return [];   // «2. stāvs», «dz. 3» — nav cita māja
     if (/^k-?\s*\d/i.test(p)) { if (!base) return []; out.push(base + ' k-' + p.replace(/^k-?\s*/i, '')); }   // «Jomas 57, k-1», «K2»
     else if (/^\d/.test(p)) { if (!street) return []; const x = street + ' ' + p; out.push(x); base = x.replace(/\s+k-?\s*\d+\S*$/i, ''); }
     else { street = p.replace(/\s+\d[^\s]*(\s+k-?\s*\d+\S*)?$/i, '').trim(); out.push(p); base = p.replace(/\s+k-?\s*\d+\S*$/i, ''); }
   }
+  // «Jomas 57, k-1» — viena māja ar korpusu, nevis apvienojums; apvienots tikai, ja ≥2 dažādi numuri vai ≥2 korpusi
+  const nums = new Set(out.map(x => x.replace(/\s+k-?\s*\d+\S*$/i, '').toLowerCase())), ks = out.filter(x => /\sk-?\s*\d/i.test(x)).length;
+  if (nums.size < 2 && ks < 2) return [];
   return out.map(x => ({ adrese: x, pfx }));
 }
 function partsOf(objs, manual) {   // → { anorm: [{ adrese, anorm }] } tikai apvienotajiem
@@ -90,7 +96,8 @@ function partsOf(objs, manual) {   // → { anorm: [{ adrese, anorm }] } tikai a
     if (m && m !== 'auto') { try { L = JSON.parse(m).map(x => ({ adrese: String(x), pfx: '' })); } catch (e) { L = []; } }
     else L = splitAddr(o.adrese);
     if (L.length < (m && m !== 'auto' ? 1 : 2)) return;
-    res[o.anorm] = L.map(x => { const f = find(x.adrese, x.pfx); return f && f.anorm !== o.anorm ? { adrese: f.adrese, anorm: f.anorm } : { adrese: x.adrese, anorm: '' }; });
+    const R = L.map(x => { const f = find(x.adrese, x.pfx); return f ? (f.anorm === o.anorm ? null : { adrese: f.adrese, anorm: f.anorm }) : { adrese: x.adrese, anorm: '' }; }).filter(Boolean);   // pašnorāde nav sastāvdaļa
+    if (R.length >= (m && m !== 'auto' ? 1 : 2)) res[o.anorm] = R;
   });
   return res;
 }
@@ -104,23 +111,24 @@ export async function apvList(db) {
   return Object.keys(P).filter(k => byK[k]).map(k => ({ a: byK[k], p: P[k].map(x => x.adrese) }));
 }
 const APV_JS = `(function(L){if(window.__shApv)return;window.__shApv=1;
-var n=function(s){return String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/\\s+/g,' ').trim()},M={};
+var n=function(s){return String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/\\s+/g,' ').trim()},M=Object.create(null);
 L.forEach(function(x){M[n(x.a)]=x.p});
-var st=document.createElement('style');st.textContent='.sh-apv{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:#e2ddf2;color:#3d3466;font:800 11px/1.5 Manrope,system-ui,sans-serif;letter-spacing:0;text-transform:none;text-decoration:none;vertical-align:middle;white-space:nowrap;cursor:help}html[data-theme=dark] .sh-apv{background:#2c2840;color:#d9d2f5}';
+var st=document.createElement('style');st.textContent='[data-sh-apv]::after{content:"Apvienots";display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:#e2ddf2;color:#3d3466;font:800 11px/1.5 Manrope,system-ui,sans-serif;letter-spacing:0;text-transform:none;text-decoration:none;vertical-align:middle;white-space:nowrap}html[data-theme=dark] [data-sh-apv]::after{background:#2c2840;color:#d9d2f5}@media print{[data-sh-apv]::after{display:none!important;content:none!important}}';
 (document.head||document.documentElement).appendChild(st);
 var SKIP={SCRIPT:1,STYLE:1,TEXTAREA:1,INPUT:1,SELECT:1,TITLE:1,svg:1,SVG:1};
+function no(el){return el.closest&&el.closest('[data-no-apv],[contenteditable=true],.print,.no-apv')}
 function deco(el){if(!el||el.nodeType!==1)return;
  if(el.tagName==='OPTION'){var p0=M[n(el.textContent||el.value)];if(p0&&!el.dataset.apv){el.dataset.apv=1;el.label=(el.textContent||el.value)+' · apvienots'}return}
  if(el.tagName==='DATALIST'||el.tagName==='SELECT'){[].forEach.call(el.querySelectorAll('option'),deco);return}
- if(SKIP[el.tagName]||el.isContentEditable)return;
- if(el.classList&&el.classList.contains('sh-apv'))return;
- var kids=el.children;if(kids.length===0||(kids.length===1&&kids[0].classList.contains('sh-apv'))){
-  if(el.querySelector('.sh-apv'))return;var t=n(el.textContent),p=M[t];if(!p)return;
-  var b=document.createElement('span');b.className='sh-apv';b.textContent='Apvienots';b.title='Apvienots: '+p.join(' + ');el.appendChild(b);return}
+ if(SKIP[el.tagName]||el.isContentEditable||no(el))return;
+ var kids=el.children;if(kids.length===0){var p=M[n(el.textContent)];
+  if(p){if(!el.hasAttribute('data-sh-apv')){el.setAttribute('data-sh-apv','1');if(!el.title){el.title='Apvienots: '+p.join(' + ');el.dataset.apvT=1}}}
+  else if(el.hasAttribute('data-sh-apv')){el.removeAttribute('data-sh-apv');if(el.dataset.apvT){el.removeAttribute('title');delete el.dataset.apvT}}
+  return}
  for(var i=0;i<kids.length;i++)deco(kids[i])}
 var q=[],sch=0;function run(){sch=0;var a=q;q=[];a.forEach(deco)}
 function add(x){q.push(x);if(!sch){sch=1;(window.requestAnimationFrame||setTimeout)(run)}}
-new MutationObserver(function(ms){ms.forEach(function(m){if(m.type==='characterData'){var e=m.target.parentElement;if(e&&!e.closest('.sh-apv')){var o=e.querySelector&&e.querySelector('.sh-apv');add(e)}}else[].forEach.call(m.addedNodes,function(x){if(x.nodeType===1&&!(x.classList&&x.classList.contains('sh-apv')))add(x);else if(x.nodeType===3&&x.parentElement)add(x.parentElement)})})}).observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+new MutationObserver(function(ms){ms.forEach(function(m){if(m.type==='characterData'){if(m.target.parentElement)add(m.target.parentElement)}else{if(m.target&&m.target.nodeType===1)add(m.target);[].forEach.call(m.addedNodes,function(x){if(x.nodeType===1)add(x)})}})}).observe(document.documentElement,{childList:true,subtree:true,characterData:true});
 if(document.body)add(document.body);else addEventListener('DOMContentLoaded',function(){add(document.body)});
 })(`;
 export async function apvScript(env, ctx) {
@@ -133,13 +141,33 @@ export async function apvScript(env, ctx) {
 }
 
 /* Pazemes autostāvvietas platība no kadastra datiem (koplietošanas telpas pagrabā vai telpu grupas ar stāvvietu). 0 = nav */
-const isPark = (x) => /auto\s*st[āa]v|st[āa]vviet|garā[žz]|garaz|auto\s*novietn|transportlīdzekļ|brauktuv|\b124[12]\b/i.test(String(x || ''));
-function parkingM2(d) {
+export const isPark = (x) => /auto\s*st[āa]v|st[āa]vviet|garā[žz]|garaz|auto\s*novietn|transportlīdzekļ|brauktuv|\b124[12]\b/i.test(String(x || ''));
+/* Viena loģika (tā pati kā majaslieta/index.html gPark/parkUnder): telpu grupa ir autostāvvieta pēc nosaukuma/veida, telpām grupā vai rokas atzīmes park */
+export const gPark = (g) => g.park === true || (g.park !== false && (isPark(g.nosaukums + ' ' + g.lv) || (Array.isArray(g.telpas_n) && g.telpas_n.some(isPark))));
+const overGround = (x) => /virszem|ārtelp/i.test(String(x || ''));
+function parkingM2(d) {   // tikai pazemes (Stāvvietu lietotnei): koplietošanas telpas pagrabā + telpu grupas, kas nav virszemes/ārtelpas
   let m = 0;
-  (Array.isArray(d.telpas) ? d.telpas : []).forEach(t => { if (isPark(t.nosaukums) && (t.zona === 'Pagrabs' || /pazem/i.test(t.nosaukums))) m += +t.m2 || 0; });
-  (Array.isArray(d.grupas) ? d.grupas : []).forEach(g => { const p = g.park === true || (g.park !== false && (isPark(g.nosaukums + ' ' + g.lv) || (Array.isArray(g.telpas_n) && g.telpas_n.some(isPark)))); if (p && !/virszem|ārtelp/i.test(g.nosaukums)) m += +g.m2 || 0; });
+  (Array.isArray(d.telpas) ? d.telpas : []).forEach(t => { if (isPark(t.nosaukums) && !overGround(t.nosaukums) && (t.zona === 'Pagrabs' || /pazem/i.test(t.nosaukums))) m += +t.m2 || 0; });
+  (Array.isArray(d.grupas) ? d.grupas : []).forEach(g => { if (gPark(g) && !overGround(g.nosaukums)) m += +g.m2 || 0; });
   return m;
 }
+/* Kadastrā ir pazemes stāvvieta → objekts Pazemes stāvvietās + platība (ja tur vēl nav). Ja admins pakalpojumu izslēdzis (pazemes = 0) — neaiztiek.
+ * → { m2, state: 'added' | 'in' | 'off' | 'none' } */
+async function applyParking(db, k, adrese, dati) {
+  const pk = Math.round(parkingM2(dati) * 10) / 10;
+  const oi = await db.prepare('SELECT pazemes FROM obj_info WHERE anorm = ?').bind(k).first();
+  const cur = oi ? oi.pazemes : null;
+  if (!pk) return { m2: 0, state: cur === 1 ? 'in' : 'none' };
+  if (cur === 0) return { m2: pk, state: 'off' };   // admins izslēdza — neieslēdzam atpakaļ
+  await db.prepare('INSERT INTO obj_info (anorm, pazemes) VALUES (?, 1) ON CONFLICT(anorm) DO UPDATE SET pazemes = 1').bind(k).run();
+  // platība Stāvvietu lietotnē, ja tur vēl nav ievadīta (qty > 0 ieslēdz grafiku — lietotājs to vēlas, 1× gadā)
+  await db.prepare('INSERT INTO stav_obj (anorm, qty) VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET qty = CASE WHEN stav_obj.qty > 0 THEN stav_obj.qty ELSE excluded.qty END').bind(k, pk).run();
+  if (cur !== 1) await log(db, 'Pazemes stāvvietas ← ' + adrese + ' (' + Math.round(pk) + ' m²)');
+  return { m2: pk, state: cur === 1 ? 'in' : 'added' };
+}
+const httpsOnly = (u) => /^https:\/\//i.test(String(u || '')) ? str(u, 500) : '';
+const noI = (d) => { (Array.isArray(d && d.grupas) ? d.grupas : []).forEach(g => { delete g._i; }); return d; };
+
 /* Ēkas dati (obj_info.ip: stāvi, kāpņu telpas, lifti, dzīvokļi) no kadastra. Kāpņu telpas un lifti — novērtējums:
  * kadastrā katrs stāvs ir atsevišķa telpa, tāpēc skaits ÷ virszemes stāvi; ja liftu virszemē nav — lifta šahtas pagrabā. */
 export function kadIp(d) {
@@ -181,7 +209,9 @@ async function docPut(env, b) {
   const m = /^data:([\w.+/-]+);base64,(.+)$/s.exec(String(b.data || ''));
   if (!m) throw new Error('Nederīgs fails');
   const ct = m[1].toLowerCase(); if (!DOC_TYPES[ct]) throw new Error('Var pievienot PDF, bildes, Word un Excel failus');
-  const bin = Uint8Array.from(atob(m[2]), c => c.charCodeAt(0)); if (bin.length > MAX_DOC) throw new Error('Fails par lielu (līdz 15 MB)');
+  if (m[2].length * 0.75 > MAX_DOC + 4) throw new Error('Fails par lielu (līdz 10 MB)');
+  const s = atob(m[2]), bin = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) bin[i] = s.charCodeAt(i);
+  if (bin.length > MAX_DOC) throw new Error('Fails par lielu (līdz 10 MB)');
   if (!env.FOTO) throw new Error('Failu glabātuve nav pieslēgta');
   const key = 'ml-' + crypto.randomUUID().replace(/-/g, '');
   await env.FOTO.put(key, bin, { httpMetadata: { contentType: ct }, customMetadata: { app: 'ml', name: str(b.name, 150) } });
@@ -199,7 +229,7 @@ export async function api(request, env, X) {
   try {
     if (a === 'boot') {
       const objects = await all(db, 'SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, CASE WHEN o.piekluve != \'\' THEN 1 ELSE 0 END pk, k.kad_nr, k.atjaunots kad_t, (SELECT COUNT(*) FROM ml_doc d WHERE d.anorm = o.anorm AND d.dzests = 0) docs FROM objects o LEFT JOIN ml_kad k ON k.anorm = o.anorm ORDER BY o.ord, o.adrese');
-      if (ROLE_W[role] < 2) objects.forEach(o => { delete o.pk; });
+      if ((ROLE_W[role] || 0) < 2) objects.forEach(o => { delete o.pk; });
       const parts = partsOf(objects, await manualParts(db));
       return out({ ok: true, me: { name: me.name, role }, objects, kinds: DOC_KINDS, parts, svc: await objinfo.svcMap(db).catch(() => ({})), names: Object.fromEntries(Object.keys(objinfo.SVC).map(x => [x, objinfo.SVC[x][2]])) });
     }
@@ -208,23 +238,23 @@ export async function api(request, env, X) {
       const o = await db.prepare('SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, o.piekluve, i.ip, i.parv FROM objects o LEFT JOIN obj_info i ON i.anorm = o.anorm WHERE o.anorm = ?').bind(k).first().catch(() => null)
         || await db.prepare('SELECT anorm, adrese, vaditajs, grupa, piekluve FROM objects WHERE anorm = ?').bind(k).first();
       if (!o) throw new Error('Objekts nav atrasts');
-      if (ROLE_W[role] < 2) o.piekluve = '';
+      if ((ROLE_W[role] || 0) < 2) o.piekluve = '';
       const kad = await db.prepare('SELECT kad_nr, dati, avots, atjaunots, kas FROM ml_kad WHERE anorm = ?').bind(k).first();
       if (kad) { try { kad.dati = JSON.parse(kad.dati || '{}'); } catch (e) { kad.dati = {}; } }
       const docs = await all(db, 'SELECT id, nosaukums, tips, izmers, pievienoja, laiks FROM ml_doc WHERE anorm = ? AND dzests = 0 ORDER BY laiks DESC', k);
       const allO = await all(db, 'SELECT anorm, adrese FROM objects'), man = await manualParts(db), P = partsOf(allO, man)[k] || null;
-      let parts = null, histParts = [];
+      let parts = null, histParts = []; const pre = {};
       if (P) {
         parts = [];
         for (const x of P) {
           const r = x.anorm ? await db.prepare('SELECT dati, atjaunots FROM ml_kad WHERE anorm = ?').bind(x.anorm).first() : null;
           let d = null; if (r) { try { d = JSON.parse(r.dati || '{}'); } catch (e) { d = {}; } }
           parts.push({ adrese: x.adrese, anorm: x.anorm, kad: d, kad_t: r ? r.atjaunots : '' });
-          if (x.anorm) (await history(db, x.anorm, x.adrese)).forEach(h => histParts.push(Object.assign(h, { part: x.adrese })));
+          if (x.anorm) (await history(db, x.anorm, x.adrese, pre)).forEach(h => histParts.push(Object.assign(h, { part: x.adrese })));
         }
         histParts.sort((a, b) => String(b.datums).localeCompare(String(a.datums))); histParts = histParts.slice(0, 300);
       }
-      return out({ ok: true, obj: o, kad: kad || null, docs, hist: await history(db, k, o.adrese), parts, manual: !!(man[k] && man[k] !== 'auto'), histParts });
+      return out({ ok: true, obj: o, kad: kad || null, docs, hist: await history(db, k, o.adrese, pre), parts, manual: !!(man[k] && man[k] !== 'auto'), histParts });
     }
     /* ---------- Objekti ---------- */
     const adm = async (act, body) => { if (!X || !X.adm) throw new Error('Nav pieejams'); const r = await X.adm(act, body, me); if (r && r.ok === false) throw new Error(r.error || 'Kļūda'); return r || {}; };
@@ -234,7 +264,7 @@ export async function api(request, env, X) {
       const ad = b.adrese || ((await db.prepare('SELECT adrese FROM objects WHERE anorm = ?').bind(k).first()) || {}).adrese;
       if (!ad) throw new Error('Objekts nav atrasts');
       const d = await objinfo.info(db, ad);
-      if (ROLE_W[role] < 3) { d.algas = []; d.personals = []; d.dl = { kods: d.dl.kods, vajag_uzk: d.dl.vajag_uzk, vajag_set: d.dl.vajag_set, darbinieki: [] }; }
+      if ((ROLE_W[role] || 0) < 3) { d.algas = []; d.personals = []; d.dl = { kods: (ROLE_W[role] || 0) >= 2 ? d.dl.kods : '', vajag_uzk: d.dl.vajag_uzk, vajag_set: d.dl.vajag_set, darbinieki: [] }; }
       return out(Object.assign({ ok: true }, d));
     }
     if (a === 'objMeta') {
@@ -251,6 +281,15 @@ export async function api(request, env, X) {
       const list = await objList(), i = b.old ? list.findIndex(x => anorm(x.adrese) === b.old) : -1;
       if (b.old && i < 0) throw new Error('Objekts nav atrasts — atjaunojiet lapu');
       if (list.some((x, j) => j !== i && anorm(x.adrese) === anorm(n.adrese))) throw new Error('Šāda adrese jau ir');
+      if (i >= 0 && anorm(list[i].adrese) !== anorm(n.adrese)) {   // pārdēvēšana: visas saites (darbi, grafiki, kadastrs, dokumenti…) pāriet uz jauno adresi
+        const rn = X && X.adm && X.adm.renameObject;
+        if (!rn) throw new Error('Pārdēvēšana vēl nav pieejama');
+        const old = list[i].adrese; await rn(old, n.adrese, me);
+        await log(db, me.name + ' · objekts pārdēvēts · ' + old + ' → ' + n.adrese);
+        const l2 = await objList(), j = l2.findIndex(x => anorm(x.adrese) === anorm(n.adrese));
+        if (j >= 0) { l2[j] = Object.assign({}, l2[j], n); return await saveList(l2); }
+        return out({ ok: true, objects: l2 });
+      }
       if (i >= 0) list[i] = n; else list.unshift(n);
       await log(db, me.name + ' · objekts ' + (i >= 0 ? 'labots' : 'pievienots') + ' · ' + n.adrese);
       return await saveList(list);
@@ -279,19 +318,32 @@ export async function api(request, env, X) {
     if (a === 'kadSave') {
       need('vaditajs'); if (!k) throw new Error('Izvēlieties objektu');
       const o = await db.prepare('SELECT adrese FROM objects WHERE anorm = ?').bind(k).first(); if (!o) throw new Error('Objekts nav atrasts');
-      const dati = b.dati && typeof b.dati === 'object' ? b.dati : {}, js = JSON.stringify(dati); if (js.length > 60000) throw new Error('Par daudz datu');
-      await db.prepare('INSERT INTO ml_kad (anorm, kad_nr, dati, raw, avots, atjaunots, kas) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET kad_nr = excluded.kad_nr, dati = excluded.dati, raw = excluded.raw, avots = excluded.avots, atjaunots = excluded.atjaunots, kas = excluded.kas')
-        .bind(k, str(dati.kadastra_nr, 40), js, '', str(b.url, 500), nowStr(), me.name).run();
-      await log(db, me.name + ' · kadastra dati · ' + o.adrese);
-      const pk = parkingM2(dati);   // ir pazemes autostāvvieta → objekts parādās Pazemes stāvvietu lietotnē
-      if (pk) {
-        await db.prepare('INSERT INTO obj_info (anorm, pazemes) VALUES (?, 1) ON CONFLICT(anorm) DO UPDATE SET pazemes = 1').bind(k).run();
-        // platība no kadastra → Stāvvietu lietotnē (ja tur vēl nav ievadīta); qty > 0 ieslēdz grafiku
-        await db.prepare('INSERT INTO stav_obj (anorm, qty) VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET qty = CASE WHEN stav_obj.qty > 0 THEN stav_obj.qty ELSE excluded.qty END').bind(k, Math.round(pk * 10) / 10).run();
-        await log(db, 'Pazemes stāvvietas ← ' + o.adrese + ' (' + Math.round(pk) + ' m²)');
+      const dati = noI(b.dati && typeof b.dati === 'object' ? b.dati : {});
+      if ((ROLE_W[role] || 0) < 3) {   // «autostāvvieta» atzīmi (park) drīkst mainīt tikai admins — vadītājam paliek iepriekšējās atzīmes
+        const prev = await db.prepare('SELECT dati FROM ml_kad WHERE anorm = ?').bind(k).first(); let pd = {}; try { pd = JSON.parse((prev && prev.dati) || '{}'); } catch (e) {}
+        const pm = {}; (pd.grupas || []).forEach(g => { if (g && g.apz && typeof g.park === 'boolean') pm[g.apz] = g.park; });
+        (Array.isArray(dati.grupas) ? dati.grupas : []).forEach(g => { delete g.park; if (g && g.apz in pm) g.park = pm[g.apz]; });
       }
+      const js = JSON.stringify(dati); if (js.length > MAX_KAD) throw new Error('Par daudz datu');
+      await db.prepare('INSERT INTO ml_kad (anorm, kad_nr, dati, raw, avots, atjaunots, kas) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(anorm) DO UPDATE SET kad_nr = excluded.kad_nr, dati = excluded.dati, raw = excluded.raw, avots = excluded.avots, atjaunots = excluded.atjaunots, kas = excluded.kas')
+        .bind(k, str(dati.kadastra_nr, 40), js, '', httpsOnly(b.url), nowStr(), me.name).run();
+      await log(db, me.name + ' · kadastra dati · ' + o.adrese);
+      const st = await applyParking(db, k, o.adrese, dati);
       const ipNew = await fillIp(db, k, dati);
-      return out({ ok: true, stav: pk ? Math.round(pk) : 0, ip: ipNew });
+      return out({ ok: true, stav: st.state === 'added' || st.state === 'in' ? Math.round(st.m2) : 0, stavState: st.state, ip: ipNew });
+    }
+    if (a === 'kadPark') {   // { anorm, i, park } — tikai atzīme; kadastra «atjaunots/kas» nemainās
+      need('admin'); if (!k) throw new Error('Nav objekta');
+      const r = await db.prepare('SELECT dati FROM ml_kad WHERE anorm = ?').bind(k).first(); if (!r) throw new Error('Kadastra datu nav');
+      const o = await db.prepare('SELECT adrese FROM objects WHERE anorm = ?').bind(k).first(); if (!o) throw new Error('Objekts nav atrasts');
+      let d = {}; try { d = JSON.parse(r.dati || '{}'); } catch (e) {}
+      const g = (Array.isArray(d.grupas) ? d.grupas : [])[parseInt(b.i, 10)]; if (!g) throw new Error('Telpu grupa nav atrasta — atjaunojiet lapu');
+      if (b.apz && g.apz !== b.apz) throw new Error('Kadastra dati mainījušies — atjaunojiet lapu');
+      g.park = !!b.park; noI(d);
+      await db.prepare('UPDATE ml_kad SET dati = ? WHERE anorm = ?').bind(JSON.stringify(d), k).run();
+      await log(db, me.name + ' · ' + (g.park ? 'autostāvvieta' : 'nav autostāvvieta') + ' · ' + o.adrese + ' · ' + (g.nosaukums || g.apz));
+      const st = await applyParking(db, k, o.adrese, d);
+      return out({ ok: true, park: g.park, stav: Math.round(st.m2), stavState: st.state });
     }
     if (a === 'docUpload') {
       need('vaditajs'); if (!k) throw new Error('Izvēlieties objektu');
