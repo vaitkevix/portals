@@ -8,7 +8,7 @@ import { today, addDays, dow, nowStr, uid, anorm, lvD, kv, kvSet, geoQuery, CORS
 
 export const KEY = 'stav', NAME = 'Pazemes stāvvietu mazgāšana', KIND = 'stav_mazg';
 const WEATHER = [], MAX_INT = 400;
-export const DEF_CFG = {"interval": 180, "maxQty": 6000, "season": ["01-01", "12-31"], "workdays": [1, 2, 3, 4, 5], "rainMm": 99, "wetDays": 0, "frostC": -50, "noticeDays": 5, "photoReq": true, "veidi": ["Grīda nomazgāta", "Notekas iztīrītas", "Sienas / kolonnas", "Atkritumi savākti"], "photoBefore": true, "laiksNo": "08:00", "laiksLidz": "16:00", "zina": "Cienījamie iedzīvotāji! {datums} no {no} līdz {lidz} notiks pazemes stāvvietas mazgāšana. Lūdzam līdz {no} izbraukt ar automašīnām no stāvvietas. Paldies par sapratni! SIA SELECTUM HOME"};
+export const DEF_CFG = {"interval": 365, "maxQty": 6000, "season": ["01-01", "12-31"], "workdays": [1, 2, 3, 4, 5], "rainMm": 99, "wetDays": 0, "frostC": -50, "noticeDays": 5, "photoReq": true, "veidi": ["Grīda nomazgāta", "Notekas iztīrītas", "Sienas / kolonnas", "Atkritumi savākti"], "photoBefore": true, "laiksNo": "08:00", "laiksLidz": "16:00", "zina": "Cienījamie iedzīvotāji! {datums} no {no} līdz {lidz} notiks pazemes stāvvietas mazgāšana. Lūdzam līdz {no} izbraukt ar automašīnām no stāvvietas. Paldies par sapratni! SIA SELECTUM HOME"};
 
 /* ---------- Stāvvietu specifika ---------- */
 export const NOTEKAS = ['Kārtībā', 'Aizsērējušas', 'Ūdens uz grīdas'];
