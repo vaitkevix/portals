@@ -96,6 +96,42 @@ function partsOf(objs, manual) {   // → { anorm: [{ adrese, anorm }] } tikai a
 }
 const manualParts = async (db) => { const m = {}; (await all(db, 'SELECT anorm, parts FROM ml_parts').catch(() => [])).forEach(r => m[r.anorm] = r.parts); return m; };
 
+/* Apvienotie objekti visām lietotnēm: GET …/sh/api/apv.js — skripts ar sarakstu (tikai adreses un sastāvdaļas, bez kodiem/personām).
+ * Lietotne to ielādē ar <script src defer>; skripts pie katra elementa, kura teksts = apvienotā adrese, pieliek kapsulu «Apvienots». */
+export async function apvList(db) {
+  const objs = await all(db, 'SELECT anorm, adrese FROM objects'), P = partsOf(objs, await manualParts(db)), byK = {};
+  objs.forEach(o => byK[o.anorm] = o.adrese);
+  return Object.keys(P).filter(k => byK[k]).map(k => ({ a: byK[k], p: P[k].map(x => x.adrese) }));
+}
+const APV_JS = `(function(L){if(window.__shApv)return;window.__shApv=1;
+var n=function(s){return String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/\\s+/g,' ').trim()},M={};
+L.forEach(function(x){M[n(x.a)]=x.p});
+var st=document.createElement('style');st.textContent='.sh-apv{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:#e2ddf2;color:#3d3466;font:800 11px/1.5 Manrope,system-ui,sans-serif;letter-spacing:0;text-transform:none;text-decoration:none;vertical-align:middle;white-space:nowrap;cursor:help}html[data-theme=dark] .sh-apv{background:#2c2840;color:#d9d2f5}';
+(document.head||document.documentElement).appendChild(st);
+var SKIP={SCRIPT:1,STYLE:1,TEXTAREA:1,INPUT:1,SELECT:1,TITLE:1,svg:1,SVG:1};
+function deco(el){if(!el||el.nodeType!==1)return;
+ if(el.tagName==='OPTION'){var p0=M[n(el.textContent||el.value)];if(p0&&!el.dataset.apv){el.dataset.apv=1;el.label=(el.textContent||el.value)+' · apvienots'}return}
+ if(el.tagName==='DATALIST'||el.tagName==='SELECT'){[].forEach.call(el.querySelectorAll('option'),deco);return}
+ if(SKIP[el.tagName]||el.isContentEditable)return;
+ if(el.classList&&el.classList.contains('sh-apv'))return;
+ var kids=el.children;if(kids.length===0||(kids.length===1&&kids[0].classList.contains('sh-apv'))){
+  if(el.querySelector('.sh-apv'))return;var t=n(el.textContent),p=M[t];if(!p)return;
+  var b=document.createElement('span');b.className='sh-apv';b.textContent='Apvienots';b.title='Apvienots: '+p.join(' + ');el.appendChild(b);return}
+ for(var i=0;i<kids.length;i++)deco(kids[i])}
+var q=[],sch=0;function run(){sch=0;var a=q;q=[];a.forEach(deco)}
+function add(x){q.push(x);if(!sch){sch=1;(window.requestAnimationFrame||setTimeout)(run)}}
+new MutationObserver(function(ms){ms.forEach(function(m){if(m.type==='characterData'){var e=m.target.parentElement;if(e&&!e.closest('.sh-apv')){var o=e.querySelector&&e.querySelector('.sh-apv');add(e)}}else[].forEach.call(m.addedNodes,function(x){if(x.nodeType===1&&!(x.classList&&x.classList.contains('sh-apv')))add(x);else if(x.nodeType===3&&x.parentElement)add(x.parentElement)})})}).observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+if(document.body)add(document.body);else addEventListener('DOMContentLoaded',function(){add(document.body)});
+})(`;
+export async function apvScript(env, ctx) {
+  const cache = caches.default, key = new Request('https://sh-cache/apv.js?' + APV_JS.length);   // jauns kods → jauns kešs
+  let r = await cache.match(key); if (r) return r;
+  const list = await apvList(env.DB).catch(() => []);
+  r = new Response(APV_JS + JSON.stringify(list).replace(/</g, '\\u003c') + ');', { headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'public, max-age=300', 'access-control-allow-origin': '*' } });
+  ctx.waitUntil(cache.put(key, r.clone()));
+  return r;
+}
+
 /* Pazemes autostāvvietas platība no kadastra datiem (koplietošanas telpas pagrabā vai telpu grupas ar stāvvietu). 0 = nav */
 const isPark = (x) => /auto\s*st[āa]v|st[āa]vviet|garā[žz]|garaz|auto\s*novietn|transportlīdzekļ|brauktuv|\b124[12]\b/i.test(String(x || ''));
 function parkingM2(d) {
