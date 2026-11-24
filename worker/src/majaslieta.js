@@ -104,6 +104,30 @@ function parkingM2(d) {
   (Array.isArray(d.grupas) ? d.grupas : []).forEach(g => { if (isPark(g.nosaukums + ' ' + g.lv) && !/virszem|ārtelp/i.test(g.nosaukums)) m += +g.m2 || 0; });
   return m;
 }
+/* Ēkas dati (obj_info.ip: stāvi, kāpņu telpas, lifti, dzīvokļi) no kadastra. Kāpņu telpas un lifti — novērtējums:
+ * kadastrā katrs stāvs ir atsevišķa telpa, tāpēc skaits ÷ virszemes stāvi; ja liftu virszemē nav — lifta šahtas pagrabā. */
+export function kadIp(d) {
+  const B = Array.isArray(d.buves) ? d.buves : [], T = Array.isArray(d.telpas) ? d.telpas : [], ip = {};
+  const stavi = Math.max(0, ...B.map(b => +b.virszemes_stavi || 0)), dz = B.reduce((a, b) => a + (+b.dzivokli || 0), 0);
+  if (stavi) ip.stavi = stavi;
+  if (dz) ip.dzivokli = dz;
+  const cnt = (re, z) => T.filter(t => re.test(t.nosaukums) && (!z || (t.zona || 'Virszeme') === z)).reduce((a, t) => a + (+t.skaits || 1), 0);
+  const per = (n) => n && stavi ? Math.max(1, Math.round(n / stavi)) : 0;
+  const kap = per(cnt(/^(kāpņu telpa|kāpnes)$/i, 'Virszeme')); if (kap) ip.kapnu = kap;
+  const lv = cnt(/^lifts?$/i, 'Virszeme'), ls = cnt(/lifta šaht/i);
+  const lif = lv ? per(lv) : ls; if (lif) ip.lifti = lif;
+  return ip;
+}
+/* Aizpilda tikai tukšos laukus — ar roku ievadītais paliek */
+async function fillIp(db, k, dati) {
+  const add = kadIp(dati); if (!Object.keys(add).length) return null;
+  const r = await db.prepare('SELECT ip FROM obj_info WHERE anorm = ?').bind(k).first();
+  let cur = {}; try { cur = JSON.parse((r && r.ip) || '{}') || {}; } catch (e) {}
+  const next = Object.assign({}, cur); let ch = 0;
+  for (const x in add) if (next[x] == null || next[x] === '') { next[x] = add[x]; ch++; }
+  if (ch) await db.prepare('INSERT INTO obj_info (anorm, ip) VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET ip = excluded.ip').bind(k, JSON.stringify(next)).run();
+  return next;
+}
 async function kadParse(env, db, b) {
   if (b.dati && typeof b.dati === 'object') {   // jau sakārtoti dati no «SH Kadastrs» pogas — AI nevajag
     const objs = await all(db, 'SELECT anorm, adrese FROM objects ORDER BY ord');
@@ -230,7 +254,8 @@ export async function api(request, env, X) {
         await db.prepare('INSERT INTO stav_obj (anorm, qty) VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET qty = CASE WHEN stav_obj.qty > 0 THEN stav_obj.qty ELSE excluded.qty END').bind(k, Math.round(pk * 10) / 10).run();
         await log(db, 'Pazemes stāvvietas ← ' + o.adrese + ' (' + Math.round(pk) + ' m²)');
       }
-      return out({ ok: true, stav: pk ? Math.round(pk) : 0 });
+      const ipNew = await fillIp(db, k, dati);
+      return out({ ok: true, stav: pk ? Math.round(pk) : 0, ip: ipNew });
     }
     if (a === 'docUpload') {
       need('vaditajs'); if (!k) throw new Error('Izvēlieties objektu');
