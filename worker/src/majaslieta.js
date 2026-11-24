@@ -62,6 +62,10 @@ function matchObj(objs, adr) {
     return { adrese: o.adrese, anorm: o.anorm, s }; }).filter(x => x.s >= 50).sort((x, y) => y.s - x.s).slice(0, 5);
 }
 async function kadParse(env, db, b) {
+  if (b.dati && typeof b.dati === 'object') {   // jau sakārtoti dati no «SH Kadastrs» pogas — AI nevajag
+    const objs = await all(db, 'SELECT anorm, adrese FROM objects ORDER BY ord');
+    return { dati: b.dati, ieteikumi: matchObj(objs, str(b.dati.adrese, 300)) };
+  }
   const text = str(b.text, MAX_RAW); if (text.length < 40) throw new Error('Kadastra lapas teksts ir par īsu — atveriet objekta lapu kadastrs.lv');
   const raw = await aiCall(env, KAD_SYSTEM, 'Lapas adrese: ' + str(b.url, 300) + '\nVirsraksts: ' + str(b.title, 200) + '\n\nLapas teksts:\n' + text + '\n\nAtgriez JSON šādā formā: ' + KAD_SHAPE, 4000);
   const m = String(raw).match(/\{[\s\S]*\}/); if (!m) throw new Error('AI neatgrieza datus');
