@@ -173,7 +173,7 @@ async function cronJob(env, name, f) {
 const APPS = {
   izv: { gas: 'IZV_GAS_URL', reads: ['getBoot', 'getTasks', 'getInitialData'], boot: 'getBoot',
     fns: ['getBoot', 'getTasks', 'getHist', 'getInitialData', 'saveTask', 'updateTask', 'setTaskCancelled', 'getAccess', 'checkCarrierPin', 'completeTask', 'reportProblem', 'reportPdf',
-      'geocodeAddresses', 'aiParseMessage', 'aiCheckPhoto', 'aiCompare', 'aiAsk', 'aiMonthSummary', 'saveFileToDrive', 'portalCarrier', 'addPhotos', 'deleteTask'],
+      'geocodeAddresses', 'aiParseMessage', 'aiCheckPhoto', 'aiCompare', 'aiAsk', 'aiMonthSummary', 'saveFileToDrive', 'portalCarrier', 'addPhotos', 'deleteTask', 'removePhoto'],
     async: ['saveTask', 'completeTask', 'reportProblem', 'updateTask', 'setTaskCancelled'], open: ['getBoot', 'getTasks', 'getHist', 'getInitialData', 'reportPdf', 'checkCarrierPin', 'portalCarrier'], pinFns: ['completeTask', 'reportProblem'], idRe: /^TASK-\d{10,}$/, idPrefix: 'TASK-' },
   kais: { gas: 'KAIS_GAS_URL', reads: ['getTasks', 'getInitialData'], boot: null,
     fns: ['getTasks', 'getInitialData', 'saveTask', 'completeTask', 'saveFileToDrive'],

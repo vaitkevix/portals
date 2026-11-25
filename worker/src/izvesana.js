@@ -151,6 +151,18 @@ export async function addPhotos(env, d, me) {
     .bind(all2.join('\n'), logAs(me, t, 'Pievienotas bildes pēc izvešanas: ' + ph.length + ' (' + (lg.sia || lg.admin || '') + ')'), t.id).run();
   return withTasks(env, { status: 'success' });
 }
+/** Dzēst vienu bildi no pieteikuma (izvedējs vai administrators). Fails R2 paliek — no pieteikuma tikai noņem saiti. */
+const PH_COL = { before: ['foto_pirms', 'Bilde pirms'], cbefore: ['foto_izv_pirms', 'Bilde pirms savākšanas'], after: ['foto_pec', 'Bilde pēc'] };
+export async function removePhoto(env, d, me) {
+  const db = env.DB; d = d || {};
+  if (!portalCarrier(me)) return fail('Bildes dzēst var izvedējs vai administrators');
+  const col = PH_COL[d.field]; if (!col) return fail('Nezināms bilžu lauks');
+  const t = await byId(db, d.id); if (!t) return fail('Pieteikums nav atrasts — iespējams, tas ir izdzēsts');
+  const url = String(d.url || '').trim(), have = String(t[col[0]] || '').split(/\s+/).filter(Boolean), left = have.filter(x => x !== url);
+  if (left.length === have.length) return fail('Bilde nav atrasta — atjaunojiet lapu');
+  await db.prepare('UPDATE izv_task SET ' + col[0] + ' = ?, vesture = ? WHERE id = ?').bind(left.join('\n'), logAs(me, t, 'Dzēsta bilde: ' + col[1].toLowerCase()), t.id).run();
+  return withTasks(env, { status: 'success' });
+}
 /** Dzēst pieteikumu (izvedējs vai administrators). Ieraksts paliek D1 ar statusu «Dzēsts» — sarakstos un atskaitēs to vairs nav. */
 export async function deleteTask(env, id, me) {
   const db = env.DB, lg = portalCarrier(me);
@@ -456,6 +468,7 @@ export async function handle(env, fn, a, me) {
     case 'updateTask': return await updateTask(env, a[0], me);
     case 'addPhotos': return await addPhotos(env, a[0], me);
     case 'deleteTask': return await deleteTask(env, a[0], me);
+    case 'removePhoto': return await removePhoto(env, a[0], me);
     case 'setTaskCancelled': return await setTaskCancelled(env, a[0], a[1]);
     case 'getAccess': return await getAccess(db, a[0], me);
     case 'checkCarrierPin': return await checkCarrierPin(db, a[0], me);
