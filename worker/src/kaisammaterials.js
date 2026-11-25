@@ -50,6 +50,11 @@ async function savePhoto(env, gas, data, name) {
 export async function saveTask(env, ctx, gas, d) {
   const db = env.DB;
   if (!String(d.address || '').trim()) throw new Error('Nav norādīta adrese');
+  {   // 2026-11-25: pieteikt var tikai Mājas lietas objektus
+    const an = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const k = new Set(((await db.prepare('SELECT adrese FROM objects').all()).results || []).map(o => an(o.adrese)));
+    if (!k.has(an(d.address))) throw new Error('Adrese «' + String(d.address).trim() + '» nav Mājas lietas objektu sarakstā. Izvēlies adresi no saraksta — jaunu objektu pievieno admins Mājas lietā.');
+  }
   const id = /^KM-\d{10,}$/.test(String(d.id || '')) ? String(d.id) : 'KM-' + Date.now();
   if (await db.prepare('SELECT 1 FROM kais_task WHERE id = ?').bind(id).first()) return { status: 'success', id };
   const photo = d.photo ? await savePhoto(env, gas, d.photo, id + '_Pieteikums.jpg') : '';

@@ -780,8 +780,11 @@ async function standingFor(X, u) {
  * darbus, kas ievadīti ar pagātnes datumu (izveidots pēc datuma), un ja šodien tai adresei jau ir tāda paša veida darbs.
  * Vienība paliek, ja šodien vienības vēl nav sastādītas vai tā pati ir šodienas sarakstā. Apraksts: «↻ no DD.MM.» */
 async function carryOver(X) {
-  const t = today(), h = +now().slice(11, 13);
-  if (h < 5 || (await kvGet(X.db, 'aizvCarry:last')) === t) return 0;
+  // 2026-11-25: līdz 17:00 neatzīmētie darbi pāriet uz nākamo darba dienu (sestdiena/svētdiena → pirmdiena); no rīta 05:00 — rezerve, ja vakarā neizdevās
+  const d0 = today(), h = +now().slice(11, 13);
+  if (h < 5) return 0;
+  let t = d0; if (h >= 17) { t = addDays(d0, 1); while (wday(t) === 0 || wday(t) === 6) t = addDays(t, 1); }
+  if ((await kvGet(X.db, 'aizvCarry:last')) === t) return 0;
   const rows = (await X.all("SELECT * FROM jobs WHERE datums < ? AND datums >= ? AND statuss IN ('jauns', 'piešķirts') AND serija = '' ORDER BY datums, seq", t, addDays(t, -14))).map(jobOut);
   const todayKeys = new Set((await X.all('SELECT anorm, tips FROM jobs WHERE datums = ?', t)).map(r => r.anorm + '|' + r.tips));
   const unitNames = (await X.units(t)).map(x => x.name), st = [], byMgr = {}, moved = [];
@@ -801,7 +804,7 @@ async function carryOver(X) {
   }
   for (let k = 0; k < st.length; k += 90) await X.db.batch(st.slice(k, k + 90));
   await kvSet(X.db, 'aizvCarry:last', t).run();
-  for (const m in byMgr) X.notify([m], '↻ Pārcelti uz šodienu: ' + byMgr[m].length, 'Vienība neatzīmēja: ' + byMgr[m].slice(0, 5).join(', ') + (byMgr[m].length > 5 ? '…' : ''));
+  for (const m in byMgr) X.notify([m], '↻ Pārcelti uz ' + (t === d0 ? 'šodienu' : lvDate(t)) + ': ' + byMgr[m].length, 'Vienība neatzīmēja: ' + byMgr[m].slice(0, 5).join(', ') + (byMgr[m].length > 5 ? '…' : ''));
   return moved.length;
 }
 

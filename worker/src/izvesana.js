@@ -29,6 +29,13 @@ const num = (v) => typeof v === 'number' ? v : (parseFloat(String(v == null ? ''
 const fmt = (n) => { const r = Math.round(n * 100) / 100; return r ? String(r).replace('.', ',') : '–'; };
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fail = (message, code) => ({ status: 'error', message, code: code || '' });
+/* 2026-11-25: pieteikt var tikai Mājas lietas objektus (tabula objects). Vecs pieteikums ar citu adresi drīkst palikt, bet jaunu nezināmu ielikt nevar. */
+const anorm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+async function unknownAddr(db, a, old) {
+  if (old != null && anorm(a) === anorm(old)) return '';
+  const r = await db.prepare('SELECT adrese FROM objects').all(); const k = new Set((r.results || []).map(o => anorm(o.adrese)));
+  return k.has(anorm(a)) ? '' : 'Adrese «' + String(a).trim() + '» nav Mājas lietas objektu sarakstā. Izvēlies adresi no saraksta — jaunu objektu pievieno admins Mājas lietā.';
+}
 
 /* ---------- dati ---------- */
 const out = (t) => ({ rowIndex: t.row, id: t.id, date: t.datums, address: t.adrese, requester: t.pasutitajs, bagsEst: t.maisi, comment: t.komentars, photoBefore: t.foto_pirms,
@@ -89,6 +96,7 @@ async function savePhotos(env, list, id, suffix) {
 export async function saveTask(env, d) {
   const db = env.DB; d = d || {};
   if (!String(d.address || '').trim()) return fail('Nav norādīta adrese');
+  { const u = await unknownAddr(db, d.address); if (u) return fail(u); }
   const ph = d.photos || d.photo;
   if (!ph || (Array.isArray(ph) && !ph.length)) return fail('Pievienojiet bildi pirms izvešanas');
   const id = /^TASK-\d{10,}$/.test(String(d.id || '')) ? String(d.id) : 'TASK-' + Date.now();
@@ -104,6 +112,7 @@ export async function updateTask(env, d, me) {
   const db = env.DB; d = d || {};
   if (!String(d.address || '').trim()) return fail('Nav norādīta adrese');
   const t = await byId(db, d.id); if (!t) return fail('Pieteikums nav atrasts — iespējams, tas ir izdzēsts');
+  { const u = await unknownAddr(db, d.address, t.adrese); if (u) return fail(u); }
   const st = t.statuss || ST_PENDING;
   if (st === ST_DONE) return await updateDone(env, t, d, me);
   if (st !== ST_PENDING) return fail('Labot var tikai neizpildītu vai izpildītu pieteikumu (statuss: ' + t.statuss + ')');
