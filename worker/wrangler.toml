@@ -1,7 +1,8 @@
-# SH | Portāls — Cloudflare Worker «sh-portals»: visu lietotņu API (vaitkevix.cloud/sh/api), D1, R2, e-pasts (© VAITKEVIX, SIA) — v113
+# SH | Portāls — Cloudflare Worker «sh-portals»: visu lietotņu API (vaitkevix.cloud/sh/api), D1, R2, e-pasts (© VAITKEVIX, SIA) — v114
 name = "sh-portals"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 account_id = "81cd66c1dae0179ceb25a6b75302a07d"
 
@@ -32,6 +33,9 @@ binding = "FOTO"
 bucket_name = "sh-foto"
 
 # E-pasts (Cloudflare Email Routing, sūtītājs sistema@vaitkevix.cloud; adresāti jāapstiprina Destination addresses)
+[browser]
+binding = "BROWSER"   # Budžeta PDF (Cloudflare Browser Rendering)
+
 [[send_email]]
 name = "MAIL"
 

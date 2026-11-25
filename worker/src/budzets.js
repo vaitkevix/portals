@@ -69,6 +69,20 @@ async function mailBudget(env, u, m, d, c, to, kind, note, pdfB64) {
   return r.sent.concat(r.failed.map(x => 'KĻŪDA: ' + x.to));
 }
 
+/** Īsts PDF ar Cloudflare Browser Rendering (binding BROWSER) — vienāds visos pārlūkos. Ja nav pieejams → '' (lietotne taisa PDF pati). */
+async function serverPdf(env, html) {
+  if (!env.BROWSER) return '';
+  const { default: puppeteer } = await import('@cloudflare/puppeteer');
+  const br = await puppeteer.launch(env.BROWSER);
+  try {
+    const pg = await br.newPage();
+    await pg.setContent(html, { waitUntil: 'load', timeout: 20000 });
+    const pdf = await pg.pdf({ format: 'A4', printBackground: true, preferCSSPageSize: true, timeout: 20000 });
+    let s = ''; const u8 = new Uint8Array(pdf); for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    return btoa(s);
+  } finally { await br.close().catch(() => {}); }
+}
+
 /* ---------- PDF HTML (tas pats, kas GAS pdfHtml_; lietotne to pārvērš PDF) ---------- */
 function pdfHtml(d, c, m) {
   const o = d.objekts || {}, prm = d.param || {};
@@ -282,7 +296,9 @@ export async function handle(env, req) {
       case 'pdf': {
         if (req.id) { const b = await row(db, req.id); if (b && !canSee(u, meta(b))) throw new Error('Nav piekļuves.'); }
         const name = fileName(req.data, req.meta) + '.pdf'; await log(db, u.name, 'PDF', req.id || '', name);
-        return { ok: true, file: { name, mime: 'text/html', html: pdfHtml(req.data || {}, req.calc || {}, req.meta || {}) } };
+        const html = pdfHtml(req.data || {}, req.calc || {}, req.meta || {});
+        const b64 = await serverPdf(env, html).catch(e => { console.log('budz pdf:', e && e.message); return ''; });
+        return { ok: true, file: b64 ? { name, mime: 'application/pdf', b64 } : { name, mime: 'text/html', html } };
       }
       case 'sendPdf': {
         const to = String(req.to || '').split(/[,;\s]+/).map(x => x.trim()).filter(M.valid).slice(0, 10);
