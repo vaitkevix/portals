@@ -228,6 +228,19 @@ async function setStatus(env, u, id, status, comment) {
   return true;
 }
 
+/** Mājas lietas ml_kad.dati → Budžeta kadStart formāts ({buve, adrese, telpas, dzivokli, ...}) */
+function mlToKad(adrese, d) {
+  const B = Array.isArray(d.buves) ? d.buves : [], n = (v) => +v || 0, sum = (k) => B.reduce((s, b) => s + n(b[k]), 0);
+  const telp = {}; (Array.isArray(d.telpas) ? d.telpas : []).forEach(t => { const k = String(t.nosaukums || 'Telpa').trim(); const x = telp[k] || (telp[k] = { nosaukums: k, m2: 0, skaits: 0 }); x.m2 += n(t.m2); x.skaits += n(t.skaits) || 1; });
+  const gadi = B.map(b => n(b.ekspluatacijas_gads)).filter(g => g > 1700);
+  const z = d.zeme || {}, c = d.citi || {};
+  return { v: 1, avots: 'Mājas lieta', buve: B.map(b => b.apzimejums).filter(Boolean).join(', ') || String(d.kadastra_nr || adrese),
+    adrese: String(d.adrese || adrese).split(';')[0].trim() || adrese, dzivokli: sum('dzivokli'), dzivoklu_m2: n(c['Dzīvokļu platība, m²']), kopeja: sum('kopplatiba_m2'),
+    stavi: Math.max(0, ...B.map(b => n(b.virszemes_stavi))), pazemes: Math.max(0, ...B.map(b => n(b.pazemes_stavi))), gads: gadi.length ? Math.min(...gadi) : null,
+    apbuve: sum('apbuves_laukums_m2'), zeme_m2: n(z.platiba_m2), zeme_apz: String(z.apzimejums || ''),
+    telpas: Object.values(telp).map(t => Object.assign(t, { m2: Math.round(t.m2 * 10) / 10 })).sort((a, b) => b.m2 - a.m2) };
+}
+
 export async function handle(env, req) {
   const db = env.DB, u = await auth(db, req.pin);
   if (!u || u.none) { await new Promise(r => setTimeout(r, 700)); return { ok: false, error: 'Nepareizs PIN' }; }
@@ -236,7 +249,13 @@ export async function handle(env, req) {
   const user = { name: u.name, role: u.role, email: u.email };
   try {
     switch (a) {
-      case 'login': await log(db, u.name, 'Pieteicās'); return { ok: true, user, settings: { vadibasEpasti: listOf((await settings(db))['Vadības e-pasti']) }, objekti: (await all(db, 'SELECT adrese FROM objects ORDER BY adrese')).map(o => o.adrese) };   // adrešu ieteikumi no Mājas lietas
+      case 'login': await log(db, u.name, 'Pieteicās'); return { ok: true, user, settings: { vadibasEpasti: listOf((await settings(db))['Vadības e-pasti']) }, objekti: (await all(db, 'SELECT adrese FROM objects ORDER BY adrese')).map(o => o.adrese),
+        objektiKad: (await all(db, "SELECT o.adrese FROM objects o JOIN ml_kad k ON k.anorm = o.anorm WHERE k.dati != '' AND k.dati != '{}' ORDER BY o.adrese").catch(() => [])).map(o => o.adrese) };   // adrešu ieteikumi no Mājas lietas
+      case 'mlKad': {   // Mājas lietas objekta kadastra dati → tas pats formāts kā «SH Kadastrs» pogai
+        const r = await db.prepare("SELECT o.adrese, k.dati FROM objects o JOIN ml_kad k ON k.anorm = o.anorm WHERE o.adrese = ?").bind(String(req.adrese || '').trim()).first();
+        if (!r) throw new Error('Mājas lietā šim objektam nav kadastra datu.');
+        return { ok: true, kad: mlToKad(r.adrese, JSON.parse(r.dati || '{}')) };
+      }
       case 'list': { const L = (await all(db, "SELECT id, nosaukums, adrese, pasutitajs, izpilditajs, sagatavots, derigs, autors, statuss, bez_pvn, ar_pvn, versija, izveidots, atjaunots, komentars, izskatija, plat, serija FROM budz_budget WHERE statuss != 'Dzēsts'")).map(meta).filter(m => canSee(u, m));
         L.sort((x, y) => String(y.atjaunots).localeCompare(String(x.atjaunots))); return { ok: true, items: L }; }
       case 'get': {
