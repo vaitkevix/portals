@@ -6,7 +6,7 @@ import * as AI from './ai.js';
 
 const TAB = 'Izvešana · Pieteikumi';
 const DUE_DAYS = 7, MAX_PHOTOS = 5, MAX_AFTER = 15, BAG_M3 = 0.15, COEF_HEAVY = 0.10, COEF_MIXED = 0.05, AI_DAILY = 400;
-const ST_PENDING = 'Neizpildīts', ST_DONE = 'Izpildīts', ST_CANCELLED = 'Atcelts';
+const ST_PENDING = 'Neizpildīts', ST_DONE = 'Izpildīts', ST_CANCELLED = 'Atcelts', ST_DELETED = 'Dzēsts';
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? r.v : null; };
 export const isNative = async (env) => (await kvGet(env.DB, 'izv:native')) === '1';
@@ -34,7 +34,7 @@ const fail = (message, code) => ({ status: 'error', message, code: code || '' })
 const out = (t) => ({ rowIndex: t.row, id: t.id, date: t.datums, address: t.adrese, requester: t.pasutitajs, bagsEst: t.maisi, comment: t.komentars, photoBefore: t.foto_pirms,
   status: t.statuss || ST_PENDING, sia: t.sia, photoAfter: t.foto_pec, photoCarrierBefore: t.foto_izv_pirms || '', m3Hauled: t.m3, carrierComment: t.izv_kom, urgent: !!t.steidzami, deadline: t.termins, problem: t.problema,
   history: t.vesture, doneAt: t.izpildits, bagsHauled: t.maisi_izv, coefNote: t.koef });
-export async function getTasks(db) { return (await all(db, 'SELECT * FROM izv_task ORDER BY row')).map(out); }
+export async function getTasks(db) { return (await all(db, "SELECT * FROM izv_task WHERE statuss != 'Dzēsts' ORDER BY row")).map(out); }
 export async function getInitialData(env) {
   const db = env.DB;
   const [objs, ppl, comp] = await Promise.all([all(db, 'SELECT adrese FROM objects ORDER BY ord, adrese'), all(db, 'SELECT name, perms, active FROM people ORDER BY ord, name'), all(db, 'SELECT name, kinds, active FROM companies ORDER BY ord, name')]);
@@ -51,6 +51,9 @@ async function cache(env) {
 const withTasks = async (env, res) => { if (res && res.status === 'success') res.tasks = await cache(env); return res; };
 const byId = (db, id) => db.prepare('SELECT * FROM izv_task WHERE id = ?').bind(String(id || '').trim()).first();
 const log = (t, text) => (t.vesture ? t.vesture + '\n' : '') + stamp() + ' · ' + text;
+/** Administratora labojumi vēsturē neparādās (lietotāja vēlme) — izvedēja gan */
+const quiet = (me) => { const pc = portalCarrier(me); return !!(pc && pc.admin); };
+const logAs = (me, t, text) => quiet(me) ? (t.vesture || '') : log(t, text);
 
 /* ---------- izvedēja parole: «SIA\nPAROLE» (Uzņēmumi, veids izvedējs) ---------- */
 async function sias(db) { return (await all(db, 'SELECT name, kinds, pass FROM companies WHERE active = 1')).filter(c => String(c.kinds).split(',').indexOf('izvedejs') !== -1); }
@@ -97,7 +100,6 @@ export async function saveTask(env, d) {
       d.urgent ? 1 : 0, dueDate(d.deadline, now), now + ' · Izveidots' + (d.requester ? ' (' + d.requester + ')' : '')).run();
   return withTasks(env, { status: 'success', id });
 }
-const isAdm = (me) => !!(me && !me.company && ((me.perms || {}).izv === 'admin' || (me.perms || {}).portal === 'admin'));
 export async function updateTask(env, d, me) {
   const db = env.DB; d = d || {};
   if (!String(d.address || '').trim()) return fail('Nav norādīta adrese');
@@ -108,15 +110,15 @@ export async function updateTask(env, d, me) {
   const old = [t.adrese, t.pasutitajs, t.maisi, t.komentars], neu = [d.address || '', d.requester || '', d.bagsEst || '', d.comment || ''];
   const changed = ['adrese', 'pasūtītājs', 'daudzums', 'komentārs'].filter((n, i) => String(old[i] || '').trim() !== String(neu[i]).trim());
   if (!!t.steidzami !== !!d.urgent) changed.push(d.urgent ? 'steidzams' : 'nav steidzams');
-  const v = changed.length ? log(t, 'Labots: ' + changed.join(', ') + (d.requester ? ' (' + d.requester + ')' : '')) : t.vesture;
+  const v = changed.length ? logAs(me, t, 'Labots: ' + changed.join(', ') + (d.requester ? ' (' + d.requester + ')' : '')) : t.vesture;
   await db.prepare('UPDATE izv_task SET adrese = ?, pasutitajs = ?, maisi = ?, komentars = ?, steidzami = ?, vesture = ?, termins = ? WHERE id = ?')
     .bind(String(neu[0]), String(neu[1]), String(neu[2]), String(neu[3]), d.urgent ? 1 : 0, v, d.deadline ? dueDate(d.deadline, t.datums) : t.termins, t.id).run();
   return withTasks(env, { status: 'success' });
 }
-/** Izpildīta pieteikuma labošana — tikai Izvešanas/portāla administrators */
+/** Izpildīta pieteikuma labošana — izvedējs (portāla sesija) vai Izvešanas/portāla administrators */
 async function updateDone(env, t, d, me) {
   const db = env.DB;
-  if (!isAdm(me)) return fail('Izpildītu pieteikumu var labot tikai administrators');
+  if (!portalCarrier(me)) return fail('Izpildītu pieteikumu var labot izvedējs vai administrators');
   let m3 = t.m3;
   if (d.m3Hauled !== undefined && d.m3Hauled !== null && String(d.m3Hauled).trim() !== '') {
     const v = Math.round(num(String(d.m3Hauled).replace(',', '.')) * 100) / 100;
@@ -128,7 +130,7 @@ async function updateDone(env, t, d, me) {
   const changed = F.filter(f => String(f[1] || '').trim() !== String(f[2] == null ? '' : f[2]).trim()).map(f => f[0] === 'm³' ? 'm³ ' + (f[1] || '—') + ' → ' + f[2] : f[0]);
   if (!changed.length) return withTasks(env, { status: 'success' });
   await db.prepare('UPDATE izv_task SET adrese = ?, pasutitajs = ?, maisi = ?, komentars = ?, m3 = ?, izv_kom = ?, vesture = ? WHERE id = ?')
-    .bind(String(d.address).trim(), String(d.requester || ''), String(d.bagsEst || ''), String(d.comment || ''), m3, String(F[5][2] || ''), log(t, 'Labots pēc izpildes: ' + changed.join(', ') + ' (' + me.name + ')'), t.id).run();
+    .bind(String(d.address).trim(), String(d.requester || ''), String(d.bagsEst || ''), String(d.comment || ''), m3, String(F[5][2] || ''), logAs(me, t, 'Labots pēc izpildes: ' + changed.join(', ') + ' (' + me.name + ')'), t.id).run();
   return withTasks(env, { status: 'success' });
 }
 /** Papildu bildes pēc izvešanas izpildītam pieteikumam (izvedējs vai administrators) */
@@ -146,7 +148,16 @@ export async function addPhotos(env, d, me) {
   const t = await byId(db, d.id);
   const all2 = String(t.foto_pec || '').split('\n').filter(Boolean).concat(urls.split('\n').filter(Boolean));
   await db.prepare('UPDATE izv_task SET foto_pec = ?, vesture = ? WHERE id = ?')
-    .bind(all2.join('\n'), log(t, 'Pievienotas bildes pēc izvešanas: ' + ph.length + ' (' + (lg.sia || lg.admin || '') + ')'), t.id).run();
+    .bind(all2.join('\n'), logAs(me, t, 'Pievienotas bildes pēc izvešanas: ' + ph.length + ' (' + (lg.sia || lg.admin || '') + ')'), t.id).run();
+  return withTasks(env, { status: 'success' });
+}
+/** Dzēst pieteikumu (izvedējs vai administrators). Ieraksts paliek D1 ar statusu «Dzēsts» — sarakstos un atskaitēs to vairs nav. */
+export async function deleteTask(env, id, me) {
+  const db = env.DB, lg = portalCarrier(me);
+  if (!lg) return fail('Dzēst var izvedējs vai administrators');
+  const t = await byId(db, id); if (!t) return withTasks(env, { status: 'success' });
+  if (t.statuss === ST_DELETED) return withTasks(env, { status: 'success' });
+  await db.prepare('UPDATE izv_task SET statuss = ?, vesture = ? WHERE id = ?').bind(ST_DELETED, logAs(me, t, 'Dzēsts (bija: ' + (t.statuss || ST_PENDING) + ') · ' + (lg.sia || lg.admin || '')), t.id).run();
   return withTasks(env, { status: 'success' });
 }
 export async function setTaskCancelled(env, id, cancel) {
@@ -444,6 +455,7 @@ export async function handle(env, fn, a, me) {
     case 'saveTask': return await saveTask(env, a[0]);
     case 'updateTask': return await updateTask(env, a[0], me);
     case 'addPhotos': return await addPhotos(env, a[0], me);
+    case 'deleteTask': return await deleteTask(env, a[0], me);
     case 'setTaskCancelled': return await setTaskCancelled(env, a[0], a[1]);
     case 'getAccess': return await getAccess(db, a[0], me);
     case 'checkCarrierPin': return await checkCarrierPin(db, a[0], me);
