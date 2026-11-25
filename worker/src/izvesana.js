@@ -5,7 +5,7 @@ import * as F from './foto.js';
 import * as AI from './ai.js';
 
 const TAB = 'Izvešana · Pieteikumi';
-const DUE_DAYS = 7, MAX_PHOTOS = 5, BAG_M3 = 0.15, COEF_HEAVY = 0.10, COEF_MIXED = 0.05, AI_DAILY = 400;
+const DUE_DAYS = 7, MAX_PHOTOS = 5, MAX_AFTER = 15, BAG_M3 = 0.15, COEF_HEAVY = 0.10, COEF_MIXED = 0.05, AI_DAILY = 400;
 const ST_PENDING = 'Neizpildīts', ST_DONE = 'Izpildīts', ST_CANCELLED = 'Atcelts';
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? r.v : null; };
@@ -97,17 +97,56 @@ export async function saveTask(env, d) {
       d.urgent ? 1 : 0, dueDate(d.deadline, now), now + ' · Izveidots' + (d.requester ? ' (' + d.requester + ')' : '')).run();
   return withTasks(env, { status: 'success', id });
 }
-export async function updateTask(env, d) {
+const isAdm = (me) => !!(me && !me.company && ((me.perms || {}).izv === 'admin' || (me.perms || {}).portal === 'admin'));
+export async function updateTask(env, d, me) {
   const db = env.DB; d = d || {};
   if (!String(d.address || '').trim()) return fail('Nav norādīta adrese');
   const t = await byId(db, d.id); if (!t) return fail('Pieteikums nav atrasts — iespējams, tas ir izdzēsts');
-  if ((t.statuss || ST_PENDING) !== ST_PENDING) return fail('Labot var tikai neizpildītu pieteikumu (statuss: ' + t.statuss + ')');
+  const st = t.statuss || ST_PENDING;
+  if (st === ST_DONE) return await updateDone(env, t, d, me);
+  if (st !== ST_PENDING) return fail('Labot var tikai neizpildītu vai izpildītu pieteikumu (statuss: ' + t.statuss + ')');
   const old = [t.adrese, t.pasutitajs, t.maisi, t.komentars], neu = [d.address || '', d.requester || '', d.bagsEst || '', d.comment || ''];
   const changed = ['adrese', 'pasūtītājs', 'daudzums', 'komentārs'].filter((n, i) => String(old[i] || '').trim() !== String(neu[i]).trim());
   if (!!t.steidzami !== !!d.urgent) changed.push(d.urgent ? 'steidzams' : 'nav steidzams');
   const v = changed.length ? log(t, 'Labots: ' + changed.join(', ') + (d.requester ? ' (' + d.requester + ')' : '')) : t.vesture;
   await db.prepare('UPDATE izv_task SET adrese = ?, pasutitajs = ?, maisi = ?, komentars = ?, steidzami = ?, vesture = ?, termins = ? WHERE id = ?')
     .bind(String(neu[0]), String(neu[1]), String(neu[2]), String(neu[3]), d.urgent ? 1 : 0, v, d.deadline ? dueDate(d.deadline, t.datums) : t.termins, t.id).run();
+  return withTasks(env, { status: 'success' });
+}
+/** Izpildīta pieteikuma labošana — tikai Izvešanas/portāla administrators */
+async function updateDone(env, t, d, me) {
+  const db = env.DB;
+  if (!isAdm(me)) return fail('Izpildītu pieteikumu var labot tikai administrators');
+  let m3 = t.m3;
+  if (d.m3Hauled !== undefined && d.m3Hauled !== null && String(d.m3Hauled).trim() !== '') {
+    const v = Math.round(num(String(d.m3Hauled).replace(',', '.')) * 100) / 100;
+    if (!(v >= 0 && v <= 200)) return fail('Nepareizi m³ (0–200)');
+    m3 = String(v);
+  }
+  const F = [['adrese', t.adrese, d.address], ['pasūtītājs', t.pasutitajs, d.requester], ['daudzums', t.maisi, d.bagsEst], ['komentārs', t.komentars, d.comment],
+    ['m³', t.m3, m3], ['izvedēja komentārs', t.izv_kom, d.carrierComment === undefined ? t.izv_kom : d.carrierComment]];
+  const changed = F.filter(f => String(f[1] || '').trim() !== String(f[2] == null ? '' : f[2]).trim()).map(f => f[0] === 'm³' ? 'm³ ' + (f[1] || '—') + ' → ' + f[2] : f[0]);
+  if (!changed.length) return withTasks(env, { status: 'success' });
+  await db.prepare('UPDATE izv_task SET adrese = ?, pasutitajs = ?, maisi = ?, komentars = ?, m3 = ?, izv_kom = ?, vesture = ? WHERE id = ?')
+    .bind(String(d.address).trim(), String(d.requester || ''), String(d.bagsEst || ''), String(d.comment || ''), m3, String(F[5][2] || ''), log(t, 'Labots pēc izpildes: ' + changed.join(', ') + ' (' + me.name + ')'), t.id).run();
+  return withTasks(env, { status: 'success' });
+}
+/** Papildu bildes pēc izvešanas izpildītam pieteikumam (izvedējs vai administrators) */
+export async function addPhotos(env, d, me) {
+  const db = env.DB; d = d || {};
+  const lg = await login(db, d.pin, me); if (!lg) return fail('Bildes var pievienot izvedējs vai administrators', 'pin');
+  const okPh = (x) => /^data:image\/[\w.+-]+;base64,/.test(String(x || ''));
+  const ph = (Array.isArray(d.photos) ? d.photos : [d.photos]).filter(okPh);
+  if (!ph.length) return fail('Izvēlieties bildi');
+  const t0 = await byId(db, d.id); if (!t0) return fail('Pieteikums nav atrasts — iespējams, tas ir izdzēsts');
+  if ((t0.statuss || ST_PENDING) !== ST_DONE) return fail('Bildes pēc izvešanas var pievienot tikai izpildītam pieteikumam');
+  const have = String(t0.foto_pec || '').split('\n').filter(Boolean);
+  if (have.length + ph.length > MAX_AFTER) return fail('Par daudz bilžu: kopā līdz ' + MAX_AFTER + ' (jau ir ' + have.length + ')');
+  const urls = await savePhotos(env, ph, t0.id, 'Izvests');
+  const t = await byId(db, d.id);
+  const all2 = String(t.foto_pec || '').split('\n').filter(Boolean).concat(urls.split('\n').filter(Boolean));
+  await db.prepare('UPDATE izv_task SET foto_pec = ?, vesture = ? WHERE id = ?')
+    .bind(all2.join('\n'), log(t, 'Pievienotas bildes pēc izvešanas: ' + ph.length + ' (' + (lg.sia || lg.admin || '') + ')'), t.id).run();
   return withTasks(env, { status: 'success' });
 }
 export async function setTaskCancelled(env, id, cancel) {
@@ -403,7 +442,8 @@ export async function handle(env, fn, a, me) {
     case 'getHist': return (await all(db, 'SELECT gads, men, diena, adrese, veids, n, m3 FROM izv_hist ORDER BY gads, men, diena')).map(r => [r.gads, r.men, r.diena, r.adrese, r.veids, r.n, r.m3]);
     case 'getInitialData': return await getInitialData(env);
     case 'saveTask': return await saveTask(env, a[0]);
-    case 'updateTask': return await updateTask(env, a[0]);
+    case 'updateTask': return await updateTask(env, a[0], me);
+    case 'addPhotos': return await addPhotos(env, a[0], me);
     case 'setTaskCancelled': return await setTaskCancelled(env, a[0], a[1]);
     case 'getAccess': return await getAccess(db, a[0], me);
     case 'checkCarrierPin': return await checkCarrierPin(db, a[0], me);
