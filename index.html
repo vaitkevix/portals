@@ -85,7 +85,7 @@ button{cursor:pointer}
 
 /* Sākums */
 .hello{padding:8px 0 16px}
-.hello .d{font-size:13px;font-weight:700;color:var(--ink-3);text-transform:capitalize}
+.hello .d{font-size:13px;font-weight:700;color:var(--ink-3)}.hello .d::first-letter{text-transform:uppercase}
 .hello h2{margin:4px 0 0;font-size:26px;font-weight:800;letter-spacing:-.02em}
 .grid{display:grid;grid-template-columns:1fr;gap:12px;padding-bottom:calc(24px + var(--safe-b, env(safe-area-inset-bottom)))}
 @media(min-width:640px){.grid{grid-template-columns:1fr 1fr}}
@@ -133,7 +133,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .x{width:36px;height:36px;border-radius:50%;border:0;background:var(--surface-2);font-size:20px;line-height:1}
 .menu{display:grid;gap:8px}
 .menu button{display:flex;align-items:center;gap:12px;min-height:50px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-weight:700;font-size:15px;text-align:left}
-.menu button.red{color:var(--red)}
+.menu button.red{color:var(--red)}:root[data-theme="dark"] .menu button.red{color:#ff8f8f}
 .who{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--brand-soft);margin:0 0 12px;font-weight:800}
 .who small{display:block;font-weight:600;font-size:12.5px;color:var(--ink-3)}
 .dot{width:12px;height:12px;border-radius:50%;flex:none;background:var(--ink-3)}
@@ -207,13 +207,13 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 :root{--mint:#d6e8e1;--sand:#f4e4b4;--sky:#d8e6f2;--rose:#f5dbe3;--lilac:#e2ddf2;--lime:#dcecc4;--aqua:#cbe9ef;--frost:#e0e6ec;--olive:#e6e7c6;--peach:#f8dcc6;--mauve:#ecd8ee;--clay:#eadfd3;--ink-strong:#16201b;--pill:#fff}
 :root[data-theme="dark"]{--mint:#1e3a32;--sand:#3d3520;--sky:#1e2f3d;--rose:#3d2530;--lilac:#2c2840;--lime:#27381c;--aqua:#173a40;--frost:#262d34;--olive:#33341c;--peach:#40291b;--mauve:#382540;--clay:#3a3027;--ink-strong:#eef2ef;--pill:#1b2521}
 #vHome{background:var(--bg);min-height:100%}
-.shell{display:flex;min-height:100vh}
+.shell{display:flex;min-height:100vh;min-height:100dvh}
 .rail{display:none}
 @media(min-width:900px){
-  .rail{display:flex;flex-direction:column;align-items:center;gap:10px;width:88px;flex:none;padding:20px 0;background:var(--surface);border-right:1px solid var(--line);position:sticky;top:0;height:100vh}
+  .rail{display:flex;flex-direction:column;align-items:center;gap:10px;width:88px;flex:none;padding:20px 0;background:var(--surface);border-right:1px solid var(--line);position:sticky;top:0;height:100vh;height:100dvh}
   .rail .rlogo{width:44px;height:44px;border-radius:13px;margin-bottom:8px;flex:none}
-  .rbtns{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;padding:2px 0}
-  .rbtns::-webkit-scrollbar{display:none}
+  .rbtns{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;padding:2px 0}
+  @media (max-height:900px){.rbtns{gap:0}}
   .rsep{display:block;width:32px;height:1px;background:var(--line-2);margin:6px 0;flex:none}
   .rb{flex:none;width:46px;height:46px;border-radius:50%;border:0;background:transparent;color:var(--ink-2);display:grid;place-items:center;padding:0}
   .rb img{width:30px;height:30px;border-radius:9px}
@@ -224,7 +224,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 @media(min-width:900px){.board{padding:36px 40px 0}}
 .bhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .bhead .hi{flex:1;min-width:200px}
-.bhead .d{font-size:13px;font-weight:700;color:var(--ink-3);text-transform:capitalize}
+.bhead .d{font-size:13px;font-weight:700;color:var(--ink-3)}.bhead .d::first-letter{text-transform:uppercase}
 .bhead h1{margin:2px 0 0;font-size:clamp(28px,4.6vw,46px);font-weight:800;letter-spacing:-.03em;line-height:1.05;color:var(--ink-strong)}
 .search{order:3;flex:1 1 100%;display:flex;align-items:center;gap:10px;height:52px;padding:0 18px;border-radius:26px;background:var(--pill);border:1px solid var(--line);color:var(--ink-3)}
 .search input{flex:1;border:0;outline:0;background:transparent;font-size:15px;font-weight:600;color:var(--ink);min-width:0}
@@ -269,7 +269,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 @media(max-width:520px){.sx{min-height:104px;padding:12px}.sx .arrow{display:none}}
 .mlist{display:flex;flex-direction:column;gap:6px;margin-top:10px}.mrow{background:rgba(255,255,255,.55);border-radius:16px;padding:9px 12px}:root[data-theme="dark"] .mrow{background:rgba(0,0,0,.18)}.mrow.bad{box-shadow:inset 3px 0 0 #c63d3d}
 .ma{display:flex;align-items:center;gap:8px}.ma b{flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mdl{display:flex;gap:4px}.mbs{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}.mbs .ok{font-size:12px;color:var(--ink-3)}
-.mb{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.7);font-size:12px;font-weight:800;cursor:pointer}:root[data-theme="dark"] .mb{background:rgba(255,255,255,.08)}.mb.w{background:#fdf3d8;color:#7a5400}.mb.r{background:#f5dbe3;color:#8a2a3b}
+.mb{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.7);font-size:12px;font-weight:800;cursor:pointer}:root[data-theme="dark"] .mb{background:rgba(255,255,255,.08)}.mb.w{background:#fdf3d8;color:#7a5400}.mb.r{background:#f5dbe3;color:#8a2a3b}:root[data-theme="dark"] .mb.w{background:rgba(253,213,120,.16);color:#f3cf7a}:root[data-theme="dark"] .mb.r{background:rgba(242,163,184,.16);color:#f4a9bd}
 .wide{position:relative;margin-top:14px;padding:18px 20px 22px;border-radius:28px;background:var(--sand);color:#17201c}
 :root[data-theme="dark"] .wide{color:var(--ink)}
 .wide .t1{display:flex;align-items:center;gap:10px;font-weight:800;font-size:15px}
@@ -338,11 +338,13 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .sw button.on{border-color:var(--ink-strong)}
 .tog input{accent-color:var(--ink-strong)}
 .cdel{display:inline-grid;place-items:center;width:24px;height:24px;margin:-4px -6px -4px 2px;border-radius:50%;color:var(--red);text-decoration:none;font-size:15px}
-.cdel:hover{background:var(--surface)}
+.cdel:hover{background:var(--surface)}:root[data-theme="dark"] .cdel{color:#ff8f8f}:root[data-theme="dark"] .avatar{color:#06221d}
 .cal .ch button{width:40px;height:40px}
 .cal .dd small{font-size:10px}
 @media(max-width:520px){.ac{justify-content:flex-start}.ac small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}
 </style>
+<style id="sh-polish">@media (max-width:600px){input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px!important}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}</style>
 </head>
 <body>
 
@@ -730,6 +732,7 @@ function adminShell(inner, addLabel) {
     ${addLabel !== null ? `<div class="adm-top"><input id="pq" type="search" placeholder="Meklēt…" value="${esc(A.q)}" autocomplete="off">${addLabel ? `<button class="btn" id="pAdd">+ ${addLabel}</button>` : ''}</div>` : ''}</div><div id="aBody">${inner}</div>
     <p class="copy">Izmaiņas uzreiz darbojas visās lietotnēs.</p>`;
   $('aTabs').onclick = (e) => { if (e.target.closest('[data-go]')) { closeSheet(); return openApp('ml'); } const b = e.target.closest('[data-t]'); if (b) { A.tab = b.dataset.t; A.q = ''; A.f = {}; drawAdmin(); s.scrollTop = 0; } };
+  { const on = document.querySelector('#aTabs .on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' }); }   // aktīvā cilne redzama arī telefonā
   let tm = 0; const inp = $('pq'); if (inp) inp.oninput = () => { clearTimeout(tm); tm = setTimeout(() => { A.q = inp.value; A.onlyList = true; drawAdmin(); A.onlyList = false; }, 120); };
   if (A.st) { s.scrollTop = A.st; A.st = 0; }
   return s;

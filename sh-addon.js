@@ -34,6 +34,7 @@
   .shx-menu button{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:10px 14px;border-radius:10px;border:1px solid var(--line,rgba(0,0,0,.1));
     background:var(--surface-solid,#fff);color:var(--ink,#111);font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;text-align:left}
   .shx-menu button.red{color:#c02626}
+  [data-theme="dark"] .shx-menu button.red{color:#ff8f8f}
   .shx-menu svg{flex:none}
   .shx-sheet{position:fixed;inset:0;z-index:300;display:flex;align-items:flex-end;justify-content:center;background:rgba(8,20,16,.45);animation:shxFade .2s}
   @media(min-width:640px){.shx-sheet{align-items:center}}
@@ -44,7 +45,7 @@
   .shx-sheet .hd{display:flex;align-items:center;justify-content:space-between;margin:0 0 12px}
   .shx-sheet .hd h3{margin:0;font-size:18px;font-weight:800}
   .shx-sheet .copy{margin:4px 0 0;text-align:center;font-size:11px;font-weight:700;opacity:.6}
-  .shx-x{width:36px;height:36px;border-radius:50%;border:0;background:rgba(127,127,127,.12);color:inherit;font-size:20px;line-height:1;cursor:pointer}
+  .shx-x{width:40px;height:40px;border-radius:50%;border:0;background:rgba(127,127,127,.12);color:inherit;font-size:20px;line-height:1;cursor:pointer}
   .tour-ov{position:fixed;inset:0;z-index:500}
   .tour-hole{position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgba(8,20,16,.6);outline:2px solid rgba(255,255,255,.85);outline-offset:2px;transition:top .3s ease,left .3s ease,width .3s ease,height .3s ease;pointer-events:none}
   .tour-hole.none{width:0!important;height:0!important;top:50%!important;left:50%!important;outline:0}
