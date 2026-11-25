@@ -400,6 +400,7 @@ export async function handle(env, fn, a, me) {
   switch (fn) {
     case 'getBoot': return { lists: await getInitialData(env), tasks: await getTasks(db) };
     case 'getTasks': return await getTasks(db);
+    case 'getHist': return (await all(db, 'SELECT gads, men, diena, adrese, veids, n, m3 FROM izv_hist ORDER BY gads, men, diena')).map(r => [r.gads, r.men, r.diena, r.adrese, r.veids, r.n, r.m3]);
     case 'getInitialData': return await getInitialData(env);
     case 'saveTask': return await saveTask(env, a[0]);
     case 'updateTask': return await updateTask(env, a[0]);
