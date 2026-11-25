@@ -14,7 +14,7 @@ function svcStmts(db, k, key, on) {
   const [tbl, vis] = SVC[key];
   const st = [db.prepare('INSERT INTO obj_info (anorm, ' + key + ') VALUES (?, ?) ON CONFLICT(anorm) DO UPDATE SET ' + key + ' = excluded.' + key).bind(k, on ? 1 : 0)];
   if (!on) st.push(db.prepare('UPDATE ' + tbl + ' SET aktivs = 0 WHERE anorm = ?').bind(k),
-    db.prepare('DELETE FROM ' + vis + " WHERE anorm = ? AND statuss = 'plan' AND avots != 'pieteikums'").bind(k));
+    db.prepare('DELETE FROM ' + vis + " WHERE anorm = ? AND statuss = 'plan'" + (vis === 'pl_visit' ? '' : " AND avots != 'pieteikums'")).bind(k));   // pl_visit nav kolonnas avots
   return st;
 }
 async function setSvc(db, k, key, on) {

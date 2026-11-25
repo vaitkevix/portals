@@ -72,8 +72,9 @@ export async function completeTask(env, ctx, gas, d) {
   if (!t) return { status: 'error', message: 'Pieteikums netika atrasts' };
   if (t.statuss === DONE) return { status: 'error', message: 'Šis pieteikums jau ir atzīmēts kā piegādāts' };
   const photo = await savePhoto(env, gas, d.photoAfter || '', t.id + '_Piegadats.jpg');
-  await db.prepare('UPDATE kais_task SET statuss = ?, kurjers = ?, foto_pec = ?, piegadati = ?, kurj_kom = ?, piegadats = ?, sheet = 0 WHERE id = ?')
-    .bind(DONE, String(d.sia || ''), photo || t.foto_pec, num(d.m3Hauled), String(d.carrierComment || ''), nowLV(), t.id).run();
+  const u = await db.prepare('UPDATE kais_task SET statuss = ?, kurjers = ?, foto_pec = ?, piegadati = ?, kurj_kom = ?, piegadats = ?, sheet = 0 WHERE id = ? AND statuss != ?')
+    .bind(DONE, String(d.sia || ''), photo || t.foto_pec, num(d.m3Hauled), String(d.carrierComment || ''), nowLV(), t.id, DONE).run();
+  if (!(u.meta && u.meta.changes)) return { status: 'error', message: 'Šis pieteikums jau ir atzīmēts kā piegādāts' };   // dubults klikšķis / divi kurjeri
   await cache(db);
   ctx.waitUntil(pushSheet(env).catch(e => console.error('kais sheet', e)));
   return { status: 'success' };
@@ -114,7 +115,7 @@ const isAdm = (me) => !!me && !me.company && ((me.perms || {}).portal === 'admin
 export async function handle(env, ctx, fn, args, gas, me) {
   const db = env.DB, a = Array.isArray(args) ? args : [];
   if (fn === 'getTasks') return await tasks(db);
-  if (fn === 'getInitialData') return await initialData(db);
+  if (fn === 'getInitialData') { const r = await initialData(db); if (!me) r.phones = {}; return r; }
   if (fn === 'saveTask') { const d = Object.assign({}, a[0] || {}); if (me && !isAdm(me)) d.requester = me.name; return await saveTask(env, ctx, gas, d); }
   if (fn === 'completeTask') {
     const d = Object.assign({}, a[0] || {});

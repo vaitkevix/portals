@@ -105,8 +105,8 @@ export async function geocode(db, max) {
 export async function cron(env) {
   const db = env.DB, t = today(), h = +nowStr().slice(11, 13);
   if (h < 5 || (await kv(db, 'darz:ran')) === t) return;
-  await db.batch([kvSet(db, 'darz:ran', t)]);
   await schedule(db);
+  await db.batch([kvSet(db, 'darz:ran', t)]);   // atzīme PĒC veiksmīga grafika
   await geocode(db, 5).catch(() => 0);
 }
 
@@ -147,6 +147,11 @@ export async function api(request, env, X, fetchWx) {
     if (a === 'obj') {
       const hist = (await db.prepare('SELECT id, datums, statuss, laiks, sakums, izpilditajs, foto, foto_pirms, iemesls, piezime, parcelts, avots, apraksts, izpilde FROM darz_visit WHERE anorm = ? ORDER BY datums DESC LIMIT 40').bind(anorm(b.anorm || b.adrese)).all()).results || [];
       return out({ ok: true, hist });
+    }
+    if (a === 'reopen') {   // «nevar» → atpakaļ maršrutā
+      need('vaditajs');
+      await db.prepare("UPDATE darz_visit SET statuss = 'plan', iemesls = '' WHERE id = ? AND statuss = 'cant'").bind(String(b.id || '')).run();
+      return out({ ok: true });
     }
     if (a === 'geo') { need('vaditajs'); return out(Object.assign({ ok: true }, await geocode(db, 12))); }
     if (a === 'saveObj') {

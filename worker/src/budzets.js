@@ -258,7 +258,7 @@ function mlToKad(adrese, d) {
 export async function handle(env, req) {
   const db = env.DB, u = await auth(db, req.pin);
   if (!u || u.none) { await new Promise(r => setTimeout(r, 700)); return { ok: false, error: 'Nepareizs PIN' }; }
-  const a = String(req.action || ''), W = ['save', 'status', 'del', 'tplSave', 'tplDel', 'sendPdf'];
+  const a = String(req.action || ''), W = ['save', 'status', 'del', 'tplSave', 'tplDel', 'sendPdf', 'aiKadastrs', 'aiTelpas'];   // AI tērē tokenus — skatītājam nē
   if (u.viewer && W.indexOf(a) !== -1) return { ok: false, error: 'Jums ir tikai skatīšanās tiesības' };
   const user = { name: u.name, role: u.role, email: u.email };
   try {

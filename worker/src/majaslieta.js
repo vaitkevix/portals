@@ -7,7 +7,7 @@ import { personByPin, people } from './portal.js';
 import { master } from './master.js';
 import * as objinfo from './objinfo.js';
 import { aiCall } from './ai.js';
-import { today, nowStr, anorm, CORS, out } from './util.js';
+import { today, nowStr, anorm, CORS, out, cleanAddr } from './util.js';
 
 export const KEY = 'ml', NAME = 'Mājas lieta';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
@@ -295,6 +295,7 @@ export async function api(request, env, X) {
     if (a === 'objSave') {   // { old: anorm vai '' (jauns), obj: { adrese, vaditajs, grupa, piekluve } }
       need('admin');
       const o = b.obj || {}, n = { adrese: str(o.adrese, 200), vaditajs: str(o.vaditajs, 80), grupa: str(o.grupa, 80) || 'SH objekti', piekluve: str(o.piekluve, 2000) };
+      n.adrese = cleanAddr(n.adrese);
       if (!n.adrese) throw new Error('Ierakstiet adresi');
       const list = await objList(), i = b.old ? list.findIndex(x => anorm(x.adrese) === b.old) : -1;
       if (b.old && i < 0) throw new Error('Objekts nav atrasts — atjaunojiet lapu');

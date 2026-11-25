@@ -127,7 +127,8 @@ export async function updateTask(env, d, me) {
 /** Izpildīta pieteikuma labošana — izvedējs (portāla sesija) vai Izvešanas/portāla administrators */
 async function updateDone(env, t, d, me) {
   const db = env.DB;
-  if (!portalCarrier(me)) return fail('Izpildītu pieteikumu var labot izvedējs vai administrators');
+  const pc = portalCarrier(me); if (!pc) return fail('Izpildītu pieteikumu var labot izvedējs vai administrators');
+  if (pc.sia && t.sia && t.sia !== pc.sia) return fail('Šis pieteikums pieder citam izvedējam');
   let m3 = t.m3;
   if (d.m3Hauled !== undefined && d.m3Hauled !== null && String(d.m3Hauled).trim() !== '') {
     const v = Math.round(num(String(d.m3Hauled).replace(',', '.')) * 100) / 100;
@@ -164,9 +165,10 @@ export async function addPhotos(env, d, me) {
 const PH_COL = { before: ['foto_pirms', 'Bilde pirms'], cbefore: ['foto_izv_pirms', 'Bilde pirms savākšanas'], after: ['foto_pec', 'Bilde pēc'] };
 export async function removePhoto(env, d, me) {
   const db = env.DB; d = d || {};
-  if (!portalCarrier(me)) return fail('Bildes dzēst var izvedējs vai administrators');
+  const pc = portalCarrier(me); if (!pc) return fail('Bildes dzēst var izvedējs vai administrators');
   const col = PH_COL[d.field]; if (!col) return fail('Nezināms bilžu lauks');
   const t = await byId(db, d.id); if (!t) return fail('Pieteikums nav atrasts — iespējams, tas ir izdzēsts');
+  if (pc.sia && t.sia && t.sia !== pc.sia) return fail('Šis pieteikums pieder citam izvedējam');
   const url = String(d.url || '').trim(), have = String(t[col[0]] || '').split(/\s+/).filter(Boolean), left = have.filter(x => x !== url);
   if (left.length === have.length) return fail('Bilde nav atrasta — atjaunojiet lapu');
   await db.prepare('UPDATE izv_task SET ' + col[0] + ' = ?, vesture = ? WHERE id = ?').bind(left.join('\n'), logAs(me, t, 'Dzēsta bilde: ' + col[1].toLowerCase()), t.id).run();
@@ -177,6 +179,7 @@ export async function deleteTask(env, id, me) {
   const db = env.DB, lg = portalCarrier(me);
   if (!lg) return fail('Dzēst var izvedējs vai administrators');
   const t = await byId(db, id); if (!t) return withTasks(env, { status: 'success' });
+  if (lg.sia && t.sia && t.sia !== lg.sia) return fail('Šis pieteikums pieder citam izvedējam');
   if (t.statuss === ST_DELETED) return withTasks(env, { status: 'success' });
   await db.prepare('UPDATE izv_task SET statuss = ?, vesture = ? WHERE id = ?').bind(ST_DELETED, logAs(me, t, 'Dzēsts (bija: ' + (t.statuss || ST_PENDING) + ') · ' + (lg.sia || lg.admin || '')), t.id).run();
   return withTasks(env, { status: 'success' });
@@ -192,7 +195,9 @@ export async function setTaskCancelled(env, id, cancel) {
 const accKey = (v) => String(v || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/^(kk|ir|ee) /, '').replace(/^(j|vnī) ?\| ?/, '');
 export async function getAccess(db, pin, me) {
   if (!await login(db, pin, me)) { await slow(); return {}; }
-  const o = {}; (await all(db, "SELECT adrese, piekluve FROM objects WHERE piekluve != ''")).forEach(r => { const a = accKey(r.adrese); if (a) o[a] = String(r.piekluve).trim(); });
+  // tikai adresēm ar neizpildītiem pieteikumiem (nevis visu objektu vārtu kodi)
+  const open = new Set((await all(db, 'SELECT DISTINCT adrese FROM izv_task WHERE statuss = ?', ST_PENDING)).map(r => accKey(r.adrese)));
+  const o = {}; (await all(db, "SELECT adrese, piekluve FROM objects WHERE piekluve != ''")).forEach(r => { const a = accKey(r.adrese); if (a && open.has(a)) o[a] = String(r.piekluve).trim(); });
   return o;
 }
 export async function checkCarrierPin(db, pin, me) { if (await login(db, pin, me)) return true; await slow(); return false; }

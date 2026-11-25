@@ -118,9 +118,9 @@ export async function geocode(db, max) {
 export async function plCron(env) {
   const db = env.DB, t = today(), h = +fmtT.format(new Date()).slice(11, 13);
   if (h < 5 || (await kv(db, 'pl:ran')) === t) return;
-  await db.batch([kvSet(db, 'pl:ran', t)]);
   await fetchRain(db).catch(e => console.error('pl rain', e));
   await schedule(db);
+  await db.batch([kvSet(db, 'pl:ran', t)]);   // atzīme PĒC veiksmīga grafika
   await geocode(db, 20).catch(e => console.error('pl geo', e));
 }
 

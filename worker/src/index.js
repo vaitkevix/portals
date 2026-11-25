@@ -61,12 +61,14 @@ async function rlAfter(env, ip, url, res) {
   const txt = await res.text(); if (txt.length > 4000) return;
   let o; try { o = JSON.parse(txt); } catch (e) { return; }
   if (!rlFailed(url, o)) return;
-  const v = (await rlGet(env, ip)) || { n: 0, t: Date.now() }; v.n++;
-  await kvSet(env.DB, 'rl:' + ip, JSON.stringify(v)).run();
+  const t = Date.now();   // atomārs +1 (paralēli pieprasījumi nepazaudē skaitījumu)
+  await env.DB.prepare("INSERT INTO kv (k, v) VALUES (?1, json_object('n', 1, 't', ?2)) ON CONFLICT(k) DO UPDATE SET v = CASE WHEN json_valid(v) AND ?2 - json_extract(v, '$.t') < ?3 THEN json_set(v, '$.n', json_extract(v, '$.n') + 1) ELSE json_object('n', 1, 't', ?2) END")
+    .bind('rl:' + ip, t, RL_WIN).run();
 }
 
 export default {
   async fetch(request, env, ctx) {
+    if (!['GET', 'HEAD', 'POST', 'OPTIONS'].includes(request.method)) return new Response('Method Not Allowed', { status: 405, headers: CORS });
     const u0 = new URL(request.url), ip = rlIp(request);
     const guard = request.method === 'POST' && ip && !/\/dl\/sms$/.test(u0.pathname);
     if (guard) { const v = await rlGet(env, ip); if (v && v.n >= RL_MAX)
@@ -204,7 +206,6 @@ async function img(url, ctx, env) {
   if (env && env.FOTO) {   // vecā Drive bilde, jau nokopēta R2
     const o = await env.FOTO.get(foto.driveKey(id));
     if (o) return new Response(o.body, { headers: Object.assign({ 'Content-Type': (o.httpMetadata && o.httpMetadata.contentType) || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable' }, CORS) });
-    ctx.waitUntil(foto.copyDrive(env, id).catch(() => 0));   // pirmā skatīšana → kopija R2
   }
   return imgFetch(id, sz, ctx);
 }
@@ -372,6 +373,7 @@ async function izv(request, url, env, ctx, app) {
     }
     if (app === 'kais' && await kais.isNative(env)) {   // bez Apps Script (D1 + tabulas kopija)
       let me = null;
+      if (fn === 'getInitialData') me = await session(env, url.searchParams.get('t') || '');   // tālruņi tikai ielogotiem
       if (A.open.indexOf(fn) === -1) {
         me = await session(env, url.searchParams.get('t') || '');
         if (!me || !((me.perms || {}).kais || (me.perms || {}).portal === 'admin')) throw Object.assign(new Error('Lai pieteiktu vai atzīmētu, ienāciet portālā vaitkevix.cloud/sh'), { code: 'login' });
@@ -783,9 +785,12 @@ async function carryOver(X) {
   // 2026-11-25: līdz 17:00 neatzīmētie darbi pāriet uz nākamo darba dienu (sestdiena/svētdiena → pirmdiena); no rīta 05:00 — rezerve, ja vakarā neizdevās
   const d0 = today(), h = +now().slice(11, 13);
   if (h < 5) return 0;
-  let t = d0; if (h >= 17) { t = addDays(d0, 1); while (wday(t) === 0 || wday(t) === 6) t = addDays(t, 1); }
-  if ((await kvGet(X.db, 'aizvCarry:last')) === t) return 0;
-  const rows = (await X.all("SELECT * FROM jobs WHERE datums < ? AND datums >= ? AND statuss IN ('jauns', 'piešķirts') AND serija = '' ORDER BY datums, seq", t, addDays(t, -14))).map(jobOut);
+  // mērķis = nākamā darba diena (bez brīvdienām un svētkiem); pārceļ tikai jau pienākušos darbus (vakarā — līdz šodienai, rītā — līdz vakardienai)
+  const off = d => wday(d) === 0 || wday(d) === 6 || persN.lvHolidays(+d.slice(0, 4)).has(d);
+  let t = h >= 17 ? addDays(d0, 1) : d0; while (off(t)) t = addDays(t, 1);
+  const cut = h >= 17 ? d0 : addDays(d0, -1), runKey = d0 + (h >= 17 ? ' vakars' : ' rīts');
+  if ((await kvGet(X.db, 'aizvCarry:last')) === runKey) return 0;
+  const rows = (await X.all("SELECT * FROM jobs WHERE datums <= ? AND datums < ? AND datums >= ? AND statuss IN ('jauns', 'piešķirts') AND serija = '' ORDER BY datums, seq", cut, t, addDays(t, -14))).map(jobOut);
   const todayKeys = new Set((await X.all('SELECT anorm, tips FROM jobs WHERE datums = ?', t)).map(r => r.anorm + '|' + r.tips));
   const unitNames = (await X.units(t)).map(x => x.name), st = [], byMgr = {}, moved = [];
   for (const j of rows) {
@@ -804,7 +809,7 @@ async function carryOver(X) {
     if (had && j.vaditajs) (byMgr[j.vaditajs] = byMgr[j.vaditajs] || []).push(j.adrese);
   }
   for (let k = 0; k < st.length; k += 90) await X.db.batch(st.slice(k, k + 90));
-  await kvSet(X.db, 'aizvCarry:last', t).run();
+  await kvSet(X.db, 'aizvCarry:last', runKey).run();
   for (const m in byMgr) X.notify([m], '↻ Pārcelti uz ' + (t === d0 ? 'šodienu' : lvDate(t)) + ': ' + byMgr[m].length, 'Vienība neatzīmēja: ' + byMgr[m].slice(0, 5).join(', ') + (byMgr[m].length > 5 ? '…' : ''));
   return moved.length;
 }
@@ -975,8 +980,9 @@ const ACTIONS = {
       await updJob(X, job).run();
       return { job };
     }
-    const job = { id: uid(), datums: j.datums, adrese: cleanAddr(j.adrese), tips: j.tips || 'Sētnieks', apraksts: j.apraksts || '', vaditajs: j.vaditajs || u.name,
-      brigade: j.brigade || '', statuss: j.brigade ? 'piešķirts' : 'jauns', izveidots: now() };
+    const job = { id: uid(), datums: j.datums, adrese: cleanAddr(j.adrese), tips: j.tips || 'Sētnieks', apraksts: j.apraksts || '', vaditajs: u.role === 'admin' ? (j.vaditajs || u.name) : u.name,
+      brigade: u.role === 'admin' ? (j.brigade || '') : '', izveidots: now() };
+    job.statuss = job.brigade ? 'piešķirts' : 'jauns';
     await needKnown(X, [job.adrese]);
     await insJob(X, job).run();
     if (u.role !== 'admin') X.notify(await X.names('admin'), 'Jauns darbs · ' + lvDate(job.datums), job.adrese + ' — ' + u.name);
@@ -1104,7 +1110,7 @@ const ACTIONS = {
     await canMark(u, job);
     const ids = r.done ? await X.savePhotos(job, r.photos) : [];
     if (r.done) {
-      job.statuss = 'izpildīts'; job.izpildits = now(); job.komentars = String(r.komentars || '').trim();
+      doneToday(job); job.statuss = 'izpildīts'; job.izpildits = now(); job.komentars = String(r.komentars || '').trim();
       job.foto = split(job.foto).concat(ids).join(','); job.iemesls = ''; job.parbaude = '';
     } else { job.statuss = job.brigade ? 'piešķirts' : 'jauns'; job.izpildits = ''; job.iemesls = ''; }
     await updJob(X, job).run();
@@ -1207,11 +1213,13 @@ async function teamView(X, r, full) {
   return { date, units, jobs, canEdit: !!full, meta: { objects: objs.filter(o => addrs.has(norm(o.adrese))).map(o => full ? o : Object.assign({}, o, { piekluve: '' })), managers: users.filter(x => x.role === 'vaditajs').map(x => ({ name: x.name, color: x.color })), colors: await peopleColors(X), jobTypes: types } };
 }
 
+/** Pārceltu darbu (↻) izpilda vēl tajā pašā vakarā → datums atpakaļ uz šodienu (lai neaiziet uz rītdienu/nākamo mēnesi) */
+function doneToday(job) { if (/^↻ no /.test(job.apraksts || '') && job.datums > today()) job.datums = today(); }
 async function teamDone(X, r) {
   const job = await X.job(r.id);
   if (!job || !job.brigade) throw new Error('Darbs nav atrasts vai nav piešķirts vienībai');
   const ids = r.done ? await X.savePhotos(job, r.photos) : [];
-  if (r.done) { job.statuss = 'izpildīts'; job.izpildits = now(); job.iemesls = ''; job.parbaude = ''; job.komentars = String(r.komentars || '').trim(); job.foto = split(job.foto).concat(ids).join(','); }
+  if (r.done) { doneToday(job); job.statuss = 'izpildīts'; job.izpildits = now(); job.iemesls = ''; job.parbaude = ''; job.komentars = String(r.komentars || '').trim(); job.foto = split(job.foto).concat(ids).join(','); }
   else { job.statuss = 'piešķirts'; job.izpildits = ''; job.iemesls = ''; }
   await updJob(X, job).run();
   if (r.done) X.notify((await X.names('admin')).concat(job.vaditajs ? [job.vaditajs] : []), '✓ Izpildīts · ' + job.brigade,
