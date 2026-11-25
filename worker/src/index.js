@@ -797,6 +797,7 @@ async function carryOver(X) {
     const had = !!j.brigade;
     let br = j.brigade, pub = j.publicets;
     if (unitNames.length) { const keep = brigs(j.brigade).filter(b => unitNames.indexOf(b) !== -1).join(' | '); if (keep !== br) { br = keep; pub = ''; } }
+    if (br && !pub) pub = now();   // pārceltais darbs paliek vienībai (publicēts), nevis uz dēļa
     st.push(X.st("UPDATE jobs SET datums = ?, apraksts = ?, brigade = ?, publicets = ?, statuss = ? WHERE id = ? AND datums < ? AND statuss IN ('jauns', 'piešķirts')",
       t, '↻ no ' + first + (rest ? ' · ' + rest : ''), br, pub, br ? 'piešķirts' : 'jauns', j.id, t));
     moved.push(j);
