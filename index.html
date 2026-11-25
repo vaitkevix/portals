@@ -448,8 +448,8 @@ const COLORS = ['#0f6b5c', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c'
 
 function toast(m, type) { const t = document.createElement('div'); t.className = 'toast' + (type === 'err' ? ' err' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 3200); }
 async function api(action, data) {
-  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action, t: S.t }, data || {})) });
-  const j = await r.json();
+  const r = await fetch(API, { signal: self.AbortSignal && AbortSignal.timeout ? AbortSignal.timeout(90000) : undefined, method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action, t: S.t }, data || {})) }).catch(() => { throw new Error('Nav savienojuma ar serveri — mēģiniet vēlreiz'); });
+  const j = await r.json().catch(() => ({ ok: false, error: 'Serveris neatbild — mēģiniet vēlreiz' }));
   if (!j.ok) { const e = new Error(j.error || 'Kļūda'); e.code = j.code; throw e; }
   return j;
 }
