@@ -284,6 +284,7 @@ async function submitVacation(env, user, f) {
   if (lidz < no) throw new Error('Datums "Līdz" nevar būt agrāks par "No".');
   const aizv = String(f.aizvietotajs || '').trim();
   const piez = String(f.piezimes || '').trim();
+  const strada = f.strada === true || f.strada === 'Jā' || f.strada === '1' ? 'Jā' : '';   // strādās atvaļinājuma laikā
   const days = countDays(no, lidz);
   const warnings = [];
   (await rowsOf(db, 'vac')).forEach(r => {
@@ -297,8 +298,9 @@ async function submitVacation(env, user, f) {
   });
   const id = await nextId(db, 'A');
   await insert(db, 'pers_vac', VAC_COLS, [id, stamp(), user.name, darb, sia, objekts, amats, veids, dmy(no), dmy(lidz), String(days.cal), String(days.work), aizv, piez, 'Jauns', '', '']);
+  if (strada) await db.prepare('UPDATE pers_vac SET strada = ? WHERE id = ?').bind(strada, id).run();
 
-  const mailErr = await mailVacation(env, { id, by: user.name, darb, sia, objekts, amats, veids, no: dmy(no), lidz: dmy(lidz), cal: days.cal, work: days.work, aizv, piez, warnings });
+  const mailErr = await mailVacation(env, { id, by: user.name, darb, sia, objekts, amats, veids, no: dmy(no), lidz: dmy(lidz), cal: days.cal, work: days.work, aizv, piez, strada, warnings });
   if (mailErr) await db.prepare('UPDATE pers_vac SET mail_err = ? WHERE id = ?').bind(mailErr, id).run();
   return { id, days, warnings, mailErr };
 }
@@ -540,7 +542,7 @@ async function mailChange(env, d) {
 
 const SENS_RE = /personas kods|adrese|banka|iban|alga|summa|likme/i;
 async function getRecords(db, user, type) {
-  const headers = { hire: HIRE_HEADERS.concat(['Darba laiks']), vac: VAC_HEADERS, chg: CHG_HEADERS.concat(['Darba laiks']), bonus: BONUS_HEADERS }[type], cols = { hire: HIRE_COLS.concat(['dl_sync']), vac: VAC_COLS, chg: CHG_COLS.concat(['dl_sync']), bonus: BONUS_COLS }[type];
+  const headers = { hire: HIRE_HEADERS.concat(['Darba laiks']), vac: VAC_HEADERS.concat(['Strādās atvaļinājuma laikā']), chg: CHG_HEADERS.concat(['Darba laiks']), bonus: BONUS_HEADERS }[type], cols = { hire: HIRE_COLS.concat(['dl_sync']), vac: VAC_COLS.concat(['strada']), chg: CHG_COLS.concat(['dl_sync']), bonus: BONUS_COLS }[type];
   let rows = (await rowsOf(db, type)).filter(r => r.id);
   if (user.role !== 'admin') rows = rows.filter(r => r.iesniedza === user.name);
   rows.reverse();
@@ -588,7 +590,7 @@ async function getCalendarRange(db, fromStr, toStr) {
     const a = toDate(r.no), b = toDate(r.lidz);
     if (!a || !b || a > to || b < from) return;
     events.push({ type: 'vac', id: r.id, name: r.darbinieks, sia: r.sia, objekts: r.objekts, amats: r.amats, veids: r.veids,
-      no: iso(a), lidz: iso(b), work: numOr(r.darba_dienas), aizv: r.aizv, status: st, by: r.iesniedza });
+      no: iso(a), lidz: iso(b), work: numOr(r.darba_dienas), aizv: r.aizv, strada: r.strada || '', status: st, by: r.iesniedza });
   });
   (await rowsOf(db, 'hire')).forEach(r => {
     const st = r.statuss;
@@ -675,9 +677,9 @@ async function mailHire(env, d) {
 }
 async function mailVacation(env, d) {
   const S = await settings(env.DB); if (!yes(S, 'MAIL_VAC', 'JĀ')) return '';
-  return sendMail(env, S, await withIzp(env.DB, recipients(S, 'vac')), 'Atvaļinājums: ' + d.darb + ' ' + d.no + ' – ' + d.lidz, 'Atvaļinājuma pieteikums', d.darb + ' · ' + d.id, [
+  return sendMail(env, S, await withIzp(env.DB, recipients(S, 'vac')), 'Atvaļinājums: ' + d.darb + ' ' + d.no + ' – ' + d.lidz + (d.strada ? ' (strādās)' : ''), 'Atvaļinājuma pieteikums', d.darb + ' · ' + d.id, [
     { title: 'DARBINIEKS', rows: [['Vārds, Uzvārds', d.darb], ['SIA', d.sia], ['Objekti un amati', splitObj(d.objekts).join('\n')]] },
-    { title: 'ATVAĻINĀJUMS', rows: [['Veids', d.veids], ['No', d.no], ['Līdz', d.lidz], ['Ilgums', d.cal + ' kalendārās dienas, ' + d.work + ' darba dienas'], ['Aizvietotājs', d.aizv]] },
+    { title: 'ATVAĻINĀJUMS', rows: [['Veids', d.veids], ['No', d.no], ['Līdz', d.lidz], ['Ilgums', d.cal + ' kalendārās dienas, ' + d.work + ' darba dienas'], ['Aizvietotājs', d.aizv], ['Strādās atvaļinājuma laikā', d.strada || 'Nē']] },
     { title: 'PIETEIKUMS', rows: [['Iesniedza', d.by], ['Piezīmes', d.piez]] }
   ], d.warnings.length ? '<b>Uzmanību:</b><br>' + d.warnings.map(w => String(w).replace(/</g, '&lt;')).join('<br>') : '', '#0e5e6f', d.id);
 }
