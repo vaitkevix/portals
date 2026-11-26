@@ -298,7 +298,12 @@ async function objekts(db, anorm, d, role) {
   const mStart = d.slice(0, 8) + '01', MS = sessions(await marksOn(db, mStart, d)).filter(s => s.anorm === anorm);
   const W = await workersAt(db, anorm, true), Oall = await objs(db), Wall = await all(db, 'SELECT phone, vards, amats FROM dl_worker');
   const sms = await all(db, 'SELECT laiks, virziens, phone, anorm, teksts, statuss FROM dl_sms WHERE anorm = ? AND laiks >= ? ORDER BY laiks DESC LIMIT 30', anorm, d);
-  return { objekts: objState(o, day), datums: d, posmi: day.filter(s => s.anorm === anorm).map(s => ({ amats: s.amats, vards: role >= 2 ? s.vards : '', sak: s.sak, beidz: s.beidz, min: s.min, ids: role >= 3 ? s.ids : [] })),
+  const roleP = (k) => { if (!(k === 'uzk' ? o.vajag_uzk : o.vajag_set)) return [];   // katrs lomas darbinieks atsevišķi
+    const mine = day.filter(s => s.anorm === anorm && fits(s.amats, k));
+    const keys = [...new Set(W.filter(w => w.aktivs && fits(w.amats, k)).map(w => w.phone).concat(mine.map(s => s.phone || s.vards)))];
+    return keys.map(p => { const w = W.find(x => x.phone === p), x = mine.filter(s => (s.phone || s.vards) === p);
+      return { vards: role >= 2 ? ((w && w.vards) || (x[0] && x[0].vards) || '') : '', statuss: !x.length ? 'nav' : x.some(s => !s.beidz) ? 'darba' : 'beidza', posmi: x.map(s => ({ sak: s.sak, beidz: s.beidz, min: s.min })) }; }); };
+  return { objekts: objState(o, day), datums: d, ppl: { uzk: roleP('uzk'), set: roleP('set') }, posmi: day.filter(s => s.anorm === anorm).map(s => ({ amats: s.amats, vards: role >= 2 ? s.vards : '', sak: s.sak, beidz: s.beidz, min: s.min, ids: role >= 3 ? s.ids : [] })),
     nedela: week, menesis: { uzk: MS.filter(s => s.amats === 'uzk').reduce((n, s) => n + s.min, 0), set: MS.filter(s => s.amats === 'set').reduce((n, s) => n + s.min, 0), abi: MS.filter(s => s.amats === 'abi').reduce((n, s) => n + s.min, 0) },
     darbinieki: W.map(w => ({ vards: role >= 2 ? w.vards : '', amats: w.amats, phone: role >= 2 ? w.phone : hidePh(w.phone), aktivs: !!w.aktivs })), sms: sms.map(x => smsRow(x, Oall, Wall, role)) };
 }
