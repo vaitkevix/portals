@@ -119,29 +119,36 @@ export async function sendSms(env, to, text, anorm) {
 }
 
 /* Jaunam darbiniekam — īsa instrukcija ar viņa objektu kodiem (sūta vienreiz; atkārtoti — ar pogu). kv dl:welcome:<tel> = laiks */
-export async function welcomeText(db, phone) {
-  const w = await workerOf(db, phone); if (!w) return '';
+export async function welcomeText(db, phone) { return (await welcomeParts(db, phone)).join('\n\n'); }
+/* Visi darbinieka objekti (nekad nenogriež): rindas «kods adrese»; ja >160 zīmēm — vairākas SMS, dalot pa rindām */
+export async function welcomeParts(db, phone) {
+  const w = await workerOf(db, phone); if (!w) return [];
   const A = await all(db, 'SELECT anorm FROM dl_assign WHERE phone = ?', phone), set = new Set(A.map(x => x.anorm)); if (w.anorm) set.add(w.anorm);
-  const O = (await objs(db)).filter(o => o.aktivs && o.kods && set.has(o.anorm)).slice(0, 6);
-  // 1 SMS: bez garumzīmēm (GSM-7 → 160 zīmes; ar ā/š vai krievu burtiem būtu tikai 70)
-  const ascii = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
+  const all0 = await objs(db), inh = await dlInherit(db).catch(() => ({})), seen = new Set(), O = [];
+  for (const a of set) {   // apvienotā objekta māja → apvienotā objekta kods
+    let o = all0.find(x => x.anorm === a); if ((!o || !o.aktivs || !o.kods) && inh[a]) o = all0.find(x => x.aktivs && x.anorm === inh[a].anorm) || o;
+    const key = o ? o.anorm : a; if (seen.has(key)) continue; seen.add(key);
+    O.push({ kods: o && o.aktivs && o.kods ? o.kods : '', adrese: o ? o.adrese : a });
+  }
+  const ascii = (x) => gsm(x).replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
   const v = ascii(String(w.vards || '').trim().split(/\s+/)[0]);
-  const head = (v ? 'Sveiki, ' + v + '!' : 'Sveiki!') + '\nDarba laiks - SMS uz so numuru:\n';
-  const steps = (k) => 'START ' + k + ' - sakot darbu\nSTOP - beidzot\n? - statuss';
-  if (O.length === 1) return (head + steps(O[0].kods) + '\nObjekts: ' + ascii(O[0].adrese)).slice(0, 160);
-  let t = head + steps('kods');
-  if (!O.length) return t + '\nKodu pajauta vaditajam.';
-  t += '\nKodi:'; let n = 0;
-  for (const o of O) { const part = (n ? ',' : '') + ' ' + ascii(o.adrese) + ' (' + o.kods + ')'; if ((t + part).length > 154) break; t += part; n++; }
-  if (n < O.length) t += ' +' + (O.length - n);
-  return t.slice(0, 160);
+  const one = O.length === 1 && O[0].kods;
+  const lines = [(v ? 'Sveiki, ' + v + '!' : 'Sveiki!'), 'SMS uz so numuru:', 'START ' + (one ? O[0].kods : 'kods') + ' - sakot darbu', 'STOP - beidzot', '? - statuss'];
+  if (one) lines.push('Objekts: ' + ascii(O[0].adrese));
+  else if (!O.length) lines.push('Objekta kodu pajauta vaditajam.');
+  else { lines.push('Kodi:'); O.forEach(o => lines.push((o.kods || 'bez koda') + ' ' + ascii(o.adrese))); }
+  const parts = []; let cur = '';
+  for (const l0 of lines) { const l = l0.slice(0, 160); if (cur && (cur + '\n' + l).length > 160) { parts.push(cur); cur = l; } else cur = cur ? cur + '\n' + l : l; }
+  if (cur) parts.push(cur);
+  return parts;
 }
 export async function sendWelcome(env, phone, force) {
   const db = env.DB, key = 'dl:welcome:' + phone;
   if (!force && await kv(db, key)) return { sent: false, why: 'jau nosūtīts' };
-  const t = await welcomeText(db, phone); if (!t) return { sent: false, why: 'nav darbinieka' };
-  await sendSms(env, [phone], t, ''); await kvSet(db, key, nowStr()).run();
-  return { sent: true, text: t };
+  const P = await welcomeParts(db, phone); if (!P.length) return { sent: false, why: 'nav darbinieka' };
+  for (const t of P) await sendSms(env, [phone], t, '');
+  await kvSet(db, key, nowStr()).run();
+  return { sent: true, text: P.join('\n\n'), sms: P.length };
 }
 
 /* ---------- ienākošā SMS ---------- */
