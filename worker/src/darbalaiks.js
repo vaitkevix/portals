@@ -390,6 +390,13 @@ export async function api(request, env, X) {
       await dlSync(db, b.anorm); return out({ ok: true }); }
     if (a === 'delWorker') { need(3); const p = normPhone(b.phone); if (!p) throw new Error('Nav tālruņa');   // atzīmes un SMS vēsture paliek
       await db.batch([db.prepare('DELETE FROM dl_worker WHERE phone = ?').bind(p), db.prepare('DELETE FROM dl_assign WHERE phone = ?').bind(p)]); return out({ ok: true }); }
+    if (a === 'unassign') { need(2); const p = normPhone(b.phone), an = String(b.anorm || ''); if (!p || !an) throw new Error('Nav datu');   // noņem darbinieku no objekta; nedzēš
+      if (W < 3 && (await myPhones(db, me.name)).phones.indexOf(p) === -1) throw new Error('Šis darbinieks ir cita vadītāja — noņemt var administrators');
+      await db.prepare('DELETE FROM dl_assign WHERE phone = ? AND anorm = ?').bind(p, an).run();
+      const rest = await all(db, 'SELECT anorm FROM dl_assign WHERE phone = ? ORDER BY anorm', p), w0 = await workerOf(db, p);
+      let ak = 1; if (w0) { const na = w0.anorm === an ? (rest[0] ? rest[0].anorm : '') : w0.anorm; ak = na || rest.length ? w0.aktivs : 0;
+        await db.prepare('UPDATE dl_worker SET anorm = ?, aktivs = ? WHERE phone = ?').bind(na, ak, p).run(); }
+      return out({ ok: true, neaktivs: !ak }); }
     if (a === 'saveWorker') { need(2); const p = normPhone(b.phone); if (!p) throw new Error('Nepareizs tālrunis — ievadiet valsts kodu un numuru');
       if (String(b.vards || '').trim().split(/\s+/).filter(x => x.length > 1).length < 2) throw new Error('Ierakstiet pilnu vārdu un uzvārdu');
       if (b.aktivs !== false) {   // aktīvam darbiniekam obligāti: vismaz viens objekts ar amatu
