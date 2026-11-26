@@ -136,9 +136,10 @@ export async function welcomeParts(db, phone) {
   const lines = [(v ? 'Sveiki, ' + v + '!' : 'Sveiki!'), 'SMS uz so numuru:', 'START ' + (one ? O[0].kods : 'kods') + ' - sakot darbu', 'STOP - beidzot', '? - statuss'];
   if (one) lines.push('Objekts: ' + ascii(O[0].adrese));
   else if (!O.length) lines.push('Objekta kodu pajauta vaditajam.');
-  else { lines.push('Kodi:'); O.forEach(o => lines.push((o.kods || 'bez koda') + ' ' + ascii(o.adrese))); }
+  else { lines.push('Kodi:'); O.forEach(o => lines.push((o.kods || 'bez koda') + ' | ' + ascii(o.adrese))); }
+  const glen = (x) => x.length + (x.match(/[|^{}\[\]~\\€]/g) || []).length;   // «|» GSM-7 aizņem 2 vietas
   const parts = []; let cur = '';
-  for (const l0 of lines) { const l = l0.slice(0, 160); if (cur && (cur + '\n' + l).length > 160) { parts.push(cur); cur = l; } else cur = cur ? cur + '\n' + l : l; }
+  for (const l0 of lines) { const l = l0.slice(0, 150); if (cur && glen(cur + '\n' + l) > 160) { parts.push(cur); cur = l; } else cur = cur ? cur + '\n' + l : l; }
   if (cur) parts.push(cur);
   return parts;
 }
