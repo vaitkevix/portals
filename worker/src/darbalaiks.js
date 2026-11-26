@@ -273,6 +273,11 @@ export async function cron(env) { if (env.SMS_USER) await reminders(env); }
 const hidePh = (p) => p ? p.slice(0, 5) + '•••' + p.slice(-2) : '';
 async function boot(db, d, role) {
   const O = (await objs(db)).filter(o => o.aktivs), S = sessions(await marksOn(db, d)), st = O.map(o => objState(o, S));
+  const AS = await allAssign(db);   // katram piesaistītajam darbiniekam savs aplītis
+  st.forEach(r => ['uzk', 'set'].forEach(k => { if (r[k].statuss === 'nevajag') return;
+    const mine = S.filter(s => s.anorm === r.anorm && fits(s.amats, k));
+    const ph = [...new Set(AS.filter(w => w.anorm === r.anorm && fits(w.amats, k)).map(w => w.phone).concat(mine.map(s => s.phone || s.vards)))];
+    r[k].ppl = ph.map(p => { const x = mine.filter(s => (s.phone || s.vards) === p); return !x.length ? 'nav' : x.some(s => !s.beidz) ? 'darba' : 'beidza'; }); }));
   const ping = await kv(db, 'dl:ping'), W = await all(db, 'SELECT phone, vards, amats, anorm FROM dl_worker WHERE aktivs = 1');
   const last = await all(db, "SELECT laiks, virziens, phone, anorm, teksts, statuss FROM dl_sms WHERE laiks >= ? ORDER BY laiks DESC LIMIT 12", d);
   const sum = { objekti: O.length, kartiba: st.filter(x => !x.trukst).length, trukst: st.filter(x => x.trukst).length, darba: S.filter(s => !s.beidz).length, darbinieki: W.length };
