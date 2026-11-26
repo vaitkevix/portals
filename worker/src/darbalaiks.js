@@ -113,6 +113,27 @@ export async function sendSms(env, to, text, anorm) {
   return list.length;
 }
 
+/* Jaunam darbiniekam — īsa instrukcija ar viņa objektu kodiem (sūta vienreiz; atkārtoti — ar pogu). kv dl:welcome:<tel> = laiks */
+export async function welcomeText(db, phone) {
+  const w = await workerOf(db, phone); if (!w) return '';
+  const A = await all(db, 'SELECT anorm FROM dl_assign WHERE phone = ?', phone), set = new Set(A.map(x => x.anorm)); if (w.anorm) set.add(w.anorm);
+  const O = (await objs(db)).filter(o => o.aktivs && o.kods && set.has(o.anorm)).slice(0, 6);
+  const v = String(w.vards || '').trim().split(/\s+/)[0];
+  const kods = O.length === 1 ? O[0].kods : '<kods>';
+  const ob = !O.length ? 'Objekta kodu pajautā vadītājam.' : O.length === 1 ? 'Tavs objekts: ' + O[0].adrese + ', kods ' + O[0].kods + '.'
+    : 'Tavi objekti un kodi: ' + O.map(o => o.adrese + ' = ' + o.kods).join('; ') + '.';
+  return (v ? 'Sveiki, ' + v + '! ' : 'Sveiki! ') + 'SH Darba laiks: atzīmējies ar SMS uz šo numuru.\n'
+    + 'Sākot darbu: START ' + kods + '\nBeidzot: STOP\nStatuss: ?\n' + ob
+    + '\nRU: начало — START ' + (O.length === 1 ? O[0].kods : 'код') + ', конец — STOP, статус — ?';
+}
+export async function sendWelcome(env, phone, force) {
+  const db = env.DB, key = 'dl:welcome:' + phone;
+  if (!force && await kv(db, key)) return { sent: false, why: 'jau nosūtīts' };
+  const t = await welcomeText(db, phone); if (!t) return { sent: false, why: 'nav darbinieka' };
+  await sendSms(env, [phone], t, ''); await kvSet(db, key, nowStr()).run();
+  return { sent: true, text: t };
+}
+
 /* ---------- ienākošā SMS ---------- */
 /* Darbinieka amats konkrētā objektā (dl_assign); vecie ieraksti — galvenais objekts dl_worker.anorm */
 async function assignOf(db, phone, anorm) { const r = await db.prepare('SELECT amats FROM dl_assign WHERE phone = ? AND anorm = ?').bind(phone, anorm).first(); return r ? r.amats : ''; }
@@ -354,6 +375,7 @@ export async function api(request, env, X) {
         if (L.some(x => AMS.indexOf(x.amats) === -1)) throw new Error('Katram objektam izvēlieties amatu');
         const ok = new Set((await all(db, 'SELECT anorm FROM objects')).map(o => o.anorm)); if (L.some(x => !ok.has(x.anorm))) throw new Error('Objekts nav atrasts sarakstā');
       }
+      const wasNew = !(await workerOf(db, normPhone(b.oldPhone) || p));
       if (W < 3) {   // vadītājs: jauns darbinieks vai savējais
         const ex = normPhone(b.oldPhone) || p, mine = (await myPhones(db, me.name)).phones;
         if ((await workerOf(db, ex)) && mine.indexOf(ex) === -1) throw new Error('Šis darbinieks ir cita vadītāja — labot var administrators');
@@ -368,7 +390,13 @@ export async function api(request, env, X) {
       }
       await db.prepare('INSERT INTO dl_worker (phone, vards, amats, anorm, aktivs, pievienoja) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(phone) DO UPDATE SET vards = excluded.vards, amats = excluded.amats, anorm = excluded.anorm, aktivs = excluded.aktivs')
         .bind(p, String(b.vards || '').trim().replace(/\s+/g, ' ').slice(0, 80), am, String(b.anorm || ''), b.aktivs === false ? 0 : 1, me.name).run();
-      return out({ ok: true, phone: p }); }
+      let welcome = null;   // jaunam aktīvam darbiniekam — SMS ar instrukciju un kodiem (ja nav atslēgts ar b.noSms)
+      if (wasNew && b.aktivs !== false && !b.noSms) welcome = await sendWelcome(env, p, false).catch(e => ({ sent: false, why: String(e.message || e) }));
+      return out({ ok: true, phone: p, welcome }); }
+    if (a === 'welcome') { need(2); const p = normPhone(b.phone); if (!p) throw new Error('Nepareizs tālrunis');
+      if (W < 3 && (await myPhones(db, me.name)).phones.indexOf(p) === -1) throw new Error('Šis darbinieks ir cita vadītāja');
+      if (b.preview) return out({ ok: true, text: await welcomeText(db, p) });
+      return out(Object.assign({ ok: true }, await sendWelcome(env, p, true))); }
     if (a === 'saveCfg') { need(3); const c = Object.assign({}, await cfgOf(db));
       if (okT(b.rits)) c.rits = b.rits; if (okT(b.vakars)) c.vakars = b.vakars; if (typeof b.atgadinat === 'boolean') c.atgadinat = b.atgadinat; if (b.numurs != null) c.numurs = normPhone(b.numurs) || '';
       await kvSet(db, 'dl:cfg', c).run(); return out({ ok: true, cfg: c }); }
