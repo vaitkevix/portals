@@ -95,10 +95,15 @@ async function logSms(db, virziens, phone, anorm, teksts, statuss, msgId) {
     .bind(id, nowStr() + ':' + String(new Date().getSeconds()).padStart(2, '0'), virziens, phone || '', anorm || '', String(teksts || '').slice(0, 640), statuss || '', msgId || '').run();
   return id;
 }
+/* SMS = 1 daļa: latviešu garumzīmes → bez (GSM-7 160 zīmes, nevis 70); domuzīmes/pēdiņas → vienkāršas. Kirilicu neaiztiek. */
+const LV = { 'ā': 'a', 'č': 'c', 'ē': 'e', 'ģ': 'g', 'ī': 'i', 'ķ': 'k', 'ļ': 'l', 'ņ': 'n', 'š': 's', 'ū': 'u', 'ž': 'z', 'Ā': 'A', 'Č': 'C', 'Ē': 'E', 'Ģ': 'G', 'Ī': 'I', 'Ķ': 'K', 'Ļ': 'L', 'Ņ': 'N', 'Š': 'S', 'Ū': 'U', 'Ž': 'Z' };
+export const gsm = (t) => String(t || '').replace(/[āčēģīķļņšūžĀČĒĢĪĶĻŅŠŪŽ]/g, c => LV[c]).replace(/[—–]/g, '-').replace(/[«»„“”]/g, '"').replace(/[‘’]/g, "'");
+const up1 = (x) => String(x || '').charAt(0).toUpperCase() + String(x || '').slice(1);
 const gwAuth = (env) => 'Basic ' + btoa(env.SMS_USER + ':' + env.SMS_PASS);
 /* Sūta vienu tekstu vairākiem (pa 50 numuriem). Žurnālā — rinda katram numuram. */
 export async function sendSms(env, to, text, anorm) {
   const db = env.DB, list = [...new Set((to || []).map(normPhone).filter(Boolean))]; if (!list.length) return 0;
+  text = gsm(text);
   let st = 'nav vārtejas';
   for (let i = 0; i < list.length; i += 50) {
     const part = list.slice(i, i + 50);
@@ -158,20 +163,20 @@ async function addMark(db, m) {
 /* Apstrādā vienu SMS → atbildes teksts (vai '' — neatbildēt) */
 export async function handleSms(db, phone, text) {
   const W = await workerOf(db, phone), c = parseCmd(text), d = today(), t = hm();
-  if (!W || !W.aktivs) return { reply: 'Numurs nav reģistrēts SH darba laikā. Zvani darbu vadītājam.', anorm: '' };
+  if (!W || !W.aktivs) return { reply: 'Numurs nav reģistrēts SH Darba laikā.\nZvani darbu vadītājam.', anorm: '' };
   const S = sessions(await marksOn(db, d)).filter(s => s.phone === phone), open = S.filter(s => !s.beidz);
   const O = await objs(db), adr = (a) => (O.find(o => o.anorm === a) || {}).adrese || a, am = AM[W.amats] || 'darbinieks';
   if (c.cmd === 'sak') {
     let o = null;
     const up = async (x) => { if (!x || x.aktivs) return x; const h = (await dlInherit(db).catch(() => ({})))[x.anorm]; return h ? O.find(y => y.aktivs && y.anorm === h.anorm) || x : x; };   // apvienotā objekta māja (vecs mājas kods) → apvienotais objekts
-    if (c.kods) { o = O.find(x => x.aktivs && String(x.kods).toUpperCase() === c.kods) || await up(O.find(x => String(x.kods).toUpperCase() === c.kods)); if (o && !o.aktivs) o = null; if (!o) return { reply: 'Objekts ar kodu ' + c.kods + ' nav atrasts. Pārbaudi kodu uz uzlīmes un sūti vēlreiz, piem. START 104.', anorm: '' }; }
-    else { o = await up(O.find(x => x.anorm === W.anorm) || (W.anorm ? { anorm: W.anorm } : null)); if (o && !o.aktivs) o = null; if (!o) return { reply: 'Sūti START un objekta kodu no uzlīmes, piem. START 104.', anorm: '' }; }
+    if (c.kods) { o = O.find(x => x.aktivs && String(x.kods).toUpperCase() === c.kods) || await up(O.find(x => String(x.kods).toUpperCase() === c.kods)); if (o && !o.aktivs) o = null; if (!o) return { reply: 'Kods ' + c.kods + ' nav atrasts.\nPārbaudi kodu uz uzlīmes un sūti vēlreiz, piem.:\nSTART 104', anorm: '' }; }
+    else { o = await up(O.find(x => x.anorm === W.anorm) || (W.anorm ? { anorm: W.anorm } : null)); if (o && !o.aktivs) o = null; if (!o) return { reply: 'Sūti START un objekta kodu no uzlīmes, piem.:\nSTART 104', anorm: '' }; }
     const same = open.find(s => s.anorm === o.anorm);
-    if (same) return { reply: o.adrese + ': jau esi atzīmēts darbā kopš ' + same.sak + '. Beigās sūti STOP.', anorm: o.anorm };
+    if (same) return { reply: o.adrese + '\nJau esi darbā kopš ' + same.sak + '\nBeigās sūti STOP', anorm: o.anorm };
     for (const s of open) await addMark(db, { datums: d, vards: W.vards, veids: 'beidz', laiks: t, anorm: s.anorm, amats: s.amats, phone, kas: phone });   // pārgāja uz citu objektu
     const ra = (await assignOf(db, phone, o.anorm)) || await roleAt(db, W, o, sessions(await marksOn(db, d)));   // amats šajā objektā (abi → abi)
     await addMark(db, { datums: d, vards: W.vards, veids: 'sak', laiks: t, anorm: o.anorm, amats: ra, phone, kas: phone });
-    return { reply: o.adrese + ': ' + AM[ra] + ' atzīmēts darbā ' + t + '. Beigās sūti STOP.', anorm: o.anorm };
+    return { reply: o.adrese + '\n' + up1(AM[ra]) + ' darbā no ' + t + '\nBeigās sūti STOP', anorm: o.anorm };
   }
   if (c.cmd === 'beidz') {
     if (!open.length) {
@@ -183,22 +188,22 @@ export async function handleSms(db, phone, text) {
         await addMark(db, { datums: y, vards: W.vards, veids: 'beidz', laiks: '24:00', anorm: s.anorm, amats: s.amats, phone, kas: phone });
         if (mins(t) > 0) { await addMark(db, { datums: d, vards: W.vards, veids: 'sak', laiks: '00:00', anorm: s.anorm, amats: s.amats, phone, kas: phone });
           await addMark(db, { datums: d, vards: W.vards, veids: 'beidz', laiks: t, anorm: s.anorm, amats: s.amats, phone, kas: phone }); }
-        return { reply: adr(s.anorm) + ': darbs beigts ' + t + ' (' + dur(1440 - mins(s.sak) + mins(t)) + '). Paldies!', anorm: s.anorm };
+        return { reply: adr(s.anorm) + '\nDarbs beigts ' + t + ' (' + dur(1440 - mins(s.sak) + mins(t)) + ')\nPaldies!', anorm: s.anorm };
       }
-      if (yo.length) return { reply: 'Šodien nav atzīmēts darba sākums. Vakardienas darbs (' + adr(yo[0].anorm) + ') palika bez STOP — paziņo darbu vadītājam beigu laiku.', anorm: yo[0].anorm };
-      return { reply: 'Šodien nav atzīmēts darba sākums. Darbu sākot sūti START un objekta kodu.', anorm: W.anorm };
+      if (yo.length) return { reply: 'Šodien nav atzīmēts darba sākums.\nVakar ' + adr(yo[0].anorm) + ' palika bez STOP - paziņo vadītājam beigu laiku.', anorm: yo[0].anorm };
+      return { reply: 'Šodien nav atzīmēts darba sākums.\nSākot darbu sūti:\nSTART kods', anorm: W.anorm };
     }
     const s = open[open.length - 1];
     await addMark(db, { datums: d, vards: W.vards, veids: 'beidz', laiks: t, anorm: s.anorm, amats: s.amats, phone, kas: phone });
     const m = Math.max(0, mins(t) - mins(s.sak));
-    return { reply: adr(s.anorm) + ': darbs beigts ' + t + ' (' + dur(m) + '). Paldies!', anorm: s.anorm };
+    return { reply: adr(s.anorm) + '\nDarbs beigts ' + t + ' (' + dur(m) + ')\nPaldies!', anorm: s.anorm };
   }
   if (c.cmd === 'stat') {
-    if (open.length) return { reply: 'Tu esi darbā: ' + adr(open[0].anorm) + ' kopš ' + open[0].sak + '. Beigās sūti STOP.', anorm: open[0].anorm };
-    if (S.length) { const l = S[S.length - 1]; return { reply: 'Šodien: ' + adr(l.anorm) + ' ' + l.sak + '–' + l.beidz + '. Šobrīd neesi atzīmēts darbā.', anorm: l.anorm }; }
-    return { reply: 'Šodien neesi atzīmējies. Darbu sākot sūti START un objekta kodu.', anorm: W.anorm };
+    if (open.length) return { reply: adr(open[0].anorm) + '\nTu esi darbā kopš ' + open[0].sak + '\nBeigās sūti STOP', anorm: open[0].anorm };
+    if (S.length) { const l = S[S.length - 1]; return { reply: 'Šodien: ' + adr(l.anorm) + '\n' + l.sak + '-' + l.beidz + '\nŠobrīd neesi darbā.', anorm: l.anorm }; }
+    return { reply: 'Šodien neesi atzīmējies.\nSākot darbu sūti:\nSTART kods', anorm: W.anorm };
   }
-  return { reply: 'Nesapratu. Darbu sākot sūti START un objekta kodu (piem. START 104), beidzot — STOP. Statuss: ?', anorm: W.anorm };
+  return { reply: 'Nesapratu.\nSTART kods - sākot darbu\nSTOP - beidzot\n? - statuss', anorm: W.anorm };
 }
 async function hmacHex(key, data) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -242,14 +247,14 @@ export async function reminders(env, force) {
       if (!(am === 'uzk' ? o.vajag_uzk : o.vajag_set) || roleState(S, o.anorm, am).statuss !== 'nav') continue;
       const to = [...new Set(W.filter(w => w.anorm === o.anorm && fits(w.amats, am) && !sent.has(w.phone) && !S.some(s => s.phone === w.phone && s.anorm === o.anorm)).map(w => w.phone))];
       to.forEach(p => sent.add(p));
-      if (to.length) a += await sendSms(env, to, 'Atgādinājums: ' + o.adrese + ' — šodien neesi atzīmējies darbā. Darbu sākot sūti START ' + o.kods + '.', o.anorm);
+      if (to.length) a += await sendSms(env, to, 'Atgādinājums: ' + o.adrese + '\nŠodien neesi atzīmējies darbā.\nSākot darbu sūti:\nSTART ' + o.kods, o.anorm);
     } }
     await done('dl:remRits');
   }
   if ((force ? force === 'vakars' : (mins(t) >= mins(C.vakars) && mins(t) < mins(C.vakars) + 120)) && await due('dl:remVak')) {
     const O = await objs(db), open = sessions(await marksOn(db, d)).filter(s => !s.beidz && s.phone);
     for (const s of open) { const o = O.find(x => x.anorm === s.anorm) || { adrese: s.anorm };
-      b += await sendSms(env, [s.phone], 'Tu joprojām esi atzīmēts darbā (' + o.adrese + '). Ja esi beidzis, atbildi STOP.', s.anorm); }
+      b += await sendSms(env, [s.phone], o.adrese + '\nTu joprojām esi atzīmēts darbā.\nJa esi beidzis, sūti STOP', s.anorm); }
     await done('dl:remVak');
   }
   return { rits: a, vakars: b };
@@ -348,7 +353,7 @@ export async function api(request, env, X) {
       return out({ ok: true, nosutits: await sendSms(env, to.map(w => w.phone), t, b.kam === 'obj' ? b.anorm : '') }); }
     if (a === 'atgadinat') { need(2); const o = (await objs(db)).find(x => x.anorm === b.anorm); if (!o) throw new Error('Objekts nav atrasts'); const am = b.amats === 'set' ? 'set' : 'uzk';
       const to = (await recipients(db, { kam: 'obj', anorm: o.anorm, amats: am })).map(w => w.phone); if (!to.length) throw new Error('Šim objektam nav ' + (am === 'set' ? 'sētnieka' : 'uzkopēja') + ' ar tālruni');
-      return out({ ok: true, nosutits: await sendSms(env, to, 'Atgādinājums: ' + o.adrese + ' — neesi atzīmējies darbā. Darbu sākot sūti START ' + o.kods + '.', o.anorm) }); }
+      return out({ ok: true, nosutits: await sendSms(env, to, 'Atgādinājums: ' + o.adrese + '\nNeesi atzīmējies darbā.\nSākot darbu sūti:\nSTART ' + o.kods, o.anorm) }); }
     if (a === 'labot') { need(3);
       if (b.aizvert) { if (!okT(b.laiks)) throw new Error('Laiks HH:MM'); const m = await db.prepare("SELECT * FROM dl_mark WHERE id = ? AND veids = 'sak'").bind(b.aizvert).first(); if (!m) throw new Error('Atzīme nav atrasta');
         if (mins(b.laiks) < mins(m.laiks)) throw new Error('Beigas nevar būt pirms sākuma ' + m.laiks);
