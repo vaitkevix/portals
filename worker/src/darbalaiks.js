@@ -121,12 +121,13 @@ export async function welcomeText(db, phone) {
   // 1 SMS: bez garumzīmēm (GSM-7 → 160 zīmes; ar ā/š vai krievu burtiem būtu tikai 70)
   const ascii = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
   const v = ascii(String(w.vards || '').trim().split(/\s+/)[0]);
-  const head = (v ? 'Sveiki, ' + v + '! ' : '') + 'SH Darba laiks. Suti uz so numuru: ';
-  if (O.length === 1) return (head + 'START ' + O[0].kods + ' sakot darbu, STOP beidzot, ? statuss. Objekts: ' + ascii(O[0].adrese)).slice(0, 159) + '.';
-  let t = head + 'START kods sakot darbu, STOP beidzot, ? statuss.';
-  if (!O.length) return t + ' Objekta kodu pajauta vaditajam.';
-  t += ' Kodi:'; let n = 0;
-  for (const o of O) { const part = (n ? ',' : '') + ' ' + ascii(o.adrese) + '=' + o.kods; if ((t + part).length > 152) break; t += part; n++; }
+  const head = (v ? 'Sveiki, ' + v + '!' : 'Sveiki!') + '\nDarba laiks - SMS uz so numuru:\n';
+  const steps = (k) => 'START ' + k + ' - sakot darbu\nSTOP - beidzot\n? - statuss';
+  if (O.length === 1) return (head + steps(O[0].kods) + '\nObjekts: ' + ascii(O[0].adrese)).slice(0, 160);
+  let t = head + steps('kods');
+  if (!O.length) return t + '\nKodu pajauta vaditajam.';
+  t += '\nKodi:'; let n = 0;
+  for (const o of O) { const part = (n ? ',' : '') + ' ' + ascii(o.adrese) + ' (' + o.kods + ')'; if ((t + part).length > 154) break; t += part; n++; }
   if (n < O.length) t += ' +' + (O.length - n);
   return t.slice(0, 160);
 }
