@@ -339,7 +339,7 @@ function reportHtml(rep) {
     'tr.tot td:first-child{border-radius:8px 0 0 8px}tr.tot td:last-child{border-radius:0 8px 8px 0}tr.tot td.z{color:' + INK2 + '}' +
     '.chip{display:inline-block;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:700;color:' + INK + ';white-space:nowrap}.empty{padding:28px;text-align:center;color:' + MUTED + ';font-size:12.5px}' +
     '.foot{margin-top:16px;border-top:1px solid ' + LINE + '}.foot td{padding-top:7px;font-size:9.5px;color:' + MUTED + '}.foot .fr{text-align:right}' +
-    '.newpage{page-break-before:always}.pb{height:12px}.ap td{font-size:10.5px;padding:5px 6px}.ap th{font-size:10px}.ph a{color:' + GOOD + ';font-weight:700;text-decoration:none}' +
+    '.newpage{page-break-before:always}.pb{height:12px}.ap td{font-size:10.5px;padding:5px 6px}.ap th{font-size:10px}.ph a{color:' + GOOD + ';font-weight:700;text-decoration:none}.ph{white-space:nowrap}.ph a{display:inline-block;margin:0 4px 0 0;vertical-align:top}.ph img{width:78px;height:58px;object-fit:cover;border-radius:6px;display:block;background:' + CARD + '}.ph .more{display:inline-block;font-size:10px;color:' + MUTED + ';vertical-align:middle}' +
     '</style></head><body>' + inner + '<table class="foot"><tr><td>SELECTUM HOME · vaitkevix.cloud/sh · Izvešanas atskaite · sagatavots ' + nowS + '</td><td class="fr">© VAITKEVIX, SIA</td></tr></table></body></html>';
   if (!rep.count) return wrap(head + card('', '', '<div class="empty">Šajā periodā nav izpildītu pieteikumu</div>'));
   const kpi = (label, value, unit, accent) => '<td class="kpi"' + (accent ? ' style="background:' + ACC + '"' : '') + '><div class="kl">' + label + '</div><div class="kv">' + value + '<span class="ku">' + (unit ? ' ' + unit : '') + '</span></div></td>';
@@ -375,13 +375,13 @@ function reportHtml(rep) {
   const table = '<div class="pb"></div>' + h2('Pa adresēm', nAddr + (nAddr === 1 ? ' adrese' : ' adreses')) + '<table class="dt"><thead><tr><th class="f"></th><th>Adrese</th><th class="r">Reizes</th>' +
     COLK.map(k => '<th class="r">' + KIND[k].t + '</th>').join('') + '<th class="r l">Kopā m³</th></tr></thead><tbody>' + section('SH objekti', rep.groups.sh, sh) + section('VNĪ objekti', rep.groups.vni, vni) +
     '<tr class="tot"><td></td><td>Pavisam kopā</td>' + cells(grand) + '</tr></tbody></table>';
-  const links = (arr, label) => arr.map((u, i) => '<a href="' + esc(u) + '">' + label + (arr.length > 1 ? ' ' + (i + 1) : '') + '</a>').join(' ');
+  const links = (arr, label) => arr.slice(0, 2).map((u, i) => '<a href="' + esc(u) + '"><img class="th" src="' + esc(u) + '" alt="' + label + ' ' + (i + 1) + '"></a>').join('') + (arr.length > 2 ? '<span class="more">+' + (arr.length - 2) + '</span>' : '');
   const pk = d => { const m = /^(\d{2})\.(\d{2})\.(\d{4})/.exec(d); return m ? m[3] + m[2] + m[1] : d; };
   const items = rep.items.slice().sort((a, b) => pk(a.date) < pk(b.date) ? -1 : pk(a.date) > pk(b.date) ? 1 : 0);
-  const appendix = '<div class="newpage"></div>' + h2('Izpildītie pieteikumi ar bildēm', items.length + ' pieteikumi · saites atver bildes') +
-    '<table class="dt ap"><thead><tr><th class="f"></th><th>Pieteikts</th><th>Izpildīts</th><th>Adrese</th><th>Veids</th><th class="r">m³</th><th class="l">Bildes</th></tr></thead><tbody>' +
+  const appendix = '<div class="newpage"></div>' + h2('Izpildītie pieteikumi ar bildēm', items.length + ' pieteikumi · uzklikšķiniet bildi, lai atvērtu lielu') +
+    '<table class="dt ap"><thead><tr><th class="f"></th><th>Pieteikts</th><th>Izpildīts</th><th>Adrese</th><th>Veids</th><th class="r">m³</th><th class="l">Pirms</th><th class="l">Pēc</th></tr></thead><tbody>' +
     items.map((it, i) => '<tr class="' + (i % 2 ? 'zb' : '') + '"><td class="n">' + (i + 1) + '</td><td class="nw">' + esc(it.date) + '</td><td class="nw">' + (esc(it.done) || '<span class="z">–</span>') + '</td><td>' + esc(it.address) + '</td>' +
-      '<td>' + chip(it.kind) + '</td><td class="r b">' + fmt(it.m3) + '</td><td class="ph">' + (links(it.before, 'Pirms') || '<span class="z">nav pirms</span>') + ' &nbsp; ' + (links(it.after, 'Pēc') || '<span class="z">nav pēc</span>') + '</td></tr>').join('') + '</tbody></table>';
+      '<td>' + chip(it.kind) + '</td><td class="r b">' + fmt(it.m3) + '</td><td class="ph">' + (links(it.before, 'Pirms') || '<span class="z">nav</span>') + '</td><td class="ph">' + (links(it.after, 'Pēc') || '<span class="z">nav</span>') + '</td></tr>').join('') + '</tbody></table>';
   return wrap(head + kpis + kindsBlock + monthsBlock + topBlock + table + appendix);
 }
 export async function reportPdf(db, year, month) {
