@@ -118,13 +118,17 @@ export async function welcomeText(db, phone) {
   const w = await workerOf(db, phone); if (!w) return '';
   const A = await all(db, 'SELECT anorm FROM dl_assign WHERE phone = ?', phone), set = new Set(A.map(x => x.anorm)); if (w.anorm) set.add(w.anorm);
   const O = (await objs(db)).filter(o => o.aktivs && o.kods && set.has(o.anorm)).slice(0, 6);
-  const v = String(w.vards || '').trim().split(/\s+/)[0];
-  const kods = O.length === 1 ? O[0].kods : '<kods>';
-  const ob = !O.length ? 'Objekta kodu pajautā vadītājam.' : O.length === 1 ? 'Tavs objekts: ' + O[0].adrese + ', kods ' + O[0].kods + '.'
-    : 'Tavi objekti un kodi: ' + O.map(o => o.adrese + ' = ' + o.kods).join('; ') + '.';
-  return (v ? 'Sveiki, ' + v + '! ' : 'Sveiki! ') + 'SH Darba laiks: atzīmējies ar SMS uz šo numuru.\n'
-    + 'Sākot darbu: START ' + kods + '\nBeidzot: STOP\nStatuss: ?\n' + ob
-    + '\nRU: начало — START ' + (O.length === 1 ? O[0].kods : 'код') + ', конец — STOP, статус — ?';
+  // 1 SMS: bez garumzīmēm (GSM-7 → 160 zīmes; ar ā/š vai krievu burtiem būtu tikai 70)
+  const ascii = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
+  const v = ascii(String(w.vards || '').trim().split(/\s+/)[0]);
+  const head = (v ? 'Sveiki, ' + v + '! ' : '') + 'SH Darba laiks. Suti uz so numuru: ';
+  if (O.length === 1) return (head + 'START ' + O[0].kods + ' sakot darbu, STOP beidzot, ? statuss. Objekts: ' + ascii(O[0].adrese)).slice(0, 159) + '.';
+  let t = head + 'START kods sakot darbu, STOP beidzot, ? statuss.';
+  if (!O.length) return t + ' Objekta kodu pajauta vaditajam.';
+  t += ' Kodi:'; let n = 0;
+  for (const o of O) { const part = (n ? ',' : '') + ' ' + ascii(o.adrese) + '=' + o.kods; if ((t + part).length > 152) break; t += part; n++; }
+  if (n < O.length) t += ' +' + (O.length - n);
+  return t.slice(0, 160);
 }
 export async function sendWelcome(env, phone, force) {
   const db = env.DB, key = 'dl:welcome:' + phone;
