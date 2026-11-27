@@ -20,16 +20,18 @@ const rigaHour = () => +new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Rig
 
 /** Visa D1 kā SQL teksts → { sql, tables, rows } */
 export async function dumpSql(db) {
-  const objs = (await db.prepare("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'd1_%' ORDER BY type = 'table' DESC, name").all()).results || [];
+  // d1_migrations paliek kopijā (citādi pēc atjaunošanas `migrations apply` sāktu no jauna); _cf_ / sqlite_ — sistēmas
+  const objs = (await db.prepare("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\' ORDER BY type = 'table' DESC, name").all()).results || [];
   const out = ['-- SH D1 «aizvietosana» rezerves kopija ' + new Date().toISOString(), 'PRAGMA defer_foreign_keys = TRUE;'];
   let rows = 0, tables = 0;
   for (const o of objs.filter(x => x.type === 'table')) {
     out.push('', o.sql + ';'); tables++;
-    for (let off = 0; ; off += PAGE) {
-      const r = (await db.prepare('SELECT * FROM ' + id(o.name) + ' LIMIT ? OFFSET ?').bind(PAGE, off).all()).results || [];
-      for (const row of r) { const k = Object.keys(row); out.push('INSERT INTO ' + id(o.name) + ' (' + k.map(id).join(', ') + ') VALUES (' + k.map(c => q(row[c])).join(', ') + ');'); }
-      rows += r.length; if (r.length < PAGE) break;
-    }
+    const noRowid = /without\s+rowid/i.test(o.sql);
+    const put = (r) => { for (const row of r) { const k = Object.keys(row).filter(c => c !== '__rid'); out.push('INSERT INTO ' + id(o.name) + ' (' + k.map(id).join(', ') + ') VALUES (' + k.map(c => q(row[c])).join(', ') + ');'); } rows += r.length; };
+    if (noRowid) { for (let off = 0; ; off += PAGE) { const r = (await db.prepare('SELECT * FROM ' + id(o.name) + ' ORDER BY 1 LIMIT ? OFFSET ?').bind(PAGE, off).all()).results || []; put(r); if (r.length < PAGE) break; } }
+    else { let last = -9e15; for (;;) {   // lapo pēc rowid — stabili un bez OFFSET pārlasīšanas
+      const r = (await db.prepare('SELECT rowid AS __rid, * FROM ' + id(o.name) + ' WHERE rowid > ? ORDER BY rowid LIMIT ?').bind(last, PAGE).all()).results || [];
+      put(r); if (r.length < PAGE) break; last = r[r.length - 1].__rid; } }
   }
   for (const o of objs.filter(x => x.type !== 'table')) out.push(o.sql + ';');   // indeksi, trigeri, skati — pēc datiem
   return { sql: out.join('\n') + '\n', tables, rows };
@@ -48,6 +50,9 @@ export async function backupD1(env, force) {
     if (rigaHour() < 3) return null;
     const last = await env.DB.prepare("SELECT v FROM kv WHERE k = 'backup:last'").first();
     if (last && last.v === t) return null;
+    const tr = await env.DB.prepare("SELECT v FROM kv WHERE k = 'backup:try'").first();   // neizdevās → nākamais mēģinājums ne ātrāk kā pēc stundas
+    if (tr && Date.now() - +tr.v < 36e5) return null;
+    await env.DB.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('backup:try', ?)").bind(String(Date.now())).run();
   }
   const d = await dumpSql(env.DB), gz = await gzip(d.sql), key = 'backup/d1-' + t + '.sql.gz';
   await env.FOTO.put(key, gz, { httpMetadata: { contentType: 'application/gzip' }, customMetadata: { tables: String(d.tables), rows: String(d.rows) } });

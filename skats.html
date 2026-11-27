@@ -104,7 +104,7 @@ select{height:44px;border-radius:999px;border:1px solid var(--line);background:v
   }
   function draw() {
     $('mon').textContent = monName(ym); $('prev').disabled = ym <= D.min; $('next').disabled = ym >= D.max;
-    var rows = D.rows.filter(function (r) { return !obj || r.adrese === obj; });
+    var rows = D.rows.filter(function (r) { return !obj || (r.obj || r.adrese) === obj; });
     if (!rows.length) { $('out').innerHTML = '<div class="empty">' + (obj ? 'Šim objektam' : 'Jūsu objektos') + ' šajā mēnesī nav izpildītu darbu.</div>'; return; }
     var sum = {}; rows.forEach(function (r) { var x = sum[r.app] || (sum[r.app] = { app: r.app, name: r.name, unit: r.unit, reizes: 0, daudz: 0 }); x.reizes++; x.daudz += +r.daudz || 0; });
     var days = {}; rows.slice().sort(function (a, b) { return b.datums.localeCompare(a.datums) || a.adrese.localeCompare(b.adrese); }).forEach(function (r) { (days[r.datums] = days[r.datums] || []).push(r); });

@@ -26,3 +26,22 @@ export function geoQuery(adr) {
   if (!/r[iī]ga|j[uū]rmala|mārupe|marupe|ķekava|kekava|salaspils|ādaži|adazi/i.test(a)) a += ', ' + city;
   return a + ', Latvija';
 }
+
+/* Apvienotā objekta adrese → mājas («Aglonas 11 / Prūšu 4b», «Dumbrāja 18, 18 k-1»); [] ja viena māja. (no majaslieta.js) */
+const PFX = /^\s*([A-ZĀČĒĢĪĶĻŅŠŪŽ]{1,4}\s*\|\s*)/;
+export function splitAddr(a) {
+  let s = String(a || '').trim(); const pm = s.match(PFX), pfx = pm ? pm[1] : ''; if (pm) s = s.slice(pm[0].length);
+  const raw = s.split(/\s+\/\s+|\s*;\s*|\s*,\s*/).map(x => x.trim()).filter(x => x && !/^(lv-?\s?\d{4}|rīga|riga|latvija)$/i.test(x));   // «24/26» = viena māja
+  if (raw.length < 2) return [];
+  let street = '', base = ''; const out = [];
+  for (const p of raw) {
+    if (!/\d/.test(p) || /st[āa]v|^(dz|dzīv|kv|telpa)\b\.?|^\d+\.\s/i.test(p)) return [];   // «2. stāvs», «dz. 3» — nav cita māja
+    if (/^k-?\s*\d/i.test(p)) { if (!base) return []; out.push(base + ' k-' + p.replace(/^k-?\s*/i, '')); }   // «Jomas 57, k-1», «K2»
+    else if (/^\d/.test(p)) { if (!street) return []; const x = street + ' ' + p; out.push(x); base = x.replace(/\s+k-?\s*\d+\S*$/i, ''); }
+    else { street = p.replace(/\s+\d[^\s]*(\s+k-?\s*\d+\S*)?$/i, '').trim(); out.push(p); base = p.replace(/\s+k-?\s*\d+\S*$/i, ''); }
+  }
+  // «Jomas 57, k-1» — viena māja ar korpusu, nevis apvienojums; apvienots tikai, ja ≥2 dažādi numuri vai ≥2 korpusi
+  const nums = new Set(out.map(x => x.replace(/\s+k-?\s*\d+\S*$/i, '').toLowerCase())), ks = out.filter(x => /\sk-?\s*\d/i.test(x)).length;
+  if (nums.size < 2 && ks < 2) return [];
+  return out.map(x => ({ adrese: x, pfx }));
+}

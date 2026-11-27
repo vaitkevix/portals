@@ -7,7 +7,7 @@ import { personByPin, people } from './portal.js';
 import { master } from './master.js';
 import * as objinfo from './objinfo.js';
 import { aiCall } from './ai.js';
-import { today, nowStr, anorm, akey, CORS, out, cleanAddr } from './util.js';
+import { today, nowStr, anorm, akey, splitAddr, CORS, out, cleanAddr } from './util.js';
 
 export const KEY = 'ml', NAME = 'Mājas lieta';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
@@ -67,23 +67,7 @@ function matchObj(objs, adr) {
 }
 /* ---------- Apvienotie objekti: «Aglonas 11 / Prūšu 4b», «Dumbrāja 18, 18 k-1, 18 k-2» — vairākas mājas zem vienas adreses.
  * Adrese visur paliek tāda pati; šeit tikai parāda, no kurām mājām tas sastāv. Admins var norādīt ar roku (ml_parts). */
-const PFX = /^\s*([A-ZĀČĒĢĪĶĻŅŠŪŽ]{1,4}\s*\|\s*)/;
-export function splitAddr(a) {
-  let s = String(a || '').trim(); const pm = s.match(PFX), pfx = pm ? pm[1] : ''; if (pm) s = s.slice(pm[0].length);
-  const raw = s.split(/\s+\/\s+|\s*;\s*|\s*,\s*/).map(x => x.trim()).filter(x => x && !/^(lv-?\s?\d{4}|rīga|riga|latvija)$/i.test(x));   // «24/26» = viena māja
-  if (raw.length < 2) return [];
-  let street = '', base = ''; const out = [];
-  for (const p of raw) {
-    if (!/\d/.test(p) || /st[āa]v|^(dz|dzīv|kv|telpa)\b\.?|^\d+\.\s/i.test(p)) return [];   // «2. stāvs», «dz. 3» — nav cita māja
-    if (/^k-?\s*\d/i.test(p)) { if (!base) return []; out.push(base + ' k-' + p.replace(/^k-?\s*/i, '')); }   // «Jomas 57, k-1», «K2»
-    else if (/^\d/.test(p)) { if (!street) return []; const x = street + ' ' + p; out.push(x); base = x.replace(/\s+k-?\s*\d+\S*$/i, ''); }
-    else { street = p.replace(/\s+\d[^\s]*(\s+k-?\s*\d+\S*)?$/i, '').trim(); out.push(p); base = p.replace(/\s+k-?\s*\d+\S*$/i, ''); }
-  }
-  // «Jomas 57, k-1» — viena māja ar korpusu, nevis apvienojums; apvienots tikai, ja ≥2 dažādi numuri vai ≥2 korpusi
-  const nums = new Set(out.map(x => x.replace(/\s+k-?\s*\d+\S*$/i, '').toLowerCase())), ks = out.filter(x => /\sk-?\s*\d/i.test(x)).length;
-  if (nums.size < 2 && ks < 2) return [];
-  return out.map(x => ({ adrese: x, pfx }));
-}
+export { splitAddr } from './util.js';
 function partsOf(objs, manual) {   // → { anorm: [{ adrese, anorm }] } tikai apvienotajiem
   const byK = {}, byA = {}; objs.forEach(o => { byK[o.anorm] = o; const k = akey(o.adrese); if (k && !byA[k]) byA[k] = o; });
   const find = (x, pfx) => byK[anorm(pfx + x)] || byK[anorm(x)] || byA[akey(x)] || null;

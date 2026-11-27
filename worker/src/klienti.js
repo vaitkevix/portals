@@ -1,7 +1,6 @@
 /* SH | Klienti un izpildes akti: klienti ar cenām par vienību katrai lietotnei, objektu piesaiste, mēneša atskaite no visām lietotnēm
  * (daudzums × cena), CSV rēķinam un izpildes akts ar bildēm. Tikai portāla administratoram. © VAITKEVIX, SIA */
-import { akey } from './util.js';
-import { splitAddr } from './majaslieta.js';
+import { akey, splitAddr } from './util.js';
 const uid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 10);
 const J = (s) => { try { return JSON.parse(s || '{}') || {}; } catch (e) { return {}; } };
 const mins = (a, b) => { if (!/^\d\d:\d\d$/.test(a || '') || !/^\d\d:\d\d$/.test(b || '')) return 0; let m = (+b.slice(0, 2) * 60 + +b.slice(3)) - (+a.slice(0, 2) * 60 + +a.slice(3)); if (m < 0) m += 1440; return m; };
@@ -51,24 +50,31 @@ export async function report(db, clientId, ym) {
   if (clientId && !c) throw new Error('Klients nav atrasts');
   const cen = c ? J(c.cenas) : {};
   const anorms = c ? new Set((await all(db, 'SELECT anorm FROM client_obj WHERE client = ?', clientId)).map(r => r.anorm)) : null;
-  // Brīvā teksta adreses (izvešana, kaisāmmateriāls, «KK Ģertrūdes 10, Rīga») salīdzina pēc akey; apvienotajiem objektiem der arī katra māja
-  const akeys = new Set();
-  if (anorms) for (const o of await all(db, 'SELECT o.adrese, o.anorm FROM client_obj c JOIN objects o ON o.anorm = c.anorm WHERE c.client = ?', clientId)) {
-    akeys.add(akey(o.adrese)); splitAddr(o.adrese).forEach(x => akeys.add(akey(x.adrese)));
+  // Kuram klientam pieder darbs: ja rindas anorm ir zināms objekts — tikai pēc tā. Brīvā teksta adreses (izvešana, kaisāmmateriāls,
+  // «KK Ģertrūdes 10, Rīga») — pēc akey, bet tikai ja VISI objekti ar šo akey ir šī klienta (citādi neskaidrs → nepiesaista).
+  // Apvienotā objekta māja («… / Prūšu 4b») — tikai ja tāda atsevišķa objekta nav.
+  let inC = () => true;
+  if (anorms) {
+    const objs = await all(db, 'SELECT anorm, adrese FROM objects'), known = new Set(objs.map(o => o.anorm)), byK = {}, parts = new Set();
+    objs.forEach(o => { const k = akey(o.adrese); if (k) (byK[k] = byK[k] || []).push(o.anorm); });
+    objs.filter(o => anorms.has(o.anorm)).forEach(o => splitAddr(o.adrese).forEach(x => { const k = akey(x.adrese); if (k) parts.add(k); }));
+    inC = (a, adr) => {
+      if (anorms.has(a)) return true;
+      if (a && known.has(a)) return false;
+      const k = akey(adr); if (!k) return false;
+      const o = byK[k]; return o ? o.every(x => anorms.has(x)) : parts.has(k);
+    };
   }
-  if (anorms) anorms.forEach(a => akeys.add(akey(a)));
-  akeys.delete('');
-  const inC = (a, adr) => !anorms || anorms.has(a) || (adr != null && akeys.has(akey(adr)));
   const rows = [], d0 = ym + '-01', d1 = ym + '-31';
   // Aizvietošana — izpildītie darbi
   for (const j of await all(db, "SELECT datums, adrese, anorm, tips, brigade, foto, komentars FROM jobs WHERE statuss = 'izpildīts' AND datums >= ? AND datums <= ?", d0, d1))
-    if (inC(j.anorm || norm(j.adrese), j.adrese)) rows.push({ app: 'aizv', datums: j.datums, adrese: j.adrese, daudz: 1, kas: j.brigade, piez: j.tips + (j.komentars ? ' — ' + j.komentars : ''), foto: j.foto });
+    if (inC(j.anorm || norm(j.adrese), j.adrese)) rows.push({ pub: j.tips, app: 'aizv', datums: j.datums, adrese: j.adrese, daudz: 1, kas: j.brigade, piez: j.tips + (j.komentars ? ' — ' + j.komentars : ''), foto: j.foto });
   // Zāles pļaušana — m²
   for (const v of await all(db, "SELECT v.datums, v.adrese, v.anorm, v.izpilditajs, v.foto, v.piezime, p.m2 FROM pl_visit v LEFT JOIN pl_obj p ON p.anorm = v.anorm WHERE v.statuss = 'done' AND v.datums >= ? AND v.datums <= ?", d0, d1))
-    if (inC(v.anorm, v.adrese)) rows.push({ app: 'pl', datums: v.datums, adrese: v.adrese, daudz: +v.m2 || 0, kas: v.izpilditajs, piez: v.piezime, foto: v.foto });
+    if (inC(v.anorm, v.adrese)) rows.push({ pub: '', app: 'pl', datums: v.datums, adrese: v.adrese, daudz: +v.m2 || 0, kas: v.izpilditajs, piez: v.piezime, foto: v.foto });
   // Logi — nomazgātie logi
   for (const v of await all(db, "SELECT v.datums, v.adrese, v.anorm, v.izpilditajs, v.foto, v.foto_pirms, v.piezime, v.izpilde, s.qty FROM logi_visit v LEFT JOIN logi_obj s ON s.anorm = v.anorm WHERE v.statuss = 'done' AND v.datums >= ? AND v.datums <= ?", d0, d1))
-    if (inC(v.anorm, v.adrese)) { const iz = J(v.izpilde); rows.push({ app: 'logi', datums: v.datums, adrese: v.adrese, daudz: +iz.nomazgati || +v.qty || 0, kas: [v.izpilditajs, iz.kas].filter(Boolean).join(' · '), piez: [iz.kapnutelpas ? iz.kapnutelpas + ' kāpņu telpas' : '', iz.stundas ? iz.stundas + ' h' : '', iz.bojajumi ? 'bojājumi: ' + iz.bojajumi : ''].filter(Boolean).join(', '), foto: [v.foto_pirms, v.foto].filter(Boolean).join(',') }); }
+    if (inC(v.anorm, v.adrese)) { const iz = J(v.izpilde); rows.push({ pub: [iz.kapnutelpas ? iz.kapnutelpas + ' kāpņu telpas' : '', iz.stundas ? iz.stundas + ' h' : ''].filter(Boolean).join(', '), app: 'logi', datums: v.datums, adrese: v.adrese, daudz: +iz.nomazgati || +v.qty || 0, kas: [v.izpilditajs, iz.kas].filter(Boolean).join(' · '), piez: [iz.kapnutelpas ? iz.kapnutelpas + ' kāpņu telpas' : '', iz.stundas ? iz.stundas + ' h' : '', iz.bojajumi ? 'bojājumi: ' + iz.bojajumi : ''].filter(Boolean).join(', '), foto: [v.foto_pirms, v.foto].filter(Boolean).join(',') }); }
   // Dārzniecība — cilvēkstundas
   for (const v of await all(db, "SELECT datums, adrese, anorm, izpilditajs, foto, foto_pirms, izpilde FROM darz_visit WHERE statuss = 'done' AND datums >= ? AND datums <= ?", d0, d1))
     if (inC(v.anorm, v.adrese)) { const iz = J(v.izpilde); rows.push({ app: 'darz', datums: v.datums, adrese: v.adrese, daudz: r2((+iz.cilveki || 1) * (+iz.stundas || 0)), kas: v.izpilditajs, piez: [(iz.darbi || []).join(', '), (iz.materiali || []).map(m => m.n + ' ' + m.d + ' ' + m.mv).join(', ')].filter(Boolean).join(' · '), foto: [v.foto_pirms, v.foto].filter(Boolean).join(',') }); }
@@ -81,13 +87,14 @@ export async function report(db, clientId, ym) {
   // Izvešana — izvestie m³ (pēc izpildes datuma)
   for (const t of await all(db, "SELECT adrese, m3, sia, izpildits, izv_kom, maisi, foto_pec FROM izv_task WHERE statuss = 'Izpildīts'")) {
     const d = dmyIso(t.izpildits); if (!d || d < d0 || d > d1) continue;
-    if (inC(norm(t.adrese), t.adrese)) rows.push({ app: 'izv', datums: d, adrese: t.adrese, daudz: r2(num(t.m3)), kas: t.sia, piez: [t.maisi, t.izv_kom].filter(Boolean).join(' · '), foto: fid(t.foto_pec) });
+    if (inC(norm(t.adrese), t.adrese)) rows.push({ pub: t.maisi || '', app: 'izv', datums: d, adrese: t.adrese, daudz: r2(num(t.m3)), kas: t.sia, piez: [t.maisi, t.izv_kom].filter(Boolean).join(' · '), foto: fid(t.foto_pec) });
   }
   // Kaisāmmateriāls — piegādātie maisi
   for (const t of await all(db, "SELECT adrese, materials, piegadati, kurjers, piegadats, kurj_kom, foto_pec FROM kais_task WHERE statuss = 'Piegādāts'")) {
     const d = dmyIso(t.piegadats); if (!d || d < d0 || d > d1) continue;
-    if (inC(norm(t.adrese), t.adrese)) rows.push({ app: 'kais', datums: d, adrese: t.adrese, daudz: num(t.piegadati), kas: t.kurjers, piez: [t.materials, t.kurj_kom].filter(Boolean).join(' · '), foto: fid(t.foto_pec) });
+    if (inC(norm(t.adrese), t.adrese)) rows.push({ pub: t.materials || '', app: 'kais', datums: d, adrese: t.adrese, daudz: num(t.piegadati), kas: t.kurjers, piez: [t.materials, t.kurj_kom].filter(Boolean).join(' · '), foto: fid(t.foto_pec) });
   }
+  rows.forEach(r => { if (r.pub == null) r.pub = r.piez || ''; });   // darz/stav/sniegs piezīme ir tikai strukturēti dati
   rows.sort((a, b) => a.datums.localeCompare(b.datums) || a.adrese.localeCompare(b.adrese));
   rows.forEach(r => { r.cena = cen[r.app] || 0; r.summa = r.cena ? r2(r.daudz * r.cena) : 0; });
   const sum = {}; rows.forEach(r => { const s = sum[r.app] = sum[r.app] || { app: r.app, name: UNITS[r.app].name, unit: UNITS[r.app].unit, reizes: 0, daudz: 0, cena: r.cena, summa: 0 }; s.reizes++; s.daudz = r2(s.daudz + r.daudz); s.summa = r2(s.summa + r.summa); });
