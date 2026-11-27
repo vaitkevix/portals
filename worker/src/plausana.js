@@ -1,6 +1,7 @@
 /* SH | Zāles pļaušana — grafiks, kas veidojas pats (intervāls, slodze, lietus, nepaspētie), izpilde ar bildi. © VAITKEVIX, SIA
  * Maršruts POST /pl  { pin, action, … }.  Lomas portālā: perms.pl = admin | vaditajs | izpilditajs.
  * Objekti un grupas — no portāla (tabulas objects, groups); pļaušanai savas tabulas pl_obj, pl_visit, pl_log. */
+import { claimsOf, claimApi } from './pretenzijas.js';
 import { personByPin, companyBy } from './portal.js';
 import { assertOpen } from './util.js';
 import { groupsOf } from './master.js';
@@ -151,7 +152,7 @@ export async function plausana(request, env, X) {
       if (me.company) visits = visits.filter(v => !v.brigade || v.brigade === me.name);   // SIA redz savus darbus
       const last = (await db.prepare("SELECT anorm, MAX(datums) d FROM pl_visit WHERE statuss = 'done' GROUP BY anorm").all()).results || [];
       const logs = ROLE_W[role] < 2 ? [] : ((await db.prepare('SELECT laiks, teksts FROM pl_log ORDER BY id DESC LIMIT 30').all()).results || []);
-      return out({ ok: true, me: { name: me.name, role, company: !!me.company }, today: t, cfg: await cfgOf(db), rain: (await kv(db, 'pl:rain')) || {}, objects, visits, last, logs,
+      return out({ ok: true, claims: await claimsOf(db, 'pl', me), me: { name: me.name, role, company: !!me.company }, today: t, cfg: await cfgOf(db), rain: (await kv(db, 'pl:rain')) || {}, objects, visits, last, logs,
         groups: (await groupsOf(db).catch(() => [])).map(g => ({ name: g.name, adreses: g.adreses })) });
     }
     if (a === 'month') {
@@ -212,6 +213,7 @@ export async function plausana(request, env, X) {
       return out(Object.assign({ ok: true, cfg: n }, await schedule(db)));
     }
     if (a === 'replan') { need('vaditajs'); await fetchRain(db).catch(() => 0); return out(Object.assign({ ok: true }, await schedule(db))); }
+    if (a === 'claim' || a === 'claimFix') return out(Object.assign({ ok: true }, await claimApi(env, X, 'pl', 'Zāles pļaušana', 'pl_visit', me, ROLE_W[role] || 0, b), { claims: await claimsOf(db, 'pl', me) }));   // E3 pretenzijas
     return out({ ok: false, error: 'Nezināma darbība' });
   } catch (e) { return out({ ok: false, error: e.message || String(e) }); }
 }

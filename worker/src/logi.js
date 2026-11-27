@@ -1,6 +1,7 @@
 /* SH | Logu mazgāšana — grafiks pēc intervāla (slodze, sezona, lietus, sals), izpilde ar bildi. © VAITKEVIX, SIA
  * Maršruts POST /logi  { pin, action, … }.  Lomas portālā: perms.logi = admin | vaditajs | izpilditajs; portāla admins = admin, citi = skatitajs.
  * Objekti un grupas — no portāla (objects, groups); savas tabulas logi_obj, logi_visit, logi_log. Laikapstākļi — kopīgi (kv wx, sk. wx.js). */
+import { claimsOf, claimApi } from './pretenzijas.js';
 import { personByPin, companyBy } from './portal.js';
 import { assertOpen } from './util.js';
 import { groupsOf } from './master.js';
@@ -145,7 +146,7 @@ export async function api(request, env, X, fetchWx) {
       const last = (await db.prepare("SELECT anorm, MAX(datums) d FROM logi_visit WHERE statuss = 'done' GROUP BY anorm").all()).results || [];
       const logs = ROLE_W[role] < 2 ? [] : ((await db.prepare('SELECT laiks, teksts FROM logi_log ORDER BY id DESC LIMIT 30').all()).results || []);
       const crews = ((await db.prepare('SELECT name, kinds FROM companies WHERE active = 1').all()).results || []).filter(c => String(c.kinds).split(',').indexOf(KIND) !== -1).map(c => c.name);
-      return out({ ok: true, me: { name: me.name, role, company: !!me.company }, today: t, cfg: await cfgOf(db), wx: (await kv(db, 'wx')) || {}, objects, visits, calls: [], last, logs, crews,
+      return out({ ok: true, claims: await claimsOf(db, KEY, me), me: { name: me.name, role, company: !!me.company }, today: t, cfg: await cfgOf(db), wx: (await kv(db, 'wx')) || {}, objects, visits, calls: [], last, logs, crews,
         groups: (await groupsOf(db).catch(() => [])).map(g => ({ name: g.name, adreses: g.adreses })) });
     }
     if (a === 'month') {
@@ -255,6 +256,7 @@ export async function api(request, env, X, fetchWx) {
       return out(Object.assign({ ok: true, cfg: n }, await schedule(db)));
     }
     if (a === 'replan') { need('vaditajs'); await fetchWx(db).catch(() => 0); return out(Object.assign({ ok: true }, await schedule(db))); }
+    if (a === 'claim' || a === 'claimFix') return out(Object.assign({ ok: true }, await claimApi(env, X, KEY, NAME, 'logi_visit', me, ROLE_W[role] || 0, b), { claims: await claimsOf(db, KEY, me) }));   // E3 pretenzijas
     return out({ ok: false, error: 'Nezināma darbība' });
   } catch (e) { return out({ ok: false, error: e.message || String(e) }); }
 }
