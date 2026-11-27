@@ -4,6 +4,8 @@ import * as G from './sheets.js';
 import * as F from './foto.js';
 import * as AI from './ai.js';
 import { newJob, answer } from './siadarbs.js';
+import { audit } from './audit.js';
+import { today as todayR, addDays } from './util.js';
 
 const TAB = 'Izvešana · Pieteikumi';
 const DUE_DAYS = 7, MAX_PHOTOS = 5, MAX_AFTER = 15, BAG_M3 = 0.15, COEF_HEAVY = 0.10, COEF_MIXED = 0.05, AI_DAILY = 400;
@@ -476,6 +478,8 @@ export async function handle(env, fn, a, me, ctx) {
     case 'getHist': return (await all(db, 'SELECT gads, men, diena, adrese, veids, n, m3 FROM izv_hist ORDER BY gads, men, diena')).map(r => [r.gads, r.men, r.diena, r.adrese, r.veids, r.n, r.m3]);
     case 'getInitialData': return await getInitialData(env);
     case 'saveTask': return await saveTask(env, a[0], ctx);
+    case 'regList': return await regList(db, me);
+    case 'regSave': return await regSave(env, a[0], me);
     case 'carrierAnswer': return await withTasks(env, await answer(env, 'izv', a[0], me));
     case 'updateTask': return await updateTask(env, a[0], me);
     case 'addPhotos': return await addPhotos(env, a[0], me);
@@ -493,6 +497,46 @@ export async function handle(env, fn, a, me, ctx) {
   }
   if (/^ai/.test(fn)) return await ai(env, fn, a, me);
   return undefined;
+}
+
+/* ---------- regulārie pieteikumi (izv_reg): ik N dienas; cron izveido pieteikumu nākamajā datumā ---------- */
+const regAdm = (me) => { const p = (me && me.perms) || {}; return !!me && !me.company && (p.portal === 'admin' || p.izv === 'admin' || p.izv === 'pieteicejs'); };
+export async function regList(db, me) {
+  if (!regAdm(me)) return fail('Regulāros pieteikumus pārvalda administrators vai pieteicējs');
+  return { status: 'success', list: await all(db, 'SELECT * FROM izv_reg ORDER BY aktivs DESC, nakamais, adrese') };
+}
+export async function regSave(env, d, me) {
+  const db = env.DB; d = d || {};
+  if (!regAdm(me)) return fail('Regulāros pieteikumus pārvalda administrators vai pieteicējs');
+  const adm = (me.perms || {}).portal === 'admin' || (me.perms || {}).izv === 'admin';
+  const old = d.id ? await db.prepare('SELECT * FROM izv_reg WHERE id = ?').bind(String(d.id)).first() : null;
+  if (d.id && !old) return fail('Nav atrasts');
+  if (old && !adm && old.izveidoja !== me.name) return fail('Mainīt var tas, kas izveidoja, vai administrators');
+  const adrese = String(d.adrese || '').trim(); if (!adrese) return fail('Norādiet adresi');
+  { const u = await unknownAddr(db, adrese, old && old.adrese); if (u) return fail(u); }
+  const ik = Math.max(1, Math.min(365, parseInt(d.ik, 10) || 0)); if (!ik) return fail('Norādiet intervālu');
+  const nak = /^\d{4}-\d{2}-\d{2}$/.test(String(d.nakamais || '')) ? String(d.nakamais) : addDays(todayR(), ik);
+  const v = { adrese, ik, nakamais: nak, aktivs: d.aktivs === false || d.aktivs === 0 ? 0 : 1, maisi: String(d.maisi || '').slice(0, 20), komentars: String(d.komentars || '').slice(0, 500), pasutitajs: String(d.pasutitajs || (old && old.pasutitajs) || me.name).slice(0, 80) };
+  if (old) await db.prepare('UPDATE izv_reg SET adrese = ?, ik = ?, nakamais = ?, aktivs = ?, maisi = ?, komentars = ?, pasutitajs = ? WHERE id = ?').bind(v.adrese, v.ik, v.nakamais, v.aktivs, v.maisi, v.komentars, v.pasutitajs, old.id).run();
+  else await db.prepare('INSERT INTO izv_reg (id, adrese, ik, nakamais, aktivs, maisi, komentars, pasutitajs, izveidoja, izveidots) VALUES (?,?,?,?,?,?,?,?,?,?)')
+    .bind('R' + Date.now().toString(36), v.adrese, v.ik, v.nakamais, v.aktivs, v.maisi, v.komentars, v.pasutitajs, me.name, stamp()).run();
+  await audit(db, me.name, 'Izvešana', adrese, old ? [['Regulārs: ik dienas', old.ik, v.ik], ['Nākamais', old.nakamais, v.nakamais], ['Aktīvs', old.aktivs, v.aktivs]].filter(x => String(x[1]) !== String(x[2])) : [['Regulārs pieteikums', '', 'ik ' + ik + ' d. no ' + nak]]);
+  return regList(db, me);
+}
+/** Cron: aktīvie ar nākamo datumu ≤ šodien → jauns pieteikums (bez bildes), nākamais += ik. Dubultā neveido (nosacīts UPDATE). */
+export async function regCron(env) {
+  if (!await isNative(env)) return;
+  const db = env.DB, t = todayR();
+  const due = await all(db, "SELECT * FROM izv_reg WHERE aktivs = 1 AND nakamais != '' AND nakamais <= ?", t).catch(() => []);
+  for (const r of due) {
+    let n = r.nakamais; while (n <= t) n = addDays(n, Math.max(1, r.ik || 7));
+    const u = await db.prepare('UPDATE izv_reg SET nakamais = ?, pedejais = ? WHERE id = ? AND nakamais = ?').bind(n, t, r.id, r.nakamais).run();
+    if (!(u.meta && u.meta.changes)) continue;
+    const now = stamp(), id = 'TASK-' + (Date.now() + Math.floor(Math.random() * 1000));
+    await db.prepare('INSERT INTO izv_task (id, row, datums, adrese, pasutitajs, maisi, komentars, foto_pirms, statuss, steidzami, termins, vesture) SELECT ?, COALESCE(MAX(row), 1) + 1, ?,?,?,?,?,?,?,?,?,? FROM izv_task')
+      .bind(id, now, r.adrese, r.pasutitajs || 'Regulārs', r.maisi || '', ('🔁 Regulārs (ik ' + r.ik + ' d.)' + (r.komentars ? ' · ' + r.komentars : '')), '', ST_PENDING, 0, dueDate('', now), now + ' · Izveidots automātiski (regulārs pieteikums)').run();
+    await newJob(env, 'izv', { adrese: r.adrese, termins: dueDate('', now) });
+  }
 }
 
 /* ---------- vienreizējs imports no «Izvešana · Pieteikumi» (A–W) + pārslēgšana (kv izv:switch = '1') ---------- */
