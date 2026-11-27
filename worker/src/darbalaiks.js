@@ -444,8 +444,13 @@ async function tabeleDarb(db, no, lidz, role, me) {
       if (sv) kods[d] = 'sv'; else if (wd <= 5 && d <= td && w.aktivs) { kods[d] = 'X'; cnt.X++; }
     });
     const ob = [...new Set(AS.filter(a => a.phone === w.phone).map(a => a.anorm).concat(w.anorm ? [w.anorm] : []))].map(adr);
+    /* F-dl(2): norma (darba dienas P–Pk bez svētkiem un prombūtnes × 8 h) pret faktu; nedēļā > 40 h → virsstundas */
+    const nd = days.filter(({ d, w: wd, sv }) => wd <= 5 && !sv && !ab[d]).length, wk = {};
+    days.forEach(({ d, w: wd }) => { if (!h[d]) return; const mo = addDays(d, 1 - wd); wk[mo] = (wk[mo] || 0) + h[d]; });
+    const virs = Object.keys(wk).filter(k => wk[k] > 40 * 60).sort().map(k => ({ no: k, h: Math.round(wk[k] / 6) / 10 }));
     return { vards: role >= 2 ? w.vards : '', phone: role >= 2 ? w.phone : hidePh(w.phone), amats: w.amats, aktivs: !!w.aktivs, objekti: ob.slice(0, 4), h, kods, min: Object.values(h).reduce((a, b) => a + b, 0),
-      dienas: Object.keys(h).filter(d => h[d] > 0).length, navBeigu: my.filter(s => !s.beidz && s.datums < td).length, A: cnt.A, B: cnt.B, X: cnt.X };
+      dienas: Object.keys(h).filter(d => h[d] > 0).length, navBeigu: my.filter(s => !s.beidz && s.datums < td).length, A: cnt.A, B: cnt.B, X: cnt.X,
+      normaH: nd * 8, virs, virsH: Math.round(virs.reduce((n, x) => n + Math.max(0, x.h - 40), 0) * 10) / 10 };
   }).filter(r => r.aktivs || r.min || Object.keys(r.kods).some(d => /^(A|B|S|AB|M|C)$/.test(r.kods[d])));
   return { no, lidz, today: td, days, rows, kodi: Object.assign({ sv: 'Svētku diena', X: 'Trūkst (nav atzīmes)', A: 'Atvaļinājums' }, ABS_T) };
 }
@@ -513,7 +518,13 @@ export async function api(request, env, X) {
     if (a === 'boot') { const r = await boot(db, d, W); r.varteja.iestatita = !!(env.SMS_USER && env.SMS_PASS); return out(Object.assign({ ok: true, me: { name: me.name, role }, today: today() }, r)); }
     if (a === 'objekts') return out(Object.assign({ ok: true }, await objekts(db, String(b.anorm || ''), d, W)));
     if (a === 'tabele') return out(Object.assign({ ok: true }, await tabele(db, b.no, b.lidz, W)));
-    if (a === 'tabeleDarb') { need(2); return out(Object.assign({ ok: true }, await tabeleDarb(db, b.no, b.lidz, W, me.name))); }
+    if (a === 'tabeleDarb') { need(2); const r = await tabeleDarb(db, b.no, b.lidz, W, me.name);
+      if (b.pk) {   // F-dl(3): eksports grāmatvedībai ar personas kodu (Personāls → pers_hire pēc vārda) — tikai adminam, ierakstās auditā
+        need(3); const P = {}; (await all(db, "SELECT vards, pk, iesniegts FROM pers_hire WHERE pk != '' ORDER BY iesniegts").catch(() => [])).forEach(h => P[nm(h.vards)] = h.pk);
+        r.rows.forEach(x => { x.pk = P[nm(x.vards)] || ''; });
+        await audit(db, me.name, 'Darba laiks', 'Tabele ' + r.no + '–' + r.lidz, ['Eksports grāmatvedībai ar personas kodiem', '', r.rows.filter(x => x.pk).length + ' no ' + r.rows.length]);
+      }
+      return out(Object.assign({ ok: true }, r)); }
     if (a === 'slimsPromb') { need(2); const L = (await kv(db, 'dl:pending')) || [], p = L.find(x => x.id === b.id); if (!p || p.tips !== 'slims') throw new Error('Jau apstrādāts');   // C3: SMS «SLIMS» → prombūtņu reģistrs
       if (W < 3) { const m = await myPhones(db, me.name); if (m.phones.indexOf(p.phone) === -1 && m.objekti.indexOf(p.anorm) === -1) throw new Error('Šis darbinieks ir cita vadītāja'); }
       const lidz = isD(b.lidz) ? b.lidz : (p.lidz || '');

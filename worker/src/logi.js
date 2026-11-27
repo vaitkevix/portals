@@ -2,6 +2,9 @@
  * Maršruts POST /logi  { pin, action, … }.  Lomas portālā: perms.logi = admin | vaditajs | izpilditajs; portāla admins = admin, citi = skatitajs.
  * Objekti un grupas — no portāla (objects, groups); savas tabulas logi_obj, logi_visit, logi_log. Laikapstākļi — kopīgi (kv wx, sk. wx.js). */
 import { claimsOf, claimApi } from './pretenzijas.js';
+import { audit } from './audit.js';
+import { chkList, chkSave, chkTake, chkOf } from './checklist.js';
+import { threadCounts, threadApi } from './thread.js';
 import { personByPin, companyBy } from './portal.js';
 import { assertOpen } from './util.js';
 import { groupsOf } from './master.js';
@@ -146,16 +149,19 @@ export async function api(request, env, X, fetchWx) {
       const last = (await db.prepare("SELECT anorm, MAX(datums) d FROM logi_visit WHERE statuss = 'done' GROUP BY anorm").all()).results || [];
       const logs = ROLE_W[role] < 2 ? [] : ((await db.prepare('SELECT laiks, teksts FROM logi_log ORDER BY id DESC LIMIT 30').all()).results || []);
       const crews = ((await db.prepare('SELECT name, kinds FROM companies WHERE active = 1').all()).results || []).filter(c => String(c.kinds).split(',').indexOf(KIND) !== -1).map(c => c.name);
-      return out({ ok: true, claims: await claimsOf(db, KEY, me), me: { name: me.name, role, company: !!me.company }, today: t, cfg: await cfgOf(db), wx: (await kv(db, 'wx')) || {}, objects, visits, calls: [], last, logs, crews,
+      const chk = await chkList(db, KEY), threadN = await threadCounts(db, KEY, visits.map(v => v.id));
+      return out({ ok: true, checklist: chk, threadN, claims: await claimsOf(db, KEY, me), me: { name: me.name, role, company: !!me.company }, today: t, cfg: await cfgOf(db), wx: (await kv(db, 'wx')) || {}, objects, visits, calls: [], last, logs, crews,
         groups: (await groupsOf(db).catch(() => [])).map(g => ({ name: g.name, adreses: g.adreses })) });
     }
     if (a === 'month') {
       const ym = String(b.ym || today().slice(0, 7)).slice(0, 7);
-      const visits = (await db.prepare('SELECT id, anorm, adrese, datums, statuss, prio, parcelts, foto, izpilditajs, laiks, iemesls, pazinots, avots, steidzami FROM logi_visit WHERE substr(datums, 1, 7) = ? ORDER BY datums').bind(ym).all()).results || [];
-      return out({ ok: true, visits });
+      const visits = (await db.prepare('SELECT id, anorm, adrese, datums, statuss, prio, parcelts, foto, izpilditajs, laiks, iemesls, pazinots, avots, steidzami, brigade FROM logi_visit WHERE substr(datums, 1, 7) = ? ORDER BY datums').bind(ym).all()).results || [];
+      return out({ ok: true, visits: me.company ? visits.filter(v => !v.brigade || v.brigade === me.name) : visits });
     }
     if (a === 'obj') {
-      const hist = (await db.prepare('SELECT id, datums, statuss, laiks, sakums, izpilditajs, foto, foto_pirms, iemesls, piezime, parcelts, avots, apraksts, izpilde FROM logi_visit WHERE anorm = ? ORDER BY datums DESC LIMIT 40').bind(anorm(b.anorm || b.adrese)).all()).results || [];
+      let hist = (await db.prepare('SELECT id, datums, statuss, laiks, sakums, izpilditajs, foto, foto_pirms, iemesls, piezime, parcelts, avots, apraksts, izpilde, brigade FROM logi_visit WHERE anorm = ? ORDER BY datums DESC LIMIT 40').bind(anorm(b.anorm || b.adrese)).all()).results || [];
+      if (me.company) hist = hist.filter(v => !v.brigade || v.brigade === me.name);   // SIA redz tikai savus darbus
+      const ck = await chkOf(db, KEY, hist.map(h => h.id)); hist.forEach(h => { if (ck[h.id]) h.checks = ck[h.id]; });
       return out({ ok: true, hist });
     }
     if (a === 'reopen') {   // «nevar» → atpakaļ maršrutā
@@ -166,6 +172,7 @@ export async function api(request, env, X, fetchWx) {
     if (a === 'geo') { need('vaditajs'); return out(Object.assign({ ok: true }, await geocode(db, 12))); }
     if (a === 'saveObj') {
       need('vaditajs');
+      const OLD = {}; ((await db.prepare('SELECT s.anorm, s.brigade, s.aktivs, o.adrese FROM logi_obj s JOIN objects o ON o.anorm = s.anorm').all()).results || []).forEach(r => OLD[r.anorm] = r);
       const list = (Array.isArray(b.objs) ? b.objs : [b]).slice(0, 500), st = [], C = await cfgOf(db);
       for (const o of list) {
         const k = anorm(o.adrese || o.anorm); if (!k) continue;
@@ -177,6 +184,9 @@ export async function api(request, env, X, fetchWx) {
         st.push(act ? db.prepare("UPDATE logi_visit SET brigade = ? WHERE anorm = ? AND statuss = 'plan'").bind(br, k) : db.prepare("DELETE FROM logi_visit WHERE anorm = ? AND statuss = 'plan' AND avots != 'pieteikums'").bind(k));
       }
       for (let i = 0; i < st.length; i += 90) await db.batch(st.slice(i, i + 90));
+      for (const o of list.slice(0, 50)) { const w = OLD[anorm(o.adrese || o.anorm)]; if (!w) continue;   // G3
+        const ch = [['Izpildītājs', w.brigade, String(o.brigade || '')], ['Aktīvs', w.aktivs ? 'jā' : 'nē', o.aktivs === false || o.aktivs === 0 ? 'nē' : 'jā']].filter(x => String(x[1]) !== String(x[2]));
+        if (ch.length) await audit(db, me.name, NAME, w.adrese, ch); }
       return out(Object.assign({ ok: true }, await schedule(db)));
     }
     if (a === 'request') {   // vienreizējs pieteikums ārpus grafika
@@ -196,11 +206,14 @@ export async function api(request, env, X, fetchWx) {
       const d = /^\d{4}-\d{2}-\d{2}$/.test(b.datums || '') ? b.datums : v.datums, hmv = (x, y) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(x || '')) ? x : y;
       await db.batch([db.prepare('UPDATE logi_visit SET datums = ?, laiks_no = ?, laiks_lidz = ?, brigade = ?, apraksts = ?, steidzami = ? WHERE id = ?')
         .bind(d, hmv(b.laiksNo, v.laiks_no), hmv(b.laiksLidz, v.laiks_lidz), b.brigade != null ? String(b.brigade).slice(0, 80) : v.brigade, b.apraksts != null ? String(b.apraksts).slice(0, 500) : v.apraksts, b.steidzami != null ? (b.steidzami ? 1 : 0) : v.steidzami, v.id)]);
+      { const n = await db.prepare('SELECT * FROM logi_visit WHERE id = ?').bind(v.id).first() || v;   // G3 kas ko mainīja
+        await audit(db, me.name, NAME, v.adrese, [['Datums', v.datums, n.datums], ['Laiks', (v.laiks_no || '') + '–' + (v.laiks_lidz || ''), (n.laiks_no || '') + '–' + (n.laiks_lidz || '')], ['Izpildītājs', v.brigade, n.brigade], ['Apraksts', v.apraksts, n.apraksts], ['Steidzami', v.steidzami ? 'jā' : 'nē', n.steidzami ? 'jā' : 'nē']].filter(x => String(x[1]) !== String(x[2]))); }
       return out({ ok: true });
     }
     if (a === 'start') {
       need('izpilditajs');
-      const v = await db.prepare('SELECT id, sakums FROM logi_visit WHERE id = ?').bind(String(b.id || '')).first(); if (!v) throw new Error('Nav atrasts — atjaunojiet');
+      const v = await db.prepare('SELECT id, sakums, brigade FROM logi_visit WHERE id = ?').bind(String(b.id || '')).first(); if (!v) throw new Error('Nav atrasts — atjaunojiet');
+      if (me.company && v.brigade && v.brigade !== me.name) throw new Error('Šis darbs nav jūsu brigādei');
       if (!v.sakums) await db.batch([db.prepare('UPDATE logi_visit SET sakums = ?, izpilditajs = ? WHERE id = ?').bind(nowStr().slice(11), (me.who || me.name), v.id)]);
       return out({ ok: true });
     }
@@ -208,7 +221,7 @@ export async function api(request, env, X, fetchWx) {
       need('vaditajs');
       const ym = String(b.ym || today().slice(0, 7)).slice(0, 7);
       const rows = (await db.prepare("SELECT id, adrese, datums, izpilditajs, brigade, sakums, laiks, izpilde, avots FROM logi_visit WHERE statuss = 'done' AND substr(datums, 1, 7) = ? ORDER BY datums").bind(ym).all()).results || [];
-      return out({ ok: true, rows });
+      return out({ ok: true, rows: me.company ? rows.filter(r => !r.brigade || r.brigade === me.name) : rows });
     }
     if (a === 'notice') {   // iedzīvotāji paziņoti (stāvvietām)
       need('vaditajs');
@@ -227,15 +240,18 @@ export async function api(request, env, X, fetchWx) {
         const before = (b.photosBefore || []).filter(p => /^data:image\/(jpeg|png|webp);base64,/.test(String(p))).slice(0, 4);
         if (C.photoBefore && !before.length && !v.foto_pirms) throw new Error('Pievienojiet bildi pirms darba');
         if (C.photoReq && !photos.length) throw new Error('Pievienojiet bildi pēc darba');
+        const ov = await db.prepare('SELECT * FROM logi_obj WHERE anorm = ?').bind(v.anorm).first().catch(() => null), vd = (() => { try { return JSON.parse(v.dati || '{}').veidi || []; } catch (e) { return []; } })();
+        const ck = await chkTake(db, KEY, v.id, me.who || me.name, b.checks, vd.concat(String((ov && ov.veidi) || '').split(',').map(x => x.trim()).filter(Boolean)));   // G1 — obligātie punkti bloķē
         const ids = photos.length ? await X.savePhotos({ datums: v.datums, adrese: NAME + ' · ' + v.adrese }, photos) : [];
         const idsB = before.length ? await X.savePhotos({ datums: v.datums, adrese: NAME + ' · pirms · ' + v.adrese }, before) : [];
         await db.batch([db.prepare("UPDATE logi_visit SET statuss = 'done', datums = ?, laiks = ?, sakums = CASE WHEN sakums = '' THEN ? ELSE sakums END, izpilditajs = ?, foto = ?, foto_pirms = CASE WHEN ? = '' THEN foto_pirms ELSE ? END, piezime = ?, izpilde = ? WHERE id = ?")
-          .bind(kadOf(b).d, kadOf(b).t, String(b.sakums || '').slice(0, 5), (me.who || me.name), ids.join(','), idsB.join(','), idsB.join(','), String(b.piezime || '').slice(0, 300), JSON.stringify(cleanDone(b.izpilde)), v.id)]);
+          .bind(kadOf(b).d, kadOf(b).t, String(b.sakums || '').slice(0, 5), (me.who || me.name), ids.join(','), idsB.join(','), idsB.join(','), String(b.piezime || '').slice(0, 300), JSON.stringify(cleanDone(b.izpilde)), v.id)].concat(ck ? [ck] : []));
       } else {
         const why = String(b.iemesls || 'Nepaspēja').slice(0, 60), C = await cfgOf(db), wx = (await kv(db, 'wx')) || {};
         const d = nextDay(addDays(v.datums > today() ? v.datums : today(), 1), C, wx);
         await db.batch([db.prepare('UPDATE logi_visit SET datums = ?, prio = 1, parcelts = parcelts + 1, iemesls = ?, izpilditajs = ? WHERE id = ?').bind(d, why, (me.who || me.name), v.id),
           log(db, v.adrese + ' → ' + lvD(d) + ' (' + why.toLowerCase() + ', ' + me.name + ')')]);
+        await audit(db, me.who || me.name, NAME, v.adrese, ['Datums (nevar: ' + why + ')', v.datums, d]);
         push(X, env, async () => notify(env, (await managers(env, KEY)).filter(n => n !== me.name), { title: NAME + ' · nevar', body: v.adrese + ': ' + why + ' (' + me.name + ') → ' + lvD(d), url: '/sh/#logi' }));
       }
       return out(Object.assign({ ok: true }, await schedule(db)));
@@ -256,6 +272,12 @@ export async function api(request, env, X, fetchWx) {
       return out(Object.assign({ ok: true, cfg: n }, await schedule(db)));
     }
     if (a === 'replan') { need('vaditajs'); await fetchWx(db).catch(() => 0); return out(Object.assign({ ok: true }, await schedule(db))); }
+    if (a === 'majaTok') {   // paziņojuma QR → objekta «Mājas lapa» (ja izveidota Mājas lietā)
+      need('vaditajs'); const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind('majaTok:' + anorm(b.anorm || b.adrese)).first();
+      return out({ ok: true, token: r ? String(r.v).replace(/"/g, '') : '' });
+    }
+    if (a === 'chkSave') { need('admin'); return out({ ok: true, checklist: await chkSave(db, KEY, NAME, me.name, b.list) }); }
+    if (a === 'thread' || a === 'threadAdd') { const v = await db.prepare('SELECT id, adrese, datums, brigade, izpilditajs FROM logi_visit WHERE id = ?').bind(String(b.id || '')).first(); return out(Object.assign({ ok: true }, await threadApi(env, X, KEY, NAME, v, me, ROLE_W[role] || 0, b))); }
     if (a === 'claim' || a === 'claimFix') return out(Object.assign({ ok: true }, await claimApi(env, X, KEY, NAME, 'logi_visit', me, ROLE_W[role] || 0, b), { claims: await claimsOf(db, KEY, me) }));   // E3 pretenzijas
     return out({ ok: false, error: 'Nezināma darbība' });
   } catch (e) { return out({ ok: false, error: e.message || String(e) }); }

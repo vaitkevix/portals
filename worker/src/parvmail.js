@@ -71,3 +71,23 @@ export async function cron(env) {
   await kvSet(db, 'mail:parv:last', d).run();   // atzīme pirms sūtīšanas — pie kļūdas neatkārto katras 5 min
   await sendAll(env, false);
 }
+
+/** F-stav(1): tūlītējs e-pasts pārvaldniekam par stāvvietas mazgāšanu (ieplānota iepriekš vai pārcelta). items: [{ anorm, adrese, datums, no, lidz, bija }] */
+export async function notifyStav(env, items) {
+  const db = env.DB, c = await cfg(db); if (!c.on || !items || !items.length) return 0;
+  const P = {}; (await all(db, "SELECT anorm, parv FROM obj_info WHERE parv != ''").catch(() => [])).forEach(r => P[r.anorm] = r.parv);
+  const by = {}; items.forEach(it => { const p = P[it.anorm]; if (p && c.emails[p]) (by[p] = by[p] || []).push(it); });
+  let n = 0;
+  for (const p of Object.keys(by)) {
+    const L = by[p], moved = L.some(x => x.bija);
+    const body = `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#17201c;max-width:640px"><div style="font-weight:800;letter-spacing:.08em;color:#0f6b5c;font-size:12px">SELECTUM HOME</div>
+      <h2 style="margin:6px 0 10px;font-size:20px">Pazemes stāvvietas mazgāšana${moved ? ' — datums mainīts' : ''}</h2>
+      <table style="border-collapse:collapse;width:100%;font-size:14px">${L.map(x => `<tr><td style="padding:8px 6px;border-top:1px solid #dfe5e2;font-weight:700">${esc(x.adrese)}</td><td style="padding:8px 6px;border-top:1px solid #dfe5e2">${x.bija ? '<s>' + esc(lvD(x.bija)) + '</s> → ' : ''}<b>${esc(lvD(x.datums))}</b>${x.no ? ' ' + esc(x.no) + (x.lidz ? '–' + esc(x.lidz) : '') : ''}</td></tr>`).join('')}</table>
+      <p style="margin:14px 0 0;font-size:14px">Iedzīvotājiem jāizbrauc ar automašīnām līdz mazgāšanas sākumam. Paziņojums izlikts mājā un redzams mājas lapā.</p>
+      <p style="margin:16px 0 0;font-size:12px;color:#6d7672">Automātiska vēstule — neatbildiet. © VAITKEVIX, SIA</p></div>`;
+    try { const r = await mail.send(env, { to: c.emails[p], subject: (moved ? 'Mainīts: ' : '') + 'stāvvietas mazgāšana ' + L.map(x => lvD(x.datums)).join(', '), html: body, fromName: 'SELECTUM HOME' });
+      await logAdd(db, { datums: L[0].datums, kam: p, to: c.emails[p], n: L.length, ok: !r.failed.length, err: (moved ? 'stāvvieta pārcelta' : 'stāvvieta ieplānota') + (r.failed.length ? ': ' + r.failed.map(f => f.error).join('; ') : '') }).catch(() => 0); n++; }
+    catch (e) { await logAdd(db, { datums: L[0].datums, kam: p, ok: false, err: 'stāvvieta: ' + String(e && e.message || e).slice(0, 200) }).catch(() => 0); }
+  }
+  return n;
+}

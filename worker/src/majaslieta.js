@@ -24,6 +24,18 @@ export async function cron() {}   // nav plānoto darbu
 
 const str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
+/* F-ml(1): iekārtu reģistrs ar apkopēm; nākamā apkope = pēdējā + intervāls (mēneši) */
+export const IEK_VEIDI = ['Lifts', 'Siltummezgls', 'Ugunsdzēšamie aparāti', 'Vārti / barjera', 'Ventilācija', 'Ugunsdrošības signalizācija', 'Zibensaizsardzība', 'Ūdens sūknis', 'Cits'];
+export const SK_VEIDI = ['Siltums (MWh)', 'Aukstais ūdens (m³)', 'Karstais ūdens (m³)', 'Elektrība (kWh)', 'Gāze (m³)'];
+export const addMonths = (d, n) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d || ''))) return ''; const x = new Date(d + 'T12:00:00Z'), day = x.getUTCDate(); x.setUTCDate(1); x.setUTCMonth(x.getUTCMonth() + n); const last = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + 1, 0)).getUTCDate(); x.setUTCDate(Math.min(day, last)); return x.toISOString().slice(0, 10); };
+const iekOut = (r) => Object.assign(r, { nakama: r.pedeja ? addMonths(r.pedeja, r.intervals || 12) : '' });
+/** Panelim: apkopes nokavētas vai ≤ 30 dienās */
+export async function iekWarn(db, t) {
+  const L = await all(db, 'SELECT i.id, i.anorm, i.nosaukums, i.veids, i.intervals, i.pedeja, i.atbildigais, o.adrese FROM ml_iek i JOIN objects o ON o.anorm = i.anorm WHERE i.aktivs = 1').catch(() => []);
+  const lim = new Date(Date.parse(t + 'T12:00:00Z') + 30 * 864e5).toISOString().slice(0, 10);
+  return L.map(iekOut).map(r => Object.assign(r, { nakama: r.nakama || t })).filter(r => r.nakama <= lim).map(r => ({ adrese: r.adrese, anorm: r.anorm, nosaukums: r.nosaukums || r.veids, nakama: r.nakama, nokavets: r.nakama < t, atbildigais: r.atbildigais, bez: !r.pedeja }))
+    .sort((a, b) => a.nakama.localeCompare(b.nakama)).slice(0, 60);
+}
 const log = (db, t) => db.prepare('INSERT INTO ml_log (laiks, teksts) VALUES (?, ?)').bind(nowStr(), String(t).slice(0, 300)).run();
 /** dd.mm.yyyy [hh:mm] → yyyy-mm-dd (citādi kā ir) */
 const iso = (s) => { const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(String(s || '').trim()); return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : String(s || '').slice(0, 10); };
@@ -262,7 +274,48 @@ export async function api(request, env, X) {
       if (W < 2) contacts.forEach(c => { c.tel = ''; c.epasts = ''; });   // skatītājam — bez tālruņiem un e-pastiem
       const maja = W >= 2 ? { token: ((await db.prepare('SELECT v FROM kv WHERE k = ?').bind('majaTok:' + k).first()) || {}).v || '',
         notices: await all(db, "SELECT id, teksts, no, lidz, kas, izveidots FROM ml_notice WHERE anorm = ? AND (lidz = '' OR lidz >= ?) ORDER BY no DESC, izveidots DESC LIMIT 50", k, today()).catch(() => []) } : null;
-      return out({ ok: true, obj: o, kad: kad || null, docs, hist: await history(db, k, o.adrese, pre), parts, manual: !!(man[k] && man[k] !== 'auto'), histParts, contacts, comm: W >= 2 ? comm : [], ed, maja });
+      const iek = (await all(db, 'SELECT * FROM ml_iek WHERE anorm = ? AND aktivs = 1 ORDER BY nosaukums', k).catch(() => [])).map(iekOut);
+      const apk = iek.length ? await all(db, `SELECT id, iek, datums, kas, piezime, dok FROM ml_apk WHERE iek IN (${iek.map(() => '?').join(',')}) ORDER BY datums DESC LIMIT 200`, ...iek.map(x => x.id)).catch(() => []) : [];
+      const skait = await all(db, 'SELECT id, veids, nr, datums, radijums, foto, kas FROM ml_skait WHERE anorm = ? ORDER BY veids, nr, datums DESC LIMIT 600', k).catch(() => []);
+      const changes = W >= 2 ? await all(db, "SELECT laiks, kas, modulis, objekts, lauks, bija, kluva FROM audit WHERE objekts = ? OR objekts = ? OR objekts LIKE ? ORDER BY id DESC LIMIT 300", o.adrese, k, o.adrese + ' ·%').catch(() => []) : [];   // G3
+      return out({ ok: true, iek, apk, skait, changes, iekVeidi: IEK_VEIDI, skVeidi: SK_VEIDI, obj: o, kad: kad || null, docs, hist: await history(db, k, o.adrese, pre), parts, manual: !!(man[k] && man[k] !== 'auto'), histParts, contacts, comm: W >= 2 ? comm : [], ed, maja });
+    }
+    /* ---------- F-ml: iekārtas un apkopes, skaitītāju rādījumi — ml admin visur, vadītājs savos objektos ---------- */
+    if (/^(iek|sk)[A-Z]/.test(a)) {
+      need('vaditajs');
+      const own = async (an) => { const x = await db.prepare('SELECT anorm, adrese, vaditajs FROM objects WHERE anorm = ?').bind(an).first(); if (!x) throw new Error('Objekts nav atrasts');
+        if ((ROLE_W[role] || 0) < 3 && !mineObj(x.vaditajs, me.name)) throw new Error('Mainīt var savos objektos — šis ir cita vadītāja objekts'); return x; };
+      const isD = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '';
+      if (a === 'iekSave') {
+        const i = b.i || {}, old = i.id ? await db.prepare('SELECT * FROM ml_iek WHERE id = ?').bind(str(i.id, 20)).first() : null, ob = await own(old ? old.anorm : k);
+        const v = { nosaukums: str(i.nosaukums, 100), veids: IEK_VEIDI.indexOf(i.veids) !== -1 ? i.veids : 'Cits', intervals: Math.max(1, Math.min(120, Math.round(+i.intervals || 12))), pedeja: isD(i.pedeja), atbildigais: str(i.atbildigais, 100), dok: str(i.dok, 300), piezime: str(i.piezime, 500), aktivs: i.aktivs === false ? 0 : 1 };
+        if (!v.nosaukums) v.nosaukums = v.veids;
+        if (old) { await db.prepare('UPDATE ml_iek SET nosaukums = ?, veids = ?, intervals = ?, pedeja = ?, atbildigais = ?, dok = ?, piezime = ?, aktivs = ?, kas = ?, laiks = ? WHERE id = ?').bind(v.nosaukums, v.veids, v.intervals, v.pedeja, v.atbildigais, v.dok, v.piezime, v.aktivs, me.name, nowStr(), old.id).run();
+          await audit(db, me.name, 'Mājas lieta', ob.adrese, ['nosaukums', 'intervals', 'pedeja', 'atbildigais', 'dok', 'aktivs'].filter(f => String(old[f]) !== String(v[f])).map(f => ['Iekārta «' + v.nosaukums + '» ' + ({ nosaukums: 'nosaukums', intervals: 'intervāls (mēn.)', pedeja: 'pēdējā apkope', atbildigais: 'atbildīgais', dok: 'dokuments', aktivs: 'aktīva' })[f], old[f], v[f]])); }
+        else { await db.prepare('INSERT INTO ml_iek (id, anorm, nosaukums, veids, intervals, pedeja, atbildigais, dok, piezime, aktivs, kas, laiks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)').bind(uid(), ob.anorm, v.nosaukums, v.veids, v.intervals, v.pedeja, v.atbildigais, v.dok, v.piezime, me.name, nowStr()).run();
+          await audit(db, me.name, 'Mājas lieta', ob.adrese, ['Iekārta', '', v.nosaukums + ' (ik ' + v.intervals + ' mēn.)']); }
+        return out({ ok: true });
+      }
+      if (a === 'iekApk') {   // apkope veikta → vēsture + pēdējā apkope
+        const i = await db.prepare('SELECT * FROM ml_iek WHERE id = ?').bind(str(b.id, 20)).first(); if (!i) throw new Error('Iekārta nav atrasta'); const ob = await own(i.anorm);
+        const d = isD(b.datums) || today(); if (d > today()) throw new Error('Apkopes datums nevar būt nākotnē');
+        await db.batch([db.prepare('INSERT INTO ml_apk (id, iek, datums, kas, piezime, dok, laiks) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(uid(), i.id, d, str(b.kas, 100) || me.name, str(b.piezime, 500), str(b.dok, 300), nowStr()),
+          db.prepare('UPDATE ml_iek SET pedeja = ? WHERE id = ? AND (pedeja = \'\' OR pedeja < ?)').bind(d, i.id, d)]);
+        await audit(db, me.name, 'Mājas lieta', ob.adrese, ['Apkope «' + i.nosaukums + '»', i.pedeja, d + (b.piezime ? ' · ' + str(b.piezime, 80) : '')]);
+        return out({ ok: true });
+      }
+      if (a === 'skAdd') {   // skaitītāja rādījums (+ bilde)
+        const ob = await own(k), veids = SK_VEIDI.indexOf(b.veids) !== -1 ? b.veids : '', d = isD(b.datums) || today(), r = +String(b.radijums).replace(',', '.');
+        if (!veids) throw new Error('Izvēlieties skaitītāja veidu'); if (!isFinite(r) || r < 0) throw new Error('Ierakstiet rādījumu');
+        const nr = str(b.nr, 40), prev = await db.prepare('SELECT radijums, datums FROM ml_skait WHERE anorm = ? AND veids = ? AND nr = ? AND datums < ? ORDER BY datums DESC LIMIT 1').bind(ob.anorm, veids, nr, d).first();
+        if (prev && r < prev.radijums && !b.force) throw new Error('Rādījums mazāks nekā ' + prev.datums + ' (' + prev.radijums + ') — pārbaudiet');
+        const photos = (b.photos || []).filter(p => /^data:image\/(jpeg|png|webp);base64,/.test(String(p))).slice(0, 1);
+        const ids = photos.length && X && X.savePhotos ? await X.savePhotos({ datums: d, adrese: 'Skaitītājs · ' + ob.adrese }, photos) : [];
+        await db.prepare('INSERT INTO ml_skait (id, anorm, veids, nr, datums, radijums, foto, kas, laiks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(uid(), ob.anorm, veids, nr, d, r, ids.join(','), me.name, nowStr()).run();
+        await audit(db, me.name, 'Mājas lieta', ob.adrese, ['Skaitītājs ' + veids + (nr ? ' ' + nr : '') + ' · ' + d, prev ? String(prev.radijums) : '', String(r)]);
+        return out({ ok: true });
+      }
+      throw new Error('Nezināma darbība');
     }
     /* ---------- C7 kontakti un saziņas žurnāls; E8 mājas lapa iedzīvotājiem — ml admin visur, vadītājs savos objektos ---------- */
     if (/^(contact|comm|maja)/.test(a)) {

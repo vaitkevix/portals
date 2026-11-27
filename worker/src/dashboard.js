@@ -3,6 +3,7 @@
 import { today } from './util.js';
 import { persTerms } from './perscard.js';
 import { normaWarn } from './darbalaiks.js';
+import { iekWarn } from './majaslieta.js';
 
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const addDays = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
@@ -62,5 +63,6 @@ export async function dashboard(db) {
   ligumi.sort((a, b) => a.dienas - b.dienas);
   const persT = await persTerms(db, t).catch(() => []);
   const normas = await normaWarn(db, t).catch(() => []);   // C6: pagājušā nedēļā fakts < 85 % normas
-  return { t, wk, m0, apps, ligumi, persT, normas, trend, late: late.slice(0, 25), lateN: late.length, open, dlToday: dl ? dl.n : 0, backup: parse(bk && bk.v), backupHealth: parse(bh && bh.v) };
+  const iek = await iekWarn(db, t).catch(() => []);   // F-ml(1): iekārtu apkopes nokavētas / ≤ 30 d.
+  return { t, wk, m0, apps, ligumi, persT, normas, iek, trend, late: late.slice(0, 25), lateN: late.length, open, dlToday: dl ? dl.n : 0, backup: parse(bk && bk.v), backupHealth: parse(bh && bh.v) };
 }
