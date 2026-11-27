@@ -23,7 +23,7 @@ async function roleAt(db, W, o, S) {
   return r[0];
 }
 const SMS_API = 'https://api.sms-gate.app/3rdparty/v1';
-const DEF_CFG = { rits: '07:30', vakars: '20:00', atgadinat: true, numurs: '' };   // numurs — SMS telefona numurs uzlīmēm
+const DEF_CFG = { rits: '07:30', vakars: '20:00', atgadinat: true, brivdienas: false, numurs: '' };   // numurs — SMS telefona numurs uzlīmēm
 async function all(db, sql, ...a) { return (await db.prepare(sql).bind(...a).all()).results || []; }
 const hm = () => nowStr().slice(11, 16);
 const mins = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : null; };
@@ -306,7 +306,7 @@ export async function hook(request, env, X, url) {
 /* ---------- atgādinājumi (no 5 min trigera) ---------- */
 export async function reminders(env, force) {
   const db = env.DB, d = today(), t = hm(), C = await cfgOf(db);
-  if (!C.atgadinat || dow(d) > 5 || (!force && lvHolidays(+d.slice(0, 4)).has(d))) return { rits: 0, vakars: 0 };   // svētku dienās nesūta
+  if (!C.atgadinat || (dow(d) > 5 && !C.brivdienas) || (!force && !C.brivdienas && lvHolidays(+d.slice(0, 4)).has(d))) return { rits: 0, vakars: 0 };   // brīvdienās/svētkos — tikai ja iestatījumos «brivdienas»
   let a = 0, b = 0;
   const due = async (k) => (await kv(db, k)) !== d, done = (k) => kvSet(db, k, d).run();   // atzīme PĒC sūtīšanas
   if ((force ? force === 'rits' : (mins(t) >= mins(C.rits) && mins(t) < mins(C.rits) + 120)) && await due('dl:remRits')) {
@@ -494,8 +494,11 @@ export async function api(request, env, X) {
       }
       const am = AMS.indexOf(b.amats) !== -1 ? b.amats : 'uzk', old = normPhone(b.oldPhone);
       if (old && old !== p) { if (await workerOf(db, p)) throw new Error('Šis numurs jau ir sarakstā'); await db.batch([db.prepare('UPDATE dl_worker SET phone = ? WHERE phone = ?').bind(p, old), db.prepare('UPDATE dl_assign SET phone = ? WHERE phone = ?').bind(p, old)]); }
+      let chg = null;
       if (Array.isArray(b.objekti)) {   // objekti un amats katrā: [{ anorm, amats }]
         const L = b.objekti.filter(x => x && x.anorm).map(x => ({ anorm: String(x.anorm), amats: AMS.indexOf(x.amats) !== -1 ? x.amats : am }));
+        const was = new Set((await all(db, 'SELECT anorm FROM dl_assign WHERE phone = ?', p)).map(x => x.anorm)), now = new Set(L.map(x => x.anorm));
+        chg = { add: L.filter(x => !was.has(x.anorm)).map(x => x.anorm), del: [...was].filter(x => !now.has(x)) };
         await db.batch([db.prepare('DELETE FROM dl_assign WHERE phone = ?').bind(p), ...L.map(x => db.prepare('INSERT OR REPLACE INTO dl_assign (phone, anorm, amats) VALUES (?, ?, ?)').bind(p, x.anorm, x.amats))]);
         if (!b.anorm && L.length) b.anorm = L[0].anorm;
       }
@@ -503,13 +506,20 @@ export async function api(request, env, X) {
         .bind(p, String(b.vards || '').trim().replace(/\s+/g, ' ').slice(0, 80), am, String(b.anorm || ''), b.aktivs === false ? 0 : 1, me.name).run();
       let welcome = null;   // jaunam aktīvam darbiniekam — SMS ar instrukciju un kodiem (ja nav atslēgts ar b.noSms)
       if (wasNew && b.aktivs !== false && !b.noSms) welcome = await sendWelcome(env, p, false).catch(e => ({ sent: false, why: String(e.message || e) }));
+      // esošam darbiniekam mainīti objekti → SMS ar jaunajām adresēm un kodiem (B5)
+      if (!wasNew && b.aktivs !== false && !b.noSms && chg && (chg.add.length || chg.del.length)) {
+        const O = await objs(db), ad = (k) => (O.find(o => o.anorm === k) || {}), lines = ['SH Darba laiks: izmaiņas tavos objektos'];
+        chg.add.forEach(k => { const o = ad(k); lines.push('+ ' + (o.adrese || k) + (o.kods ? ' - START ' + o.kods : '')); });
+        chg.del.forEach(k => lines.push('- ' + (ad(k).adrese || k) + ' (vairs nav)'));
+        const job = sendSms(env, [p], lines.join('\n'), chg.add[0] || '').catch(e => console.error('dl chg sms', e)); if (X && X.bg) X.bg(job); else await job;
+      }
       return out({ ok: true, phone: p, welcome }); }
     if (a === 'welcome') { need(2); const p = normPhone(b.phone); if (!p) throw new Error('Nepareizs tālrunis');
       if (W < 3 && (await myPhones(db, me.name)).phones.indexOf(p) === -1) throw new Error('Šis darbinieks ir cita vadītāja');
       if (b.preview) return out({ ok: true, text: await welcomeText(db, p) });
       return out(Object.assign({ ok: true }, await sendWelcome(env, p, true))); }
     if (a === 'saveCfg') { need(3); const c = Object.assign({}, await cfgOf(db));
-      if (okT(b.rits)) c.rits = b.rits; if (okT(b.vakars)) c.vakars = b.vakars; if (typeof b.atgadinat === 'boolean') c.atgadinat = b.atgadinat; if (b.numurs != null) c.numurs = normPhone(b.numurs) || '';
+      if (okT(b.rits)) c.rits = b.rits; if (okT(b.vakars)) c.vakars = b.vakars; if (typeof b.atgadinat === 'boolean') c.atgadinat = b.atgadinat; if (typeof b.brivdienas === 'boolean') c.brivdienas = b.brivdienas; if (b.numurs != null) c.numurs = normPhone(b.numurs) || '';
       await kvSet(db, 'dl:cfg', c).run(); return out({ ok: true, cfg: c }); }
     if (a === 'registerHook') { need(3);
       if (!env.SMS_USER || !env.SMS_PASS || !env.DL_HOOK_KEY) throw new Error('Worker noslēpumi SMS_USER, SMS_PASS, DL_HOOK_KEY nav iestatīti');

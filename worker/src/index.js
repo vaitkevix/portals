@@ -1123,6 +1123,17 @@ const ACTIONS = {
       const list = byBrig[b], who = (crews[b] || []).join(', ');
       X.notify([b], 'Plāns ' + lvDate(r.date) + ' · ' + list.length + ' obj.', (who ? who + ' — ' : '') + list.slice(0, 3).map(j => j.adrese).join(', ') + (list.length > 3 ? ' +' + (list.length - 3) : ''));
     });
+    // B4: brigādes cilvēkiem bez viedtālruņa — SMS (tālrunis no Darba laika pēc vārda), ar START kodu objektam
+    X.bg((async () => {
+      const W = await X.all('SELECT phone, vards FROM dl_worker WHERE aktivs = 1').catch(() => []), K = {};
+      (await X.all('SELECT anorm, kods FROM dl_obj WHERE aktivs = 1').catch(() => [])).forEach(o => K[o.anorm] = o.kods);
+      const nm = (x) => String(x || '').trim().toLowerCase();
+      for (const b of Object.keys(byBrig)) {
+        const ph = [...new Set((crews[b] || []).map(n => (W.find(w => nm(w.vards) === nm(n)) || {}).phone).filter(Boolean))]; if (!ph.length) continue;
+        const L = byBrig[b].map(j => '- ' + j.adrese + (j.tips ? ' (' + j.tips + ')' : '') + (K[j.anorm] ? ' START ' + K[j.anorm] : ''));
+        await darbalaiks.sendSms(X.env, ph, 'SH Aizvietošana ' + lvDate(r.date) + ':\n' + L.join('\n') + '\nPiekļuves kodi — brigādes saitē vai pie vadītāja.', byBrig[b][0].anorm).catch(e => console.error('aizv sms', e));
+      }
+    })());
     return { published: jobs.length, sent: 0, whatsapp: await whatsapp(X, r.date) };
   },
 
