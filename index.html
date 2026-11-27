@@ -825,6 +825,7 @@ function drawPanel() {
     <div class="dgrid" id="dApps">${D.apps.filter(busy).concat(D.apps.filter(a => !busy(a))).map(card).join('')}</div>
     <div class="dsec"><h4>Izpildīts pa nedēļām</h4>${used.length ? `<div class="dbars">${bars}</div><div class="dleg">${used.map(k => `<span><i class="c-${k}"></i>${esc(APPS[k].name)}</span>`).join('')}</div>` : '<p class="copy" style="text-align:left;margin:0">Pēdējās 8 nedēļās nav izpildītu darbu.</p>'}</div>
     <div class="dsec"><h4>Nokavētie un ilgi gaidošie${D.lateN ? ' · ' + D.lateN : ''}</h4>${late ? `<div class="dlate">${late}</div>${D.lateN > D.late.length ? `<p class="copy" style="text-align:left">Rāda ${D.late.length} vecākos no ${D.lateN}</p>` : ''}` : '<p class="copy" style="text-align:left;margin:0">Nokavētu darbu nav.</p>'}</div>
+    ${(D.ligumi || []).length ? `<div class="dsec"><h4>Līgumi beidzas · ${D.ligumi.length}</h4><div class="dlate">${D.ligumi.map(l => `<div><span class="ch" style="background:${l.dienas < 0 ? '#fde4e1' : l.dienas <= 30 ? '#fdf0d5' : '#e2ddf2'}">${l.dienas < 0 ? 'beidzies' : 'pēc ' + l.dienas + ' d.'}</span><span class="a">${esc(l.name)}</span><span class="d">${esc(l.lidz.split('-').reverse().join('.'))}${l.auto ? ' · pagarināsies' + (l.uzteikt ? ', uzteikt līdz ' + esc(l.uzteikt.split('-').reverse().join('.')) : '') : ''}</span></div>`).join('')}</div></div>` : ''}
     <div class="dsec"><h4>Datu rezerves kopija</h4><div class="dbk"><span>${esc(bk)}</span>${BH && BH.n ? `<span class="bad">Kļūda: ${esc(BH.msg || '')}</span>` : ''}<button class="btn ghost" id="dBk">Izveidot tagad</button></div></div>`, null);
   $('dRe').onclick = () => { A.D.stale = 1; drawPanel(); };
   $('dApps').onclick = (e) => { const c = e.target.closest('[data-app]'); if (c) { closeSheet(); openApp(c.dataset.app); } };
@@ -1169,6 +1170,9 @@ function editClient(i) {
   subSheet(i >= 0 ? c.name : 'Jauns klients', fld('kN', 'Nosaukums', c.name, 'SIA … / biedrība / pašvaldība') +
     `<div class="row2" style="gap:8px">${fld('kR', 'Reģ. nr.', c.regnr, '4000…')}${fld('kL', 'Līguma nr.', c.liguma_nr, '')}</div>` + fld('kA', 'Juridiskā adrese', c.adrese, '') +
     `<div class="row2" style="gap:8px">${fld('kE', 'E-pasts', c.epasts, '')}${fld('kK', 'Kontaktpersona', c.kontakts, '')}</div>` +
+    `<div class="row2" style="gap:8px">${fld('kLn', 'Līgums noslēgts', c.lig_no, '', 'date')}${fld('kLb', 'Līgums beidzas', c.lig_lidz, '', 'date')}</div>` +
+    `<div class="row2" style="gap:8px;align-items:flex-end">${fld('kLu', 'Uzteikuma termiņš, dienas', c.lig_uzt ? String(c.lig_uzt) : '', 'piem. 30')}<label class="tog" style="flex:1">Pagarinās automātiski<input type="checkbox" id="kLa" ${c.lig_auto ? 'checked' : ''}></label></div>` +
+    (c.id ? `<div class="f"><label>Līguma fails (PDF)</label><div class="row2" style="gap:8px">${c.lig_pdf ? `<button type="button" class="btn ghost" id="kCtO" style="height:44px">Atvērt: ${esc(c.lig_pdf_nos || 'līgums')}</button>` : ''}<label class="btn ghost" style="height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer">${c.lig_pdf ? 'Aizstāt' : 'Pievienot PDF'}<input type="file" id="kCtF" accept="application/pdf,image/jpeg,image/png" hidden></label></div></div>` : '') +
     `<div class="f"><label>Cenas par vienību (bez PVN)</label><div class="kcen">${Object.keys(A.K.units).map(k => `<div class="kc"><span>${gl(k, 16)}${esc(A.K.units[k].name)}</span><input data-c="${k}" inputmode="decimal" aria-label="${esc(A.K.units[k].name)} cena" value="${c.cenas[k] != null ? String(c.cenas[k]).replace('.', ',') : ''}" placeholder="—"><small>€/${esc(A.K.units[k].unit)}</small></div>`).join('')}</div></div>` +
     (c.id ? `<div class="kvest">${(c.cenVest || []).filter(x => x.no > '2000-01-01').map(x => `<span class="chip${x.no > new Date().toISOString().slice(0, 10) ? ' a' : ''}">${esc(UN(x.app).name)}: ${String(x.cena).replace('.', ',')} € no ${esc(lvD(x.no))}</span>`).join('')}<button type="button" class="btn ghost" id="kPrice" style="height:40px;width:auto;padding:0 14px">Mainīt cenu no …</button></div>` : '') +
     `<div class="f"><label>Fiksētā līgumcena (€ mēnesī bez PVN)</label><p class="hint" style="margin:0 0 8px">Pieskaitās mēneša atskaitei un rēķinam, kamēr ir spēkā. Tukša adrese — visiem klienta objektiem.</p><div id="kLig"></div>
@@ -1176,7 +1180,7 @@ function editClient(i) {
     `<div class="f"><label>Objekti: <b id="kNum">0</b></label><div class="row2" style="gap:8px;margin-bottom:8px"><input type="text" id="kQ" placeholder="Meklēt adresi…" autocomplete="off"><select id="kG" class="fsel" style="max-width:46%"><option value="">+ visa grupa…</option>${GR.map(g => `<option>${esc(g)}</option>`).join('')}</select></div><div id="kList" class="glist"></div></div>` +
     `<label class="tog">Aktīvs<input type="checkbox" id="kAk" ${c.aktivs ? 'checked' : ''}></label>` +
     (c.id ? `<div class="f"><label>Skats klientam</label><p class="copy" style="text-align:left;margin:0 0 8px">Saite, kurā klients redz tikai savus objektus un izpildītos darbus ar bildēm (bez cenām). Mainīt neko nevar.</p><div id="kView"><div class="skel" style="height:44px"></div></div></div>` : ''),
-    () => { const n = { id: c.id, name: $('kN').value.trim(), regnr: $('kR').value.trim(), liguma_nr: $('kL').value.trim(), adrese: $('kA').value.trim(), epasts: $('kE').value.trim(), kontakts: $('kK').value.trim(), aktivs: $('kAk').checked,
+    () => { const n = { id: c.id, name: $('kN').value.trim(), regnr: $('kR').value.trim(), liguma_nr: $('kL').value.trim(), adrese: $('kA').value.trim(), epasts: $('kE').value.trim(), kontakts: $('kK').value.trim(), aktivs: $('kAk').checked, lig_no: $('kLn').value, lig_lidz: $('kLb').value, lig_auto: $('kLa').checked, lig_uzt: $('kLu').value.trim(),
         cenas: Object.fromEntries([...document.querySelectorAll('.kcen [data-c]')].map(x => [x.dataset.c, x.value.trim()])), objekti: A.M.objects.filter(o => sel.has(an(o.adrese))).map(o => o.adrese), lig: (readLig(), c.lig) };
       if (c.lig.some(x => !(+String(x.summa).replace(',', '.') > 0) && (x.apraksts || x.adrese))) return toast('Līgumcenai ierakstiet summu', 'err');
       if (!n.name) return toast('Ierakstiet nosaukumu', 'err');
@@ -1204,6 +1208,16 @@ function editClient(i) {
         box.remove(); drawLig(); toast('Pievienots no tāmes — pārbaudiet datumus un saglabājiet'); }; }
     catch (e) { toast(netMsg(e), 'err'); } finally { el.disabled = false; } };
   if ($('kPrice')) $('kPrice').onclick = () => priceSheet(c, i);
+  if ($('kCtO')) $('kCtO').onclick = async () => { const w = window.open('', '_blank');
+    try { const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'ctGet', t: S.t, client: c.id }) });
+      if (/json/.test(r.headers.get('content-type') || '')) { const j = await r.json(); throw new Error(j.error || 'Kļūda'); }
+      const u = URL.createObjectURL(await r.blob()); if (w) w.location.href = u; else window.location.href = u; setTimeout(() => URL.revokeObjectURL(u), 120000); }
+    catch (e) { if (w) w.close(); toast(netMsg(e), 'err'); } };
+  if ($('kCtF')) $('kCtF').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; if (f.size > 10e6) return toast('Fails par lielu (līdz 10 MB)', 'err');
+    toast('Augšupielādē…');
+    try { const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+      A.K = await api('ctUpload', { client: c.id, name: f.name, data: /^data:(;|application\/octet-stream)/.test(data) && /\.pdf$/i.test(f.name) ? data.replace(/^data:[^;]*;/, 'data:application/pdf;') : data });
+      toast('Līgums pievienots'); editClient(i); } catch (err) { toast(netMsg(err), 'err'); } };
   const vLink = (t) => location.origin + '/sh/skats.html#' + t;
   const vDraw = (t) => { const el = $('kView'); if (!el) return;
     el.innerHTML = t ? `<input type="text" id="kVu" readonly value="${esc(vLink(t))}" aria-label="Saite klientam" style="margin-bottom:8px"><div class="row2" style="gap:8px"><button type="button" class="btn" id="kVc">Kopēt saiti</button><button type="button" class="btn ghost" id="kVo">Atvērt</button><button type="button" class="btn ghost" id="kVr">Atsaukt</button></div>`

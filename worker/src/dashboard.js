@@ -51,5 +51,12 @@ export async function dashboard(db) {
   const dl = await db.prepare('SELECT COUNT(DISTINCT vards) n FROM dl_mark WHERE datums = ?').bind(t).first().catch(() => null);
   const bk = await db.prepare("SELECT v FROM kv WHERE k = 'backup:info'").first().catch(() => null);
   const bh = await db.prepare("SELECT v FROM kv WHERE k = 'health:backup'").first().catch(() => null);
-  return { t, wk, m0, apps, trend, late: late.slice(0, 25), lateN: late.length, open, dlToday: dl ? dl.n : 0, backup: parse(bk && bk.v), backupHealth: parse(bh && bh.v) };
+  // Līgumi (D5): beidzas ≤ 60 dienās (vai jau beidzies ≤ 30 d. atpakaļ); ar auto pagarināšanu — pēdējā uzteikuma diena
+  const ligumi = [];
+  for (const c of await all(db, "SELECT id, name, lig_lidz, lig_auto, lig_uzt FROM clients WHERE aktivs = 1 AND lig_lidz != ''").catch(() => [])) {
+    const d = Math.round((Date.parse(c.lig_lidz) - Date.parse(t)) / 864e5); if (d > 60 || d < -30) continue;
+    ligumi.push({ id: c.id, name: c.name, lidz: c.lig_lidz, dienas: d, auto: !!c.lig_auto, uzteikt: c.lig_uzt ? addDays(c.lig_lidz, -c.lig_uzt) : '' });
+  }
+  ligumi.sort((a, b) => a.dienas - b.dienas);
+  return { t, wk, m0, apps, ligumi, trend, late: late.slice(0, 25), lateN: late.length, open, dlToday: dl ? dl.n : 0, backup: parse(bk && bk.v), backupHealth: parse(bh && bh.v) };
 }

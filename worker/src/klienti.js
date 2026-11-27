@@ -72,8 +72,8 @@ export async function clientsData(db) {
   return { clients, units: UNITS, allUnits: ALL_UNITS };
 }
 const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-const CL_F = ['name', 'regnr', 'adrese', 'epasts', 'kontakts', 'liguma_nr', 'aktivs'];
-const clFlat = (c, n) => c ? Object.assign(Object.fromEntries(CL_F.map(f => [f, f === 'aktivs' ? (c[f] === false || c[f] === 0 ? 'nē' : 'jā') : c[f]])), Object.fromEntries(Object.keys(UNITS).map(k => ['cena ' + UNITS[k].name, (J(c.cenas)[k] || c.cenas && c.cenas[k]) || ''])), { objekti: n }) : {};
+const CL_F = ['name', 'regnr', 'adrese', 'epasts', 'kontakts', 'liguma_nr', 'aktivs', 'lig_no', 'lig_lidz', 'lig_auto', 'lig_uzt'];
+const clFlat = (c, n) => c ? Object.assign(Object.fromEntries(CL_F.map(f => [f, f === 'aktivs' ? (c[f] === false || c[f] === 0 ? 'nē' : 'jā') : f === 'lig_auto' ? (c[f] ? 'jā' : 'nē') : f === 'lig_uzt' ? String(+c[f] || 0) : (c[f] == null ? '' : c[f])])), Object.fromEntries(Object.keys(UNITS).map(k => ['cena ' + UNITS[k].name, (J(c.cenas)[k] || c.cenas && c.cenas[k]) || ''])), { objekti: n }) : {};
 export async function saveClient(db, c, who) {
   const id = c.id || uid(), name = String(c.name || '').trim().slice(0, 120); if (!name) throw new Error('Ierakstiet klienta nosaukumu');
   const prev = c.id ? await db.prepare('SELECT * FROM clients WHERE id = ?').bind(c.id).first() : null;
@@ -84,8 +84,12 @@ export async function saveClient(db, c, who) {
     for (const k of Object.keys(UNITS)) if ((H[k] || []).length && (cen[k] || 0) !== (pc[k] || 0) && !await monthClosedQ(db, t))
       await db.prepare('INSERT OR REPLACE INTO client_price (client, app, cena, no, kas, laiks) VALUES (?, ?, ?, ?, ?, ?)').bind(id, k, cen[k] || 0, t, String(who || ''), tt).run();
   }
-  const st = [db.prepare('INSERT INTO clients (id, name, regnr, adrese, epasts, kontakts, liguma_nr, cenas, aktivs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, regnr = excluded.regnr, adrese = excluded.adrese, epasts = excluded.epasts, kontakts = excluded.kontakts, liguma_nr = excluded.liguma_nr, cenas = excluded.cenas, aktivs = excluded.aktivs')
-    .bind(id, name, String(c.regnr || '').slice(0, 30), String(c.adrese || '').slice(0, 200), String(c.epasts || '').slice(0, 120), String(c.kontakts || '').slice(0, 120), String(c.liguma_nr || '').slice(0, 60), JSON.stringify(cen), c.aktivs === false ? 0 : 1)];
+  const lg = { lig_no: isoD(c.lig_no), lig_lidz: isoD(c.lig_lidz), lig_auto: c.lig_auto ? 1 : 0, lig_uzt: Math.max(0, Math.min(3650, parseInt(c.lig_uzt, 10) || 0)) };
+  if (lg.lig_no && lg.lig_lidz && lg.lig_lidz < lg.lig_no) throw new Error('Līguma beigas ir pirms noslēgšanas');
+  if (!prev) Object.keys(lg).forEach(k => { if (c[k] == null) lg[k] = k === 'lig_auto' || k === 'lig_uzt' ? 0 : ''; });
+  else Object.keys(lg).forEach(k => { if (c[k] === undefined) lg[k] = prev[k]; });   // vecāka forma bez līguma laukiem — nemaina
+  const st = [db.prepare('INSERT INTO clients (id, name, regnr, adrese, epasts, kontakts, liguma_nr, cenas, aktivs, lig_no, lig_lidz, lig_auto, lig_uzt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, regnr = excluded.regnr, adrese = excluded.adrese, epasts = excluded.epasts, kontakts = excluded.kontakts, liguma_nr = excluded.liguma_nr, cenas = excluded.cenas, aktivs = excluded.aktivs, lig_no = excluded.lig_no, lig_lidz = excluded.lig_lidz, lig_auto = excluded.lig_auto, lig_uzt = excluded.lig_uzt')
+    .bind(id, name, String(c.regnr || '').slice(0, 30), String(c.adrese || '').slice(0, 200), String(c.epasts || '').slice(0, 120), String(c.kontakts || '').slice(0, 120), String(c.liguma_nr || '').slice(0, 60), JSON.stringify(cen), c.aktivs === false ? 0 : 1, lg.lig_no, lg.lig_lidz, lg.lig_auto, lg.lig_uzt)];
   let ligCh = null;
   if (Array.isArray(c.lig)) {   // līgumcenas rindas — aizvieto ar formā redzamajām
     const was = await all(db, 'SELECT adrese, apraksts, summa, no, lidz FROM client_sub WHERE client = ? ORDER BY ord, no', id), fmt = (L) => L.map(x => (x.adrese || 'visi') + ' · ' + (x.apraksts || '') + ' · ' + r2(x.summa) + ' €' + (x.no ? ' no ' + x.no : '') + (x.lidz ? ' līdz ' + x.lidz : '')).join('; ');
@@ -100,7 +104,7 @@ export async function saveClient(db, c, who) {
     for (const a of c.objekti.slice(0, 2000)) st.push(db.prepare('INSERT OR REPLACE INTO client_obj (anorm, client) VALUES (?, ?)').bind(norm(a), id));   // objekts — vienam klientam
   }
   for (let i = 0; i < st.length; i += 90) await db.batch(st.slice(i, i + 90));
-  if (who) { const now = Object.assign({}, c, { name, cenas: cen }), n = Array.isArray(c.objekti) ? c.objekti.length : prevN;
+  if (who) { const now = Object.assign({}, c, lg, { name, cenas: cen }), n = Array.isArray(c.objekti) ? c.objekti.length : prevN;
     await audit(db, who, 'Klienti', name, (prev ? diff(clFlat(prev, prevN), clFlat(now, n), Object.keys(clFlat(now, n))) : [['izveidots', '', name]]).concat(ligCh ? [ligCh] : [])); }
   return id;
 }
@@ -172,6 +176,27 @@ export async function report(db, clientId, ym) {
     s.reizes++; s.daudz = r2(s.daudz + r.daudz); s.summa = r2(s.summa + r.summa); });
   const total = r2(Object.values(sum).reduce((a, s) => a + s.summa, 0));
   return { client: c ? Object.assign({}, c, { cenas: cen }) : null, ym, rows, sum: Object.values(sum), total, pvn: r2(total * 0.21), arPvn: r2(total * 1.21) };
+}
+
+/* ---------- Līguma PDF (R2 FOTO, atslēga ct-…): augšupielāde base64, kā Mājas lietas dokumentiem ---------- */
+const CT_TYPES = { 'application/pdf': 1, 'image/jpeg': 1, 'image/png': 1 };
+export async function ctUpload(env, clientId, name, data, who) {
+  const c = await env.DB.prepare('SELECT name, lig_pdf_nos FROM clients WHERE id = ?').bind(clientId).first(); if (!c) throw new Error('Vispirms saglabājiet klientu');
+  const m = /^data:([\w.+/-]+);base64,(.+)$/s.exec(String(data || '')); if (!m) throw new Error('Nederīgs fails');
+  const ct = m[1].toLowerCase(); if (!CT_TYPES[ct]) throw new Error('Var pievienot PDF vai bildi');
+  if (m[2].length * 0.75 > 10e6 + 4) throw new Error('Fails par lielu (līdz 10 MB)');
+  if (!env.FOTO) throw new Error('Failu glabātuve nav pieslēgta');
+  const bs = atob(m[2]), bin = new Uint8Array(bs.length); for (let i = 0; i < bs.length; i++) bin[i] = bs.charCodeAt(i);
+  const key = 'ct-' + crypto.randomUUID().replace(/-/g, ''), nos = String(name || 'ligums.pdf').slice(0, 150);
+  await env.FOTO.put(key, bin, { httpMetadata: { contentType: ct }, customMetadata: { app: 'klienti', client: clientId, name: nos } });   // vecais fails R2 paliek
+  await env.DB.prepare('UPDATE clients SET lig_pdf = ?, lig_pdf_nos = ? WHERE id = ?').bind(key, nos, clientId).run();
+  if (who) await audit(env.DB, who, 'Klienti', c.name, ['Līguma fails', c.lig_pdf_nos || '', nos]);
+  return { key, nos };
+}
+export async function ctGet(env, clientId, cors) {
+  const c = await env.DB.prepare('SELECT lig_pdf, lig_pdf_nos FROM clients WHERE id = ?').bind(clientId).first();
+  const o = c && c.lig_pdf && env.FOTO && await env.FOTO.get(c.lig_pdf); if (!o) throw new Error('Līguma fails nav atrasts');
+  return new Response(o.body, { headers: Object.assign({ 'Content-Type': (o.httpMetadata && o.httpMetadata.contentType) || 'application/pdf', 'Cache-Control': 'private, no-store', 'Content-Disposition': 'inline; filename*=UTF-8\'\'' + encodeURIComponent(c.lig_pdf_nos || 'ligums.pdf') }, cors || {}) });
 }
 
 /* ---------- Rēķini: mūsu rekvizīti un numerācija (kv) ---------- */
