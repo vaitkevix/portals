@@ -1125,6 +1125,7 @@ const ACTIONS = {
     });
     // B4: brigādes cilvēkiem bez viedtālruņa — SMS (tālrunis no Darba laika pēc vārda), ar START kodu objektam
     X.bg((async () => {
+      if (!await darbalaiks.smsOn(X.db, 'aizv')) return;
       const W = await X.all('SELECT phone, vards FROM dl_worker WHERE aktivs = 1').catch(() => []), K = {};
       (await X.all('SELECT anorm, kods FROM dl_obj WHERE aktivs = 1').catch(() => [])).forEach(o => K[o.anorm] = o.kods);
       const nm = (x) => String(x || '').trim().toLowerCase();

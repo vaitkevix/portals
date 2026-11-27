@@ -1,5 +1,6 @@
 import { summary as dlSummary, objStates as dlStates } from './darbalaiks.js';
 import { backupD1 } from './backup.js';
+import { SMS_F, smsCfg } from './darbalaiks.js';
 import { dashboard } from './dashboard.js';
 import { viewLink, viewTokens } from './view.js';
 import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo } from './klienti.js';
@@ -217,6 +218,13 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'clientReport') return pj(Object.assign({ ok: true }, await report(env.DB, String(b.client || ''), String(b.ym || ''))));
     if (a === 'viewLink') return pj(Object.assign({ ok: true }, await viewLink(env.DB, String(b.client || ''), !!b.revoke)));
     if (a === 'viewTokens') return pj({ ok: true, tokens: await viewTokens(env.DB) });
+    /* SMS funkcijas — ieslēgt / izslēgt */
+    if (a === 'smsCfg') { const c = await smsCfg(env.DB), m0 = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Riga' }).format(new Date()).slice(0, 8) + '01';
+      const st = (await env.DB.prepare('SELECT virziens, COUNT(*) n FROM dl_sms WHERE laiks >= ? GROUP BY virziens').bind(m0).all().catch(() => ({ results: [] }))).results || [];
+      const ping = await env.DB.prepare("SELECT v FROM kv WHERE k = 'dl:ping'").first().catch(() => null), dc = await env.DB.prepare("SELECT v FROM kv WHERE k = 'dl:cfg'").first().catch(() => null);
+      return pj({ ok: true, list: SMS_F.map(([k, n, d]) => ({ k, n, d, on: c[k] })), stats: Object.fromEntries(st.map(r => [r.virziens, r.n])), ping: parse(ping && ping.v), varteja: !!(env.SMS_USER && env.SMS_PASS), laiki: parse(dc && dc.v) }); }
+    if (a === 'smsCfgSave') { const cur = await smsCfg(env.DB), inn = b.cfg || {}; SMS_F.forEach(([k]) => { if (typeof inn[k] === 'boolean') cur[k] = inn[k]; });
+      await env.DB.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('sms:cfg', ?)").bind(JSON.stringify(cur)).run(); return pj({ ok: true, cfg: cur }); }
     if (a === 'dashboard') return pj(Object.assign({ ok: true }, await dashboard(env.DB)));
     /* D1 rezerves kopija (R2 backup/) */
     if (a === 'backupInfo') { const g = async (k) => { const r = await env.DB.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? parse(r.v) : null; }; return pj({ ok: true, info: await g('backup:info'), health: await g('health:backup') }); }

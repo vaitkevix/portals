@@ -292,6 +292,16 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 :root[data-theme="dark"] .ac{color:var(--ink)}
 :root[data-theme="dark"] .ac .chip,:root[data-theme="dark"] .arrow{background:var(--surface);color:var(--ink)}
 .c-adm .arrow{background:#2b3732;color:#fff}.c-adm small{opacity:.7}
+.smsl{display:flex;flex-direction:column}
+.smsr{display:flex;align-items:center;gap:14px;padding:12px 0;border-top:1px solid var(--line);cursor:pointer;min-height:56px}.smsr:first-child{border-top:0}
+.smsr span{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.smsr b{font-size:15px;font-weight:800}.smsr small{font-size:13px;font-weight:600;color:var(--ink-3)}
+.smsr input{position:absolute;opacity:0;width:1px;height:1px}
+.smsr i{flex:none;position:relative;width:52px;height:32px;border-radius:999px;background:var(--line-2);transition:background .15s}
+.smsr i::after{content:'';position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .15s}
+.smsr input:checked+i{background:var(--brand)}.smsr input:checked+i::after{transform:translateX(20px)}
+.smsr input:focus-visible+i{outline:3px solid var(--ink-strong,#16201b);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.smsr i,.smsr i::after{transition:none}}
+.dash-h .bad{color:var(--red)}
 /* Vadības panelis (Administrēšana → Panelis) */
 .dash-h{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 12px;font-size:13.5px;font-weight:700;color:var(--ink-2)}.dash-h .btn{width:auto;height:40px;padding:0 14px;font-size:13.5px;margin-left:auto}
 .dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
@@ -776,6 +786,19 @@ $('menuBtn').onclick = () => {
   };
 };
 
+/* ---------- SMS funkcijas: kas ieslēgts (Worker darbalaiks.js SMS_F, kv sms:cfg) ---------- */
+function drawSms() {
+  if (!A.SMS) { adminShell('<div class="skel"></div>', null); api('smsCfg').then(r => { A.SMS = r; if (A.tab === 'sms') drawSms(); }).catch(e => toast(netMsg(e), 'err')); return; }
+  const R = A.SMS, p = R.ping || {}, L = R.laiki || {}, on = R.list.filter(x => x.on).length;
+  const gw = !R.varteja ? '<span class="bad">SMS telefons nav pieslēgts</span>' : `SMS telefons pieslēgts${p.laiks ? ' · pēdējais signāls ' + esc(p.laiks.slice(8, 10) + '.' + p.laiks.slice(5, 7) + '. ' + p.laiks.slice(11, 16)) : ''}`;
+  adminShell(`<div class="dash-h"><span>${gw}</span></div>
+    <div class="stats3" style="margin:0 0 14px"><div class="sx c-dl"><b style="font-size:28px">${(R.stats || {}).izej || 0}</b><small>nosūtītas šomēnes</small></div><div class="sx c-sniegs"><b style="font-size:28px">${(R.stats || {}).ien || 0}</b><small>saņemtas šomēnes</small></div><div class="sx c-ml"><b style="font-size:28px">${on} / ${R.list.length}</b><small>funkcijas ieslēgtas</small></div></div>
+    <div class="dsec" style="margin-top:0"><h4>SMS funkcijas</h4><p class="copy" style="text-align:left;margin:0 0 6px">Izslēgta funkcija SMS nesūta un uz komandu neatbild. Atgādinājumu laiki: rīts ${esc(L.rits || '07:30')}, vakars ${esc(L.vakars || '20:00')} (maina Darba laika iestatījumos).</p>
+    <div class="smsl">${R.list.map(x => `<label class="smsr"><span><b>${esc(x.n)}</b><small>${esc(x.d)}</small></span><input type="checkbox" role="switch" data-k="${esc(x.k)}" ${x.on ? 'checked' : ''} aria-label="${esc(x.n)}"><i aria-hidden="true"></i></label>`).join('')}</div></div>`, null);
+  document.querySelector('.smsl').onchange = async (e) => { const c = e.target.closest('[data-k]'); if (!c) return; const k = c.dataset.k, v = c.checked; c.disabled = true;
+    try { await api('smsCfgSave', { cfg: { [k]: v } }); A.SMS.list.find(x => x.k === k).on = v; toast((v ? 'Ieslēgts: ' : 'Izslēgts: ') + A.SMS.list.find(x => x.k === k).n); drawSms(); }
+    catch (err) { c.checked = !v; toast(netMsg(err), 'err'); } finally { c.disabled = false; } };
+}
 /* ---------- Vadības panelis: visu lietotņu kopskats (Worker /portal action=dashboard) ---------- */
 function drawPanel() {
   if (!A.D || A.D.stale) { if (!A.D) adminShell('<div class="skel"></div>', null); api('dashboard').then(r => { A.D = r; if (A.tab === 'panel') drawPanel(); }).catch(e => toast(netMsg(e), 'err')); if (!A.D) return; }
@@ -801,7 +824,7 @@ function drawPanel() {
   $('dBk').onclick = async (e) => { const b = e.target; b.disabled = true; b.textContent = 'Veido…'; try { await api('backupNow'); toast('Rezerves kopija izveidota'); A.D.stale = 1; drawPanel(); } catch (err) { toast(netMsg(err), 'err'); b.disabled = false; b.textContent = 'Izveidot tagad'; } };
 }
 /* ---------- Administrēšana: cilvēki un pilnvaras + pamatdati (viens saraksts visām lietotnēm) ---------- */
-const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['companies', 'Uzņēmumi'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['review', 'Pārbaudīt']];
+const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['companies', 'Uzņēmumi'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['sms', 'SMS'], ['review', 'Pārbaudīt']];
 /* Objekti pārcelti uz Mājas lietu (2026-11-24): cilne paslēpta, kods paliek (atgriezt — izņemt 'objects' no ADM_HIDE) */
 const ADM_HIDE = ['objects'];
 const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kaisāmmateriāls)', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
@@ -844,6 +867,7 @@ const remember = () => { const s = document.querySelector('#sheetBg .sheet'); if
 const qm = (t) => !A.q || String(t).toLowerCase().includes(A.q.toLowerCase());
 function drawAdmin() {
   if (A.tab === 'panel') return drawPanel();
+  if (A.tab === 'sms') return drawSms();
   if (A.tab === 'people') {
     const F = A.f.p || '', list = S.people.filter(p => qm(p.name + ' ' + (p.phone || '') + ' ' + (p.email || '')) && (!F || (F === 'admin' ? p.perms.portal === 'admin' : F === 'off' ? !p.active : (p.perms[F] && p.perms[F] !== ''))));
     const s = adminShell(`<div class="afil" id="pF"><select aria-label="Filtrs"><option value="">Visi cilvēki</option><option value="admin" ${F === 'admin' ? 'selected' : ''}>Portāla admini</option><option value="off" ${F === 'off' ? 'selected' : ''}>Neaktīvie</option>${ORDER.map(k => `<option value="${k}" ${F === k ? 'selected' : ''}>Ar piekļuvi: ${APPS[k].name}</option>`).join('')}</select><span class="n">${list.length}</span></div><div class="plist">${list.map(p => `<button class="prow ${p.active ? '' : 'off'}" data-p="${esc(p.name)}"><span class="dot" style="background:${esc(p.color || '')}"></span>
@@ -1395,7 +1419,7 @@ function prefetchApps() { if (S.prefetched || !S.me) return; S.prefetched = 1; c
   (window.requestIdleCallback || ((f) => setTimeout(f, 2500)))(go, { timeout: 5000 }); }
 </script>
 <script>
-window.SHX = { app: 'portal', external: true, a2hs: true,
+window.SHX = { canTour: () => $('vApp').hidden && !$('sheetBg'), tourLater: () => { S.tourLater = 1; }, app: 'portal', external: true, a2hs: true,
   getUser: function () { return S.me ? { name: S.me.name, kind: S.me.admin ? 'admin' : 'lietotajs' } : null; },
   homeTab: function () { return ''; },
   tours: {
@@ -1410,7 +1434,7 @@ window.SHX = { app: 'portal', external: true, a2hs: true,
 };
 SHX.tours.admin = SHX.tours.lietotajs.slice(0, 2).concat([{ sel: '#tiles .c-adm', title: 'Administrēšana', text: 'Viens saraksts visām lietotnēm: cilvēki un PIN, pilnvaras, objekti, uzņēmumi un saraksti. Maini šeit — mainās visur.' }], SHX.tours.lietotajs.slice(2));
 </script>
-<script src="sh-addon.js?v=1"></script>
+<script src="sh-addon.js?v=2"></script>
 <script src="https://vaitkevix.cloud/sh/api/apv.js" defer></script><!-- apvienotie objekti → «Apvienots» (no Mājas lietas) -->
 </body>
 </html>

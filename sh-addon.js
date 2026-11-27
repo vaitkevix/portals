@@ -191,7 +191,7 @@
   SHX.who = who;
   SHX.tour = (kind) => startTour(kind);
   SHX.maybeTourKind = (kind) => { if (!ls.get('tour_' + kind)) setTimeout(() => { if (!ls.get('tour_' + kind)) startTour(kind); }, 900); };
-  function maybeTour() { const u = cur(); if (u && !ls.get('tour_' + u.kind)) setTimeout(() => { if (!ls.get('tour_' + u.kind)) startTour(); }, 1200); }
+  function maybeTour() { const u = cur(); if (u && !ls.get('tour_' + u.kind)) setTimeout(() => { if (ls.get('tour_' + u.kind)) return; if (C.canTour && !C.canTour()) { if (C.tourLater) C.tourLater(); return; } startTour(); }, 1200); }   // canTour — lietotne var atlikt (piem. atvērts logs)
   function startTour(kind) {
     const u = cur();
     kind = kind || (C.tourKind && C.tourKind(u)) || (u && u.kind);

@@ -38,6 +38,23 @@ export function normPhone(s) {
   if (!plus && d.length === 8) d = '371' + d;
   return d.length >= 8 && d.length <= 15 ? '+' + d : '';
 }
+/* ---------- SMS funkcijas: admins ieslēdz/izslēdz (portāls → Administrēšana → SMS), kv sms:cfg ---------- */
+export const SMS_F = [
+  ['atbildes', 'Atbildes uz START / STOP / ?', 'Darbinieks saņem apstiprinājumu «darbā no 07:02», «darbs beigts».', true],
+  ['ru', 'Krievu valoda', 'СТАРТ, СТОП, ЧАСЫ… un atbilde krieviski, ja raksta kirilicā.', true],
+  ['stundas', 'STUNDAS — manas stundas', 'Atbild ar šī un iepriekšējā mēneša stundām un dienām.', true],
+  ['labot', 'Laika labojumi (STOP 17:30, VAKAR 8-17)', 'Aizmirsts STOP — darbinieks atsūta laiku, vadītājs apstiprina.', true],
+  ['slims', 'SLIMS un ATV', 'Slimība / atvaļinājuma pieteikums → push vadītājam.', true],
+  ['vaditajs', 'Vadītāja tālrunis atbildēs', 'Pie «Nesapratu» pieliek objekta vadītāja tālruni.', true],
+  ['rits', 'Rīta atgādinājums', 'Ja līdz rīta laikam nav START — atgādinājums ar objekta kodu.', true],
+  ['vakars', 'Vakara atgādinājums', 'Ja darbs nav beigts ar STOP — atgādinājums vakarā.', true],
+  ['brivdienas', 'Atgādinājumi arī brīvdienās un svētkos', 'Sestdienās, svētdienās un svētku dienās.', false],
+  ['sveiciens', 'Sveiciena SMS jaunam darbiniekam', 'Instrukcija un objektu kodi, pievienojot darbinieku.', true],
+  ['objekti', 'SMS par objektu maiņu', 'Mainot darbinieka objektus — jaunās adreses un kodi.', true],
+  ['aizv', 'Aizvietošanas plāns brigādei', 'Publicējot plānu — SMS brigādes cilvēkiem ar adresēm un START kodiem.', true],
+  ['sniegs', 'Sniega izsaukums ārējiem traktoristiem (SIA)', 'SMS uz uzņēmuma tālruni, kad izsaukts sniegs.', true]];
+export async function smsCfg(db) { const c = (await kv(db, 'sms:cfg')) || {}; const o = {}; SMS_F.forEach(([k, , , d]) => o[k] = typeof c[k] === 'boolean' ? c[k] : d); return o; }
+export async function smsOn(db, k) { return (await smsCfg(db))[k] !== false; }
 /* SMS teksts → komanda */
 const RU_CMD = [[/^(СТАРТ|НАЧАЛ[А-Я]*|НАЧИНАЮ)/, 'START'], [/^(СТОП|КОНЕЦ|ЗАКОНЧИЛ[А-Я]*)/, 'STOP'], [/^(ЧАСЫ|ЧАС)/, 'STUNDAS'], [/^(БОЛЕН|БОЛЬНА|БОЛЬНИЧНЫЙ|БОЛЬН[А-Я]*)/, 'SLIMS'], [/^ОТПУСК/, 'ATV'], [/^ВЧЕРА/, 'VAKAR'], [/^(СТАТУС|ИНФО)/, '?']];
 export const isCyr = (t) => /[А-Яа-яЁё]/.test(String(t || ''));
@@ -190,7 +207,7 @@ const RU_TXT = [['Numurs nav reģistrēts SH Darba laikā.', 'Номер не з
   ['Šodien: ', 'Сегодня: '], ['Nesapratu.', 'Не понял.'], [' - sākot darbu', ' — начало работы'], [' - beidzot', ' — конец'], [' - statuss', ' — статус'], [' - manas stundas', ' — мои часы'],
   ['Šis mēnesis: ', 'Этот месяц: '], ['Iepriekšējais: ', 'Прошлый: '], [' dienas', ' дн.'], ['Pieņemts, gaida vadītāja apstiprinājumu.', 'Принято, ждёт подтверждения руководителя.'],
   ['Slimības ziņa nodota vadītājam. Veseļojies!', 'Сообщение о болезни передано руководителю. Выздоравливай!'], ['Atvaļinājuma pieteikums nodots vadītājam.', 'Заявка на отпуск передана руководителю.'],
-  ['Neizprotams datums. Piem.: ATV 12.12-20.12', 'Непонятная дата. Напр.: ATV 12.12-20.12'], ['Laiks nav saprotams. Piem.: VAKAR 8-17', 'Непонятное время. Напр.: VAKAR 8-17'], ['Vadītājs: ', 'Руководитель: ']];
+  ['Neizprotams datums. Piem.: ATV 12.12-20.12', 'Непонятная дата. Напр.: ATV 12.12-20.12'], ['Laiks nav saprotams. Piem.: VAKAR 8-17', 'Непонятное время. Напр.: VAKAR 8-17'], ['Vadītājs: ', 'Руководитель: '], ['Šī SMS funkcija nav ieslēgta. Jautā vadītājam.', 'Эта SMS-функция не включена. Спроси руководителя.']];
 const toRu = (t) => { let s = String(t || ''); for (const [a, b] of RU_TXT) s = s.split(a).join(b); return s; };
 /* Gaidošie labojumi / slimība / atvaļinājums no SMS — vadītājs apstiprina Darba laikā */
 async function addPending(db, p) { const L = (await kv(db, 'dl:pending')) || []; p.id = uid(); p.laiks = nowStr(); L.push(p); await kvSet(db, 'dl:pending', L.slice(-300)).run(); return p; }
@@ -198,15 +215,19 @@ async function addPending(db, p) { const L = (await kv(db, 'dl:pending')) || [];
 export async function handleSms(db, phone, text) {
   const ru = isCyr(text) || (!/[A-Za-z]/.test(String(text || '')) && (await kv(db, 'dl:lang:' + phone)) === 'ru');   // valoda — pēc šīs ziņas; bez burtiem («?») — kā iepriekš
   if (isCyr(text)) await kvSet(db, 'dl:lang:' + phone, 'ru').run(); else if (/^[A-Z?]/i.test(String(text || '').trim())) await kvSet(db, 'dl:lang:' + phone, 'lv').run();
-  const r = await handleSms0(db, phone, text);
-  if (ru && r.reply) r.reply = toRu(r.reply);
+  const F = await smsCfg(db), c0 = parseCmd(text);
+  if (!F.ru && isCyr(text)) return { reply: '', anorm: '' };
+  if ((c0.cmd === 'stundas' && !F.stundas) || (c0.cmd === 'labot' && !F.labot) || ((c0.cmd === 'slims' || c0.cmd === 'atv') && !F.slims)) c0.off = true;
+  const r = c0.off ? { reply: 'Šī SMS funkcija nav ieslēgta. Jautā vadītājam.', anorm: '' } : await handleSms0(db, phone, text, F);
+  if (!F.atbildes && ['sak', 'beidz', 'stat'].indexOf(c0.cmd) !== -1) r.reply = '';
+  if (ru && F.ru && r.reply) r.reply = toRu(r.reply);
   return r;
 }
 async function mgrOf(db, anorm) {   // objekta vadītājs → { name, phone }
   const o = anorm && await db.prepare('SELECT vaditajs FROM objects WHERE anorm = ?').bind(anorm).first(); if (!o || !o.vaditajs) return null;
   const p = (await all(db, 'SELECT name, phone FROM people WHERE active = 1')).find(x => isMine(o.vaditajs, x.name)); return p ? { name: p.name, phone: p.phone || '' } : { name: o.vaditajs, phone: '' };
 }
-async function handleSms0(db, phone, text) {
+async function handleSms0(db, phone, text, F) {
   const W = await workerOf(db, phone), c = parseCmd(text), d = today(), t = hm();
   if (!W || !W.aktivs) return { reply: 'Numurs nav reģistrēts SH Darba laikā.\nZvani darbu vadītājam.', anorm: '' };
   const S = sessions(await marksOn(db, d)).filter(s => s.phone === phone), open = S.filter(s => !s.beidz);
@@ -267,7 +288,7 @@ async function handleSms0(db, phone, text) {
     if (S.length) { const l = S[S.length - 1]; return { reply: 'Šodien: ' + adr(l.anorm) + '\n' + l.sak + '-' + l.beidz + '\nŠobrīd neesi darbā.', anorm: l.anorm }; }
     return { reply: 'Šodien neesi atzīmējies.\nSākot darbu sūti:\nSTART kods', anorm: W.anorm };
   }
-  const mg = await mgrOf(db, W.anorm).catch(() => null);
+  const mg = F && F.vaditajs ? await mgrOf(db, W.anorm).catch(() => null) : null;
   return { reply: 'Nesapratu.\nSTART kods - sākot darbu\nSTOP - beidzot\n? - statuss\nSTUNDAS - manas stundas' + (mg && mg.phone ? '\nVadītājs: ' + mg.phone : ''), anorm: W.anorm };
 }
 async function hmacHex(key, data) {
@@ -306,10 +327,11 @@ export async function hook(request, env, X, url) {
 /* ---------- atgādinājumi (no 5 min trigera) ---------- */
 export async function reminders(env, force) {
   const db = env.DB, d = today(), t = hm(), C = await cfgOf(db);
-  if (!C.atgadinat || (dow(d) > 5 && !C.brivdienas) || (!force && !C.brivdienas && lvHolidays(+d.slice(0, 4)).has(d))) return { rits: 0, vakars: 0 };   // brīvdienās/svētkos — tikai ja iestatījumos «brivdienas»
+  const F = await smsCfg(db), BR = F.brivdienas || C.brivdienas;
+  if (!C.atgadinat || (dow(d) > 5 && !BR) || (!force && !BR && lvHolidays(+d.slice(0, 4)).has(d))) return { rits: 0, vakars: 0 };   // brīvdienās/svētkos — tikai ja iestatījumos «brivdienas»
   let a = 0, b = 0;
   const due = async (k) => (await kv(db, k)) !== d, done = (k) => kvSet(db, k, d).run();   // atzīme PĒC sūtīšanas
-  if ((force ? force === 'rits' : (mins(t) >= mins(C.rits) && mins(t) < mins(C.rits) + 120)) && await due('dl:remRits')) {
+  if (F.rits && (force ? force === 'rits' : (mins(t) >= mins(C.rits) && mins(t) < mins(C.rits) + 120)) && await due('dl:remRits')) {
     const O = (await objs(db)).filter(o => o.aktivs), S = sessions(await marksOn(db, d)), W = await allAssign(db);
     for (const o of O) { const sent = new Set();   // «abi» darbiniekam vienā objektā tikai viena SMS
       for (const am of ['uzk', 'set']) {
@@ -320,7 +342,7 @@ export async function reminders(env, force) {
     } }
     await done('dl:remRits');
   }
-  if ((force ? force === 'vakars' : (mins(t) >= mins(C.vakars) && mins(t) < mins(C.vakars) + 120)) && await due('dl:remVak')) {
+  if (F.vakars && (force ? force === 'vakars' : (mins(t) >= mins(C.vakars) && mins(t) < mins(C.vakars) + 120)) && await due('dl:remVak')) {
     const O = await objs(db), open = sessions(await marksOn(db, d)).filter(s => !s.beidz && s.phone);
     for (const s of open) { const o = O.find(x => x.anorm === s.anorm) || { adrese: s.anorm };
       b += await sendSms(env, [s.phone], o.adrese + '\nTu joprojām esi atzīmēts darbā.\nJa esi beidzis, sūti STOP', s.anorm); }
@@ -505,9 +527,9 @@ export async function api(request, env, X) {
       await db.prepare('INSERT INTO dl_worker (phone, vards, amats, anorm, aktivs, pievienoja) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(phone) DO UPDATE SET vards = excluded.vards, amats = excluded.amats, anorm = excluded.anorm, aktivs = excluded.aktivs')
         .bind(p, String(b.vards || '').trim().replace(/\s+/g, ' ').slice(0, 80), am, String(b.anorm || ''), b.aktivs === false ? 0 : 1, me.name).run();
       let welcome = null;   // jaunam aktīvam darbiniekam — SMS ar instrukciju un kodiem (ja nav atslēgts ar b.noSms)
-      if (wasNew && b.aktivs !== false && !b.noSms) welcome = await sendWelcome(env, p, false).catch(e => ({ sent: false, why: String(e.message || e) }));
+      if (wasNew && b.aktivs !== false && !b.noSms && await smsOn(db, 'sveiciens')) welcome = await sendWelcome(env, p, false).catch(e => ({ sent: false, why: String(e.message || e) }));
       // esošam darbiniekam mainīti objekti → SMS ar jaunajām adresēm un kodiem (B5)
-      if (!wasNew && b.aktivs !== false && !b.noSms && chg && (chg.add.length || chg.del.length)) {
+      if (!wasNew && b.aktivs !== false && !b.noSms && chg && (chg.add.length || chg.del.length) && await smsOn(db, 'objekti')) {
         const O = await objs(db), ad = (k) => (O.find(o => o.anorm === k) || {}), lines = ['SH Darba laiks: izmaiņas tavos objektos'];
         chg.add.forEach(k => { const o = ad(k); lines.push('+ ' + (o.adrese || k) + (o.kods ? ' - START ' + o.kods : '')); });
         chg.del.forEach(k => lines.push('- ' + (ad(k).adrese || k) + ' (vairs nav)'));
