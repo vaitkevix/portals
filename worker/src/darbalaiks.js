@@ -7,6 +7,7 @@ import { personByPin } from './portal.js';
 import { lvHolidays } from './personals.js';
 import { dlInherit, dlSync } from './majaslieta.js';
 import { today, addDays, dow, nowStr, uid, kv, kvSet, CORS, out } from './util.js';
+import { notify, managers } from './webpush.js';
 
 export const KEY = 'dl';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
@@ -38,8 +39,20 @@ export function normPhone(s) {
   return d.length >= 8 && d.length <= 15 ? '+' + d : '';
 }
 /* SMS teksts → komanda */
+const RU_CMD = [[/^(СТАРТ|НАЧАЛ[А-Я]*|НАЧИНАЮ)/, 'START'], [/^(СТОП|КОНЕЦ|ЗАКОНЧИЛ[А-Я]*)/, 'STOP'], [/^(ЧАСЫ|ЧАС)/, 'STUNDAS'], [/^(БОЛЕН|БОЛЬНА|БОЛЬНИЧНЫЙ|БОЛЬН[А-Я]*)/, 'SLIMS'], [/^ОТПУСК/, 'ATV'], [/^ВЧЕРА/, 'VAKAR'], [/^(СТАТУС|ИНФО)/, '?']];
+export const isCyr = (t) => /[А-Яа-яЁё]/.test(String(t || ''));
+const dmD = (s, base) => { const m = /^(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?$/.exec(s || ''); if (!m) return ''; let y = m[3] ? +(m[3].length === 2 ? '20' + m[3] : m[3]) : +base.slice(0, 4);
+  let d = y + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0'); if (!m[3] && d < addDays(base, -60)) d = (y + 1) + d.slice(4); return isD(d) ? d : ''; };
+const hhmm = (s) => { const m = /^(\d{1,2})(?::|\.)?(\d{2})?$/.exec(s || ''); if (!m || +m[1] > 24) return ''; const t = m[1].padStart(2, '0') + ':' + (m[2] || '00'); return okT(t) || t === '24:00' ? t : ''; };
 export function parseCmd(t) {
-  const s = String(t || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
+  let s0 = String(t || '').trim().toUpperCase(); for (const [re, w] of RU_CMD) s0 = s0.replace(re, w);
+  const s = s0.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
+  let x;
+  if (/^(STUNDAS|STUNDA|H)$/.test(s)) return { cmd: 'stundas' };
+  if ((x = /^(SLIMS|SLIMA|SLIMI)(?:\s+(\S+?)(?:\s*-\s*(\S+))?)?$/.exec(s))) return { cmd: 'slims', no: x[2] || '', lidz: x[3] || '' };
+  if ((x = /^(ATV|ATVALINAJUMS)\s+(\S+?)\s*-\s*(\S+)$/.exec(s))) return { cmd: 'atv', no: x[2], lidz: x[3] };
+  if ((x = /^VAKAR\s+(\d{1,2}(?:[:.]\d{2})?)(?:\s*-\s*(\d{1,2}(?:[:.]\d{2})?))?$/.exec(s))) return x[2] ? { cmd: 'labot', den: 'vakar', sak: hhmm(x[1]), beidz: hhmm(x[2]) } : { cmd: 'labot', den: 'vakar', beidz: hhmm(x[1]) };
+  if ((x = /^(STOP|BEIDZU)\s+(\d{1,2}[:.]\d{2})$/.exec(s))) return { cmd: 'beidz', laiks: hhmm(x[2]) };
   let m = /^(SAKU|SAKT|SAKUMS|START|S)(?=[\s#0-9]|$)\s*#?\s*([0-9A-Z-]{1,8})?/.exec(s);
   if (m && /^(DARBU|DARBA|DARBS|DARB|TAGAD|SEIT|OBJEKTA)$/.test(m[2] || '')) { const n = /^\S+\s+[A-Z]+\s*(?:#\s*|\s+)([0-9A-Z-]{1,8})/.exec(s); m[2] = n ? n[1] : ''; }   // «SAKU DARBU [104]» — vārds nav kods
   if (m && (m[1] !== 'S' || m[2])) return { cmd: 'sak', kods: m[2] || '' };
@@ -168,8 +181,32 @@ async function addMark(db, m) {
   await db.prepare('INSERT INTO dl_mark (id, datums, vards, veids, laiks, vieniba, avots, kas, izveidots, anorm, amats, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(uid(), m.datums, m.vards || '', m.veids, m.laiks, '', m.avots || 'sms', m.kas || '', nowStr(), m.anorm, m.amats, m.phone || '').run();
 }
+/* Atbilde krieviski, ja darbinieks raksta kirilicā (vai iepriekš rakstīja) */
+const RU_TXT = [['Numurs nav reģistrēts SH Darba laikā.', 'Номер не зарегистрирован в SH.'], ['Zvani darbu vadītājam', 'Позвони руководителю'], ['nav atrasts.', 'не найден.'], ['Kods ', 'Код '],
+  ['Pārbaudi kodu uz uzlīmes un sūti vēlreiz, piem.:', 'Проверь код на наклейке и отправь ещё раз, напр.:'], ['Sūti START un objekta kodu no uzlīmes, piem.:', 'Отправь START и код объекта с наклейки, напр.:'],
+  ['Jau esi darbā kopš ', 'Ты уже на работе с '], ['Beigās sūti STOP', 'В конце отправь STOP'], [' darbā no ', ' на работе с '], ['Darbs beigts ', 'Работа окончена '], ['Paldies!', 'Спасибо!'],
+  ['Šodien nav atzīmēts darba sākums.', 'Сегодня начало работы не отмечено.'], [' palika bez STOP - sūti: VAKAR un beigu laiku, piem. VAKAR 17:00', ' остался без STOP — отправь: VAKAR и время, напр. VAKAR 17:00'],
+  ['Vakar ', 'Вчера '], ['Sākot darbu sūti:', 'Начиная работу отправь:'], ['Tu esi darbā kopš ', 'Ты на работе с '], ['Šobrīd neesi darbā.', 'Сейчас не на работе.'], ['Šodien neesi atzīmējies.', 'Сегодня не отмечался.'],
+  ['Šodien: ', 'Сегодня: '], ['Nesapratu.', 'Не понял.'], [' - sākot darbu', ' — начало работы'], [' - beidzot', ' — конец'], [' - statuss', ' — статус'], [' - manas stundas', ' — мои часы'],
+  ['Šis mēnesis: ', 'Этот месяц: '], ['Iepriekšējais: ', 'Прошлый: '], [' dienas', ' дн.'], ['Pieņemts, gaida vadītāja apstiprinājumu.', 'Принято, ждёт подтверждения руководителя.'],
+  ['Slimības ziņa nodota vadītājam. Veseļojies!', 'Сообщение о болезни передано руководителю. Выздоравливай!'], ['Atvaļinājuma pieteikums nodots vadītājam.', 'Заявка на отпуск передана руководителю.'],
+  ['Neizprotams datums. Piem.: ATV 12.12-20.12', 'Непонятная дата. Напр.: ATV 12.12-20.12'], ['Laiks nav saprotams. Piem.: VAKAR 8-17', 'Непонятное время. Напр.: VAKAR 8-17'], ['Vadītājs: ', 'Руководитель: ']];
+const toRu = (t) => { let s = String(t || ''); for (const [a, b] of RU_TXT) s = s.split(a).join(b); return s; };
+/* Gaidošie labojumi / slimība / atvaļinājums no SMS — vadītājs apstiprina Darba laikā */
+async function addPending(db, p) { const L = (await kv(db, 'dl:pending')) || []; p.id = uid(); p.laiks = nowStr(); L.push(p); await kvSet(db, 'dl:pending', L.slice(-300)).run(); return p; }
 /* Apstrādā vienu SMS → atbildes teksts (vai '' — neatbildēt) */
 export async function handleSms(db, phone, text) {
+  const ru = isCyr(text) || (!/[A-Za-z]/.test(String(text || '')) && (await kv(db, 'dl:lang:' + phone)) === 'ru');   // valoda — pēc šīs ziņas; bez burtiem («?») — kā iepriekš
+  if (isCyr(text)) await kvSet(db, 'dl:lang:' + phone, 'ru').run(); else if (/^[A-Z?]/i.test(String(text || '').trim())) await kvSet(db, 'dl:lang:' + phone, 'lv').run();
+  const r = await handleSms0(db, phone, text);
+  if (ru && r.reply) r.reply = toRu(r.reply);
+  return r;
+}
+async function mgrOf(db, anorm) {   // objekta vadītājs → { name, phone }
+  const o = anorm && await db.prepare('SELECT vaditajs FROM objects WHERE anorm = ?').bind(anorm).first(); if (!o || !o.vaditajs) return null;
+  const p = (await all(db, 'SELECT name, phone FROM people WHERE active = 1')).find(x => isMine(o.vaditajs, x.name)); return p ? { name: p.name, phone: p.phone || '' } : { name: o.vaditajs, phone: '' };
+}
+async function handleSms0(db, phone, text) {
   const W = await workerOf(db, phone), c = parseCmd(text), d = today(), t = hm();
   if (!W || !W.aktivs) return { reply: 'Numurs nav reģistrēts SH Darba laikā.\nZvani darbu vadītājam.', anorm: '' };
   const S = sessions(await marksOn(db, d)).filter(s => s.phone === phone), open = S.filter(s => !s.beidz);
@@ -198,20 +235,40 @@ export async function handleSms(db, phone, text) {
           await addMark(db, { datums: d, vards: W.vards, veids: 'beidz', laiks: t, anorm: s.anorm, amats: s.amats, phone, kas: phone }); }
         return { reply: adr(s.anorm) + '\nDarbs beigts ' + t + ' (' + dur(1440 - mins(s.sak) + mins(t)) + ')\nPaldies!', anorm: s.anorm };
       }
-      if (yo.length) return { reply: 'Šodien nav atzīmēts darba sākums.\nVakar ' + adr(yo[0].anorm) + ' palika bez STOP - paziņo vadītājam beigu laiku.', anorm: yo[0].anorm };
+      if (yo.length) return { reply: 'Šodien nav atzīmēts darba sākums.\nVakar ' + adr(yo[0].anorm) + ' palika bez STOP - sūti: VAKAR un beigu laiku, piem. VAKAR 17:00', anorm: yo[0].anorm };
       return { reply: 'Šodien nav atzīmēts darba sākums.\nSākot darbu sūti:\nSTART kods', anorm: W.anorm };
     }
-    const s = open[open.length - 1];
-    await addMark(db, { datums: d, vards: W.vards, veids: 'beidz', laiks: t, anorm: s.anorm, amats: s.amats, phone, kas: phone });
-    const m = Math.max(0, mins(t) - mins(s.sak));
-    return { reply: adr(s.anorm) + '\nDarbs beigts ' + t + ' (' + dur(m) + ')\nPaldies!', anorm: s.anorm };
+    const s = open[open.length - 1], tt = c.laiks && mins(c.laiks) <= mins(t) && mins(c.laiks) >= mins(s.sak) ? c.laiks : t;   // «STOP 17:30» — aizmirsa laikā
+    await addMark(db, { datums: d, vards: W.vards, veids: 'beidz', laiks: tt, anorm: s.anorm, amats: s.amats, phone, kas: phone, avots: tt !== t ? 'sms-laiks' : 'sms' });
+    const m = Math.max(0, mins(tt) - mins(s.sak));
+    return { reply: adr(s.anorm) + '\nDarbs beigts ' + tt + ' (' + dur(m) + ')\nPaldies!', anorm: s.anorm };
+  }
+  if (c.cmd === 'stundas') {
+    const m0 = d.slice(0, 8) + '01', p0 = addDays(m0, -1).slice(0, 8) + '01', p1 = addDays(m0, -1);
+    const a = (await workerHours(db, m0, d))[phone] || { min: 0, dienas: 0 }, b = (await workerHours(db, p0, p1))[phone] || { min: 0, dienas: 0 };
+    const h = (x) => String(Math.round(x.min / 6) / 10).replace('.', ',') + ' h, ' + x.dienas + ' dienas';
+    return { reply: 'Šis mēnesis: ' + h(a) + (a.navBeigu ? ' (' + a.navBeigu + ' bez STOP)' : '') + '\nIepriekšējais: ' + h(b), anorm: W.anorm };
+  }
+  if (c.cmd === 'labot') {
+    const y = addDays(d, -1); if ((c.sak === '' && c.sak !== undefined) || !c.beidz) return { reply: 'Laiks nav saprotams. Piem.: VAKAR 8-17', anorm: W.anorm };
+    const yo = sessions(await marksOn(db, y)).filter(s => s.phone === phone && !s.beidz), an = yo.length ? yo[yo.length - 1].anorm : W.anorm;
+    const am = yo.length ? yo[yo.length - 1].amats : ((await assignOf(db, phone, an)) || W.amats);
+    const p = await addPending(db, { tips: 'labot', phone, vards: W.vards, datums: y, anorm: an, amats: am, sak: c.sak || (yo.length ? '' : ''), beidz: c.beidz, aizvert: !c.sak && yo.length ? yo[yo.length - 1].id : '' });
+    return { reply: adr(an) + ' (' + y.slice(8) + '.' + y.slice(5, 7) + '.) ' + (c.sak ? c.sak + '-' : 'līdz ') + c.beidz + '\nPieņemts, gaida vadītāja apstiprinājumu.', anorm: an, pending: p };
+  }
+  if (c.cmd === 'slims' || c.cmd === 'atv') {
+    const no = c.no ? dmD(c.no, d) : d, lidz = c.lidz ? dmD(c.lidz, d) : (c.cmd === 'slims' ? '' : '');
+    if ((c.no && !no) || (c.lidz && !lidz) || (c.cmd === 'atv' && (!no || !lidz || lidz < no))) return { reply: 'Neizprotams datums. Piem.: ATV 12.12-20.12', anorm: W.anorm };
+    const p = await addPending(db, { tips: c.cmd, phone, vards: W.vards, anorm: W.anorm, no, lidz });
+    return { reply: c.cmd === 'slims' ? 'Slimības ziņa nodota vadītājam. Veseļojies!' : 'Atvaļinājuma pieteikums nodots vadītājam.', anorm: W.anorm, pending: p };
   }
   if (c.cmd === 'stat') {
     if (open.length) return { reply: adr(open[0].anorm) + '\nTu esi darbā kopš ' + open[0].sak + '\nBeigās sūti STOP', anorm: open[0].anorm };
     if (S.length) { const l = S[S.length - 1]; return { reply: 'Šodien: ' + adr(l.anorm) + '\n' + l.sak + '-' + l.beidz + '\nŠobrīd neesi darbā.', anorm: l.anorm }; }
     return { reply: 'Šodien neesi atzīmējies.\nSākot darbu sūti:\nSTART kods', anorm: W.anorm };
   }
-  return { reply: 'Nesapratu.\nSTART kods - sākot darbu\nSTOP - beidzot\n? - statuss', anorm: W.anorm };
+  const mg = await mgrOf(db, W.anorm).catch(() => null);
+  return { reply: 'Nesapratu.\nSTART kods - sākot darbu\nSTOP - beidzot\n? - statuss\nSTUNDAS - manas stundas' + (mg && mg.phone ? '\nVadītājs: ' + mg.phone : ''), anorm: W.anorm };
 }
 async function hmacHex(key, data) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -239,6 +296,10 @@ export async function hook(request, env, X, url) {
   await db.prepare('UPDATE dl_sms SET anorm = ?, statuss = ? WHERE id = ?').bind(r.anorm || '', known ? 'ok' : 'nezināms numurs', lid).run();
   if (!known) { const k = 'dl:unk:' + phone; if ((await kv(db, k)) === today()) r.reply = ''; else await kvSet(db, k, today()).run(); }   // nezināmam — atbilde reizi dienā
   if (r.reply) { const job = sendSms(env, [phone], r.reply, r.anorm); if (X && X.bg) X.bg(job); else await job; }
+  if (r.pending) { const p = r.pending, mg = await mgrOf(db, p.anorm).catch(() => null);
+    const txt = p.tips === 'labot' ? p.vards + ': ' + (p.sak ? p.sak + '–' : 'beidza ') + p.beidz + ' (' + p.datums.slice(8) + '.' + p.datums.slice(5, 7) + '.)' : p.tips === 'slims' ? p.vards + ' slimo' + (p.lidz ? ' līdz ' + p.lidz.slice(8) + '.' + p.lidz.slice(5, 7) + '.' : '') : p.vards + ' atvaļinājums ' + p.no.slice(8) + '.' + p.no.slice(5, 7) + '.–' + p.lidz.slice(8) + '.' + p.lidz.slice(5, 7) + '.';
+    const job = (async () => notify(env, [...new Set((mg ? [mg.name] : []).concat(await managers(env, 'dl')))], { title: p.tips === 'labot' ? 'Darba laiks: labojums jāapstiprina' : p.tips === 'slims' ? 'Darbinieks slimo' : 'Atvaļinājuma pieteikums', body: txt, url: '/sh/#dl' }))().catch(e => console.error('dl push', e));
+    if (X && X.bg) X.bg(job); else await job; }
   return out({ ok: true });
 }
 
@@ -372,7 +433,22 @@ export async function api(request, env, X) {
     if (a === 'atgadinat') { need(2); const o = (await objs(db)).find(x => x.anorm === b.anorm); if (!o) throw new Error('Objekts nav atrasts'); const am = b.amats === 'set' ? 'set' : 'uzk';
       const to = (await recipients(db, { kam: 'obj', anorm: o.anorm, amats: am })).map(w => w.phone); if (!to.length) throw new Error('Šim objektam nav ' + (am === 'set' ? 'sētnieka' : 'uzkopēja') + ' ar tālruni');
       return out({ ok: true, nosutits: await sendSms(env, to, 'Atgādinājums: ' + o.adrese + '\nNeesi atzīmējies darbā.\nSākot darbu sūti:\nSTART ' + o.kods, o.anorm) }); }
-    if (a === 'labot') { need(3);
+    if (a === 'gaida') { need(2); let L = (await kv(db, 'dl:pending')) || [];
+      if (W < 3) { const m = await myPhones(db, me.name); L = L.filter(p => m.phones.indexOf(p.phone) !== -1 || m.objekti.indexOf(p.anorm) !== -1); }
+      const O = await objs(db); return out({ ok: true, gaida: L.map(p => Object.assign({ adrese: (O.find(o => o.anorm === p.anorm) || {}).adrese || '' }, p)) }); }
+    if (a === 'apstiprinat') { need(2); const L = (await kv(db, 'dl:pending')) || [], p = L.find(x => x.id === b.id); if (!p) throw new Error('Jau apstrādāts');
+      if (W < 3) { const m = await myPhones(db, me.name); if (m.phones.indexOf(p.phone) === -1 && m.objekti.indexOf(p.anorm) === -1) throw new Error('Šis darbinieks ir cita vadītāja'); }
+      if (b.ok && p.tips === 'labot') {
+        if (p.aizvert) { const m = await db.prepare("SELECT * FROM dl_mark WHERE id = ? AND veids = 'sak'").bind(p.aizvert).first(); if (m && mins(p.beidz) >= mins(m.laiks)) await addMark(db, { datums: m.datums, vards: m.vards, veids: 'beidz', laiks: p.beidz, anorm: m.anorm, amats: m.amats, phone: m.phone, avots: 'sms-labojums', kas: me.name }); }
+        else if (p.sak && p.beidz && mins(p.beidz) > mins(p.sak)) { const mm = { datums: p.datums, vards: p.vards, anorm: p.anorm, amats: p.amats, phone: p.phone, avots: 'sms-labojums', kas: me.name };
+          await addMark(db, Object.assign({}, mm, { veids: 'sak', laiks: p.sak })); await addMark(db, Object.assign({}, mm, { veids: 'beidz', laiks: p.beidz })); }
+      }
+      await kvSet(db, 'dl:pending', L.filter(x => x.id !== p.id)).run();
+      return out({ ok: true }); }
+    if (a === 'labot') { if (W < 3) {   // vadītājs labo savos objektos (C2)
+        need(2); const mo = (await myPhones(db, me.name)).objekti, an = b.aizvert || b.id ? ((await db.prepare('SELECT anorm FROM dl_mark WHERE id = ?').bind(b.aizvert || b.id).first()) || {}).anorm : b.anorm;
+        if (mo.indexOf(an) === -1) throw new Error('Labot var savos objektos — šis ir cita vadītāja');
+      }
       if (b.aizvert) { if (!okT(b.laiks)) throw new Error('Laiks HH:MM'); const m = await db.prepare("SELECT * FROM dl_mark WHERE id = ? AND veids = 'sak'").bind(b.aizvert).first(); if (!m) throw new Error('Atzīme nav atrasta');
         if (mins(b.laiks) < mins(m.laiks)) throw new Error('Beigas nevar būt pirms sākuma ' + m.laiks);
         await addMark(db, { datums: m.datums, vards: m.vards, veids: 'beidz', laiks: b.laiks, anorm: m.anorm, amats: m.amats, phone: m.phone, avots: 'labots', kas: me.name }); return out({ ok: true }); }
