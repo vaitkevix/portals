@@ -248,6 +248,7 @@ export async function api(request, env, X, fetchWx) {
       if (typeof c.photoBefore === 'boolean') n.photoBefore = c.photoBefore;
       ['laiksNo', 'laiksLidz'].forEach(k => { if (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(c[k] || ''))) n[k] = c[k]; });
       if (typeof c.zina === 'string' && c.zina.trim()) n.zina = c.zina.trim().slice(0, 800);
+      if (typeof c.zinaRu === 'string' && c.zinaRu.trim()) n.zinaRu = c.zinaRu.trim().slice(0, 800);   // E9: paziņojums krieviski
       num('rainMm', 0, 99); num('wetDays', 0, 3); num('maxQty', 1, 1e6); num('interval', 1, MAX_INT); num('frostC', -50, 20); num('noticeDays', 0, 30);
       ['wetDays', 'interval', 'noticeDays'].forEach(k => n[k] = Math.round(n[k]));
       if (typeof c.photoReq === 'boolean') n.photoReq = c.photoReq;
