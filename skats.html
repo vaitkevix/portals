@@ -122,6 +122,7 @@ input,textarea{font:inherit;color:inherit}
   if (!LANGS[lang]) { try { lang = localStorage.getItem('sh_lang') || ''; } catch (e) {} } if (!LANGS[lang]) lang = 'lv';
   var T = {
     lv: { title: 'Izpildītie darbi', tDone: 'Izpildīts', tPlan: 'Plānots', tReq: 'Pieteikt darbu', tInv: 'Rēķini', all: 'Visi objekti', print: 'Drukāt', prev: 'Iepriekšējais mēnesis', next: 'Nākamais mēnesis',
+      parb: 'pārbaudīts', parbT: 'Darba kvalitāti pārbaudījis SELECTUM HOME vadītājs',
       sub: function (n) { return n + (n === 1 ? ' objekts' : ' objekti'); }, noneObj: 'Šim objektam šajā mēnesī nav izpildītu darbu.', none: 'Jūsu objektos šajā mēnesī nav izpildītu darbu.', once: 'reize', many: 'reizes',
       badLink: 'Saite nav pilnīga. Atveriet to vēlreiz no e-pasta vai ziņas.', net: 'Nav interneta savienojuma — mēģiniet vēlreiz', load: 'Neizdevās ielādēt',
       planH: 'Plānotie darbi nākamajās 30 dienās', planNone: 'Nākamajās 30 dienās plānotu darbu nav.', from: 'no', to: 'līdz', carOut: 'Izbrauciet ar auto līdz', photo: 'Atvērt bildi', close: 'Aizvērt',
@@ -130,6 +131,7 @@ input,textarea{font:inherit;color:inherit}
       iPin: 'Rēķinu PIN', iPinH: 'PIN jums iedeva SELECTUM HOME (4–6 cipari)', iShow: 'Rādīt rēķinus', iNr: 'Nr.', iMon: 'Mēnesis', iSum: 'Summa ar PVN', iSt: 'Statuss', iDue: 'Termiņš', iLeft: 'Atlikums', iOpen: 'Skatīt', iNone: 'Rēķinu vēl nav.',
       st: { 'izrakstīts': 'izrakstīts', 'daļēji': 'daļēji apmaksāts', 'apmaksāts': 'apmaksāts' }, late: 'kavēts', invT: 'Rēķins', invDate: 'Datums', invPayer: 'Maksātājs', invSeller: 'Piegādātājs', invSvc: 'Pakalpojums', invQty: 'Daudzums', invPrice: 'Cena', invTotal: 'Summa', invNet: 'Kopā bez PVN', invVat: 'PVN 21%', invGross: 'Kopā apmaksai', invPay: 'Apmaksāt līdz', invBank: 'Banka', invReg: 'Reģ. nr.', invVatNr: 'PVN nr.', invContract: 'Līgums', invNote: 'Rēķins sagatavots elektroniski un derīgs bez paraksta.' },
     ru: { title: 'Выполненные работы', tDone: 'Выполнено', tPlan: 'Запланировано', tReq: 'Заказать работу', tInv: 'Счета', all: 'Все объекты', print: 'Печать', prev: 'Предыдущий месяц', next: 'Следующий месяц',
+      parb: 'проверено', parbT: 'Качество работы проверено руководителем SELECTUM HOME',
       sub: function (n) { return 'Объектов: ' + n; }, noneObj: 'По этому объекту в этом месяце работ нет.', none: 'На ваших объектах в этом месяце выполненных работ нет.', once: 'раз', many: 'раз',
       badLink: 'Ссылка неполная. Откройте её снова из письма или сообщения.', net: 'Нет связи с интернетом — попробуйте ещё раз', load: 'Не удалось загрузить',
       planH: 'Запланированные работы на 30 дней', planNone: 'В ближайшие 30 дней работ не запланировано.', from: 'с', to: 'до', carOut: 'Уберите автомобиль до', photo: 'Открыть фото', close: 'Закрыть',
@@ -138,6 +140,7 @@ input,textarea{font:inherit;color:inherit}
       iPin: 'PIN для счетов', iPinH: 'PIN выдал SELECTUM HOME (4–6 цифр)', iShow: 'Показать счета', iNr: '№', iMon: 'Месяц', iSum: 'Сумма с НДС', iSt: 'Статус', iDue: 'Срок', iLeft: 'Остаток', iOpen: 'Открыть', iNone: 'Счетов пока нет.',
       st: { 'izrakstīts': 'выставлен', 'daļēji': 'оплачен частично', 'apmaksāts': 'оплачен' }, late: 'просрочен', invT: 'Счёт', invDate: 'Дата', invPayer: 'Плательщик', invSeller: 'Поставщик', invSvc: 'Услуга', invQty: 'Кол-во', invPrice: 'Цена', invTotal: 'Сумма', invNet: 'Итого без НДС', invVat: 'НДС 21%', invGross: 'К оплате', invPay: 'Оплатить до', invBank: 'Банк', invReg: 'Рег. №', invVatNr: 'НДС №', invContract: 'Договор', invNote: 'Счёт подготовлен электронно и действителен без подписи.' },
     en: { title: 'Completed works', tDone: 'Completed', tPlan: 'Planned', tReq: 'Request work', tInv: 'Invoices', all: 'All properties', print: 'Print', prev: 'Previous month', next: 'Next month',
+      parb: 'checked', parbT: 'Work quality checked by a SELECTUM HOME manager',
       sub: function (n) { return n + (n === 1 ? ' property' : ' properties'); }, noneObj: 'No completed works for this property this month.', none: 'No completed works at your properties this month.', once: 'time', many: 'times',
       badLink: 'The link is incomplete. Open it again from the e-mail or message.', net: 'No internet connection — please try again', load: 'Could not load',
       planH: 'Planned works in the next 30 days', planNone: 'No works planned in the next 30 days.', from: 'from', to: 'until', carOut: 'Please move your car out by', photo: 'Open photo', close: 'Close',
@@ -185,7 +188,7 @@ input,textarea{font:inherit;color:inherit}
     var days = {}; rows.slice().sort(function (a, b) { return b.datums.localeCompare(a.datums) || a.adrese.localeCompare(b.adrese); }).forEach(function (r) { (days[r.datums] = days[r.datums] || []).push(r); });
     $('out').innerHTML = '<div class="sum">' + Object.keys(sum).map(function (a) { var x = sum[a]; return '<div class="sc c-' + esc(a) + '"><b>' + esc(sv(a)) + '</b><span class="n">' + x.reizes + '</span><small>' + (x.reizes === 1 ? L().once : L().many) + (x.daudz && x.unit !== 'darbi' ? ' · ' + num(x.daudz) + ' ' + esc(un(a, x.unit)) : '') + '</small></div>'; }).join('') + '</div>' +
       Object.keys(days).map(function (d) { return '<section class="day"><h2>' + esc(dayName(d)) + '</h2>' + days[d].map(function (r) {
-        return '<div class="it"><div class="t"><span class="ch c-' + esc(r.app) + '">' + esc(sv(r.app)) + '</span><span class="a">' + esc(r.adrese) + '</span>' + (r.daudz && r.unit !== 'darbi' ? '<span class="q">' + num(r.daudz) + ' ' + esc(un(r.app, r.unit)) + '</span>' : '') + '</div>' +
+        return '<div class="it"><div class="t"><span class="ch c-' + esc(r.app) + '">' + esc(sv(r.app)) + '</span><span class="a">' + esc(r.adrese) + '</span>' + (r.daudz && r.unit !== 'darbi' ? '<span class="q">' + num(r.daudz) + ' ' + esc(un(r.app, r.unit)) + '</span>' : '') + (r.parb ? '<span class="ch" style="background:var(--lime)" title="' + esc(L().parbT || '') + '">✓ ' + esc(L().parb || 'pārbaudīts') + '</span>' : '') + '</div>' +
           (r.piez ? '<p class="p">' + esc(r.piez) + '</p>' : '') + photos(r.foto) + '</div>';
       }).join('') + '</section>'; }).join('');
   }

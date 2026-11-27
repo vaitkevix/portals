@@ -5,6 +5,7 @@ import { SMS_F, smsCfg } from './darbalaiks.js';
 import { dashboard } from './dashboard.js';
 import * as rits from './rits.js';
 import * as mailbox from './mailbox.js';
+import * as qc from './qc.js';
 import { viewLink, viewTokens } from './view.js';
 import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo, invoiceIssue, invoices, invoiceSet, priceChange, priceIndex, ctUpload, ctGet } from './klienti.js';
 import { notify } from './webpush.js';
@@ -253,6 +254,9 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'week' || a === 'weekMove') { if (me.company) throw new Error('Nav pieejams');   // C9 «Mana nedēļa»
       if (a === 'weekMove') await weekMove(env.DB, me, b); return pj(Object.assign({ ok: true }, await week(env.DB, me, String(b.from || '')))); }
     if (a === 'ritsOff') { if (me.company) throw new Error('Nav pieejams'); return pj(Object.assign({ ok: true }, await rits.setOff(env.DB, me.name, !!b.off))); }   // I1: vadītājs izslēdz sev
+    if (a === 'qcList' || a === 'qcSet') { if (me.company) throw new Error('Nav pieejams');   // I6 kvalitātes pārbaude (vadītājs — savi objekti, admins — visi)
+      const adm = me.perms.portal === 'admin';
+      return pj(Object.assign({ ok: true }, a === 'qcList' ? await qc.list(env, me, adm, b.datums, ctx) : { row: await qc.set(env, me, adm, b) })); }
     if (a === 'ritsCard') { if (me.company) throw new Error('Nav pieejams'); return pj({ ok: true, rits: await rits.card(env, me.name) }); }
     if (me.perms.portal !== 'admin') return pj({ ok: false, error: 'Tikai administratoram' });
     if (/^mail(Drafts|Allow|Ai|Reject|Approve)$/.test(a)) return pj(Object.assign({ ok: true }, await mailbox.adminApi(env, ctx, a, b, me.name)));   // I5

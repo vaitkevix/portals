@@ -1,6 +1,7 @@
 /* SH | Skats klientam / pārvaldniekam: saite vaitkevix.cloud/sh/skats.html#<atslēga> — tikai lasīšana, tikai šī klienta objekti,
  * izpildītie darbi pa mēnešiem ar bildēm. Bez cenām un darbinieku vārdiem. Atslēgu izveido/atsauc portāla admins (Klienti).
  * kv view:<atslēga> = klienta id;  kv viewTok:<klienta id> = atslēga.   © VAITKEVIX, SIA */
+import { okSet as qcOk } from './qc.js';
 import { report, UNITS, firma } from './klienti.js';
 import { today, addDays, nowStr, anorm, akey, splitAddr } from './util.js';
 import * as F from './foto.js';
@@ -28,14 +29,14 @@ export async function viewApi(request, env, url) {
   if (ym < min) ym = min;
   const cache = typeof caches !== 'undefined' ? caches.default : null, ck = new Request('https://cache.sh/view/' + k + '/' + ym);   // 5 min kešs — publiska saite, nedauzām D1
   const hit = cache && await cache.match(ck); if (hit) return hit;
-  const R = await report(env.DB, c.id, ym);
+  const R = await report(env.DB, c.id, ym), QOK = await qcOk(env.DB, ym);   // I6 «pārbaudīts»
   const objekti = ((await env.DB.prepare('SELECT o.adrese FROM client_obj c JOIN objects o ON o.anorm = c.anorm WHERE c.client = ? ORDER BY o.adrese').bind(c.id).all()).results || []).map(r => r.adrese);
   // rinda → klienta objekts (filtram): precīzi, pēc akey, vai apvienotā objekta māja
   const byA = {}, byK = {}; objekti.forEach(a => { byA[anorm(a)] = a; const kk = akey(a); if (kk && !byK[kk]) byK[kk] = a; splitAddr(a).forEach(x => { const pk = akey(x.adrese); if (pk && !byK[pk]) byK[pk] = a; }); });
   const objOf = (adr) => byA[anorm(adr)] || byK[akey(adr)] || adr;
   const res = out({
     ok: true, client: c.name, ym, min, max: cur, objekti, pin: !!c.view_pin, reqApps: REQ_APPS,
-    rows: R.rows.filter(r => r.app !== 'ligums').map(r => ({ app: r.app, name: UNITS[r.app].name, unit: UNITS[r.app].unit, datums: r.datums, adrese: r.adrese, obj: objOf(r.adrese), daudz: r.daudz, piez: r.pub || '', foto: ids(r.foto) })),
+    rows: R.rows.filter(r => r.app !== 'ligums').map(r => ({ app: r.app, name: UNITS[r.app].name, unit: UNITS[r.app].unit, datums: r.datums, adrese: r.adrese, obj: objOf(r.adrese), daudz: r.daudz, piez: r.pub || '', foto: ids(r.foto), parb: QOK.has(r.app + ':' + r.vid) })),
     sum: Object.values(R.sum.filter(s => s.app !== 'ligums').reduce((m, s) => { const x = m[s.app] = m[s.app] || { app: s.app, name: s.name, unit: s.unit, reizes: 0, daudz: 0 }; x.reizes += s.reizes; x.daudz = Math.round((x.daudz + s.daudz) * 100) / 100; return m; }, {})),
   });
   const cr = res.clone(), h = new Headers(cr.headers); h.set('Cache-Control', 'max-age=300');
