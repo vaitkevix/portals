@@ -102,9 +102,9 @@ export async function saveTask(env, d) {
   const id = /^TASK-\d{10,}$/.test(String(d.id || '')) ? String(d.id) : 'TASK-' + Date.now();
   if (await byId(db, id)) return withTasks(env, { status: 'success', id });
   const photo = await savePhotos(env, ph, id, 'Pirms'), now = stamp();
-  const mx = await db.prepare('SELECT MAX(row) m FROM izv_task').first();
-  await db.prepare('INSERT INTO izv_task (id, row, datums, adrese, pasutitajs, maisi, komentars, foto_pirms, statuss, steidzami, termins, vesture) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-    .bind(id, ((mx && mx.m) || 1) + 1, now, String(d.address || '').trim(), String(d.requester || ''), String(d.bagsEst || ''), String(d.comment || ''), photo, ST_PENDING,
+  // rindas nr. vienā vaicājumā (ne MAX + INSERT atsevišķi — divi vienlaicīgi pieteikumi sadurtos uz UNIQUE)
+  await db.prepare('INSERT INTO izv_task (id, row, datums, adrese, pasutitajs, maisi, komentars, foto_pirms, statuss, steidzami, termins, vesture) SELECT ?, COALESCE(MAX(row), 1) + 1, ?,?,?,?,?,?,?,?,?,? FROM izv_task')
+    .bind(id, now, String(d.address || '').trim(), String(d.requester || ''), String(d.bagsEst || ''), String(d.comment || ''), photo, ST_PENDING,
       d.urgent ? 1 : 0, dueDate(d.deadline, now), now + ' · Izveidots' + (d.requester ? ' (' + d.requester + ')' : '')).run();
   return withTasks(env, { status: 'success', id });
 }

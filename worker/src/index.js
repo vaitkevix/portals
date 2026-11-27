@@ -141,6 +141,7 @@ async function handleFetch(request, env, ctx) {
     try { req = JSON.parse(await request.text()); } catch (e) { return json({ ok: false, error: 'Nederīgs pieprasījums' }); }
     const X = new Ctx(env, ctx);
     try {
+      if (/^(import|syncConfig|export)$/.test(req.action) && await noGoogle(env.DB)) return new Response(JSON.stringify({ ok: false, error: 'Google tilts izslēgts' }), { status: 410, headers: Object.assign({ 'Content-Type': 'application/json;charset=utf-8' }, CORS) });   // vecie GAS galapunkti (BRIDGE_KEY) — tikai, kamēr Google ieslēgts
       if (req.action === 'import') return json(Object.assign({ ok: true }, await importAll(X, req)));
       if (req.action === 'syncConfig') { checkKey(env, req.key); return json(Object.assign({ ok: true }, await syncConfig(X))); }
       if (req.action === 'export') return json(Object.assign({ ok: true }, await exportTable(X, req)));
@@ -638,6 +639,12 @@ async function site(request, url, base) {
   const h = new Headers(r.headers);
   h.delete('set-cookie');
   if (/\.(html|js|json)$|\/$/.test(rest)) h.set('Cache-Control', 'no-cache');
+  // pārlūkam jau ir šī versija → 304 bez satura (atkārtota atvēršana bez visa HTML lejupielādes)
+  const inm = request.headers.get('If-None-Match'), ims = request.headers.get('If-Modified-Since'), et = r.headers.get('etag'), lm = r.headers.get('last-modified');
+  if (r.status === 200 && ((inm && et && inm.split(/\s*,\s*/).some(x => x.replace(/^W\//, '') === et.replace(/^W\//, ''))) || (!inm && ims && lm && ims === lm))) {
+    const h3 = new Headers(); ['etag', 'last-modified', 'cache-control', 'vary'].forEach(n => { const v = h.get(n); if (v) h3.set(n, v); }); r.body && r.body.cancel();
+    return new Response(null, { status: 304, headers: h3 });
+  }
   return new Response(r.body, { status: r.status, headers: h });
 }
 
@@ -939,6 +946,7 @@ const ACTIONS = {
 
   importObjects: async (X, u, r) => {
     requireAdmin(u);
+    if (await noGoogle(X.db)) throw new Error('Objektus pievieno Mājas lietā (portāls → Mājas lieta → Jauns objekts)');
     const cur = await X.all('SELECT anorm, adrese, vaditajs, grupa, piekluve FROM objects');
     const idx = {}; cur.forEach(o => idx[o.anorm] = o);
     let added = 0, updated = 0; const st = [], rows = [], canon = await personCanon(X.db);

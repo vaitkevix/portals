@@ -58,9 +58,8 @@ export async function saveTask(env, ctx, gas, d) {
   const id = /^KM-\d{10,}$/.test(String(d.id || '')) ? String(d.id) : 'KM-' + Date.now();
   if (await db.prepare('SELECT 1 FROM kais_task WHERE id = ?').bind(id).first()) return { status: 'success', id };
   const photo = d.photo ? await savePhoto(env, gas, d.photo, id + '_Pieteikums.jpg') : '';
-  const mx = await db.prepare('SELECT MAX(row) m FROM kais_task').first();
-  await db.prepare('INSERT INTO kais_task (id, row, datums, adrese, pasutitajs, materials, maisi, komentars, foto_pirms, statuss, sheet) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)')
-    .bind(id, ((mx && mx.m) || 1) + 1, nowLV(), String(d.address || '').trim(), String(d.requester || ''), String(d.material || ''), num(d.bagsEst), String(d.comment || ''), photo, PENDING).run();
+  await db.prepare('INSERT INTO kais_task (id, row, datums, adrese, pasutitajs, materials, maisi, komentars, foto_pirms, statuss, sheet) SELECT ?, COALESCE(MAX(row), 1) + 1, ?, ?, ?, ?, ?, ?, ?, ?, 0 FROM kais_task')
+    .bind(id, nowLV(), String(d.address || '').trim(), String(d.requester || ''), String(d.material || ''), num(d.bagsEst), String(d.comment || ''), photo, PENDING).run();
   await cache(db);
   ctx.waitUntil(pushSheet(env).catch(e => console.error('kais sheet', e)));
   return { status: 'success', id };
