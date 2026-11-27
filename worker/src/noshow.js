@@ -32,7 +32,7 @@ export async function notStarted(db, d, cutoff, only) {
 /** Cron (ik 5 min, darbalaiks): vienreiz dienā pēc dl:cfg.noshow; tikai, ja SMS_F «neieradas» ieslēgts. force — testam/pogai */
 export async function noShowCron(env, force) {
   const db = env.DB, d = today(), t = nowStr().slice(11, 16);
-  const F = (await kv(db, 'sms:cfg')) || {}; if (F.neieradas !== true && !force) return { skip: 'izslēgts' };
+  const F = (await kv(db, 'sms:cfg')) || {}; if (F.neieradas !== true && !force) return { skip: 'izslēgts' };   // SMS_F «neieradas» noklusējums = false
   if (!isWorkday(d) && !force) return { skip: 'brīvdiena' };
   const C = Object.assign({ noshow: '08:00' }, (await kv(db, 'dl:cfg')) || {}), cut = /^\d\d:\d\d$/.test(C.noshow) ? C.noshow : '08:00';
   if (!force && (t < cut || mins(t) > mins(cut) + 180)) return { skip: 'laiks' };

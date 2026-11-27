@@ -11,6 +11,7 @@ import { notify, managers } from './webpush.js';
 import { absMap, absSave, vkey as absKey, ABS_T } from './prombutnes.js';
 import { normas } from './objinfo.js';
 import { audit } from './audit.js';
+import { notStarted } from './noshow.js';
 
 export const KEY = 'dl';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
@@ -26,7 +27,7 @@ async function roleAt(db, W, o, S) {
   return r[0];
 }
 const SMS_API = 'https://api.sms-gate.app/3rdparty/v1';
-const DEF_CFG = { rits: '07:30', vakars: '20:00', atgadinat: true, brivdienas: false, numurs: '' };   // numurs — SMS telefona numurs uzlīmēm
+const DEF_CFG = { rits: '07:30', vakars: '20:00', atgadinat: true, brivdienas: false, numurs: '', noshow: '08:00' };   // noshow — «Neieradās» pārbaudes laiks (noshow.js)   // numurs — SMS telefona numurs uzlīmēm
 async function all(db, sql, ...a) { return (await db.prepare(sql).bind(...a).all()).results || []; }
 const hm = () => nowStr().slice(11, 16);
 const mins = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : null; };
@@ -57,6 +58,8 @@ export const SMS_F = [
   ['aizv', 'Aizvietošanas plāns brigādei', 'Publicējot plānu — SMS brigādes cilvēkiem ar adresēm un START kodiem.', true],
   ['aizv_ja', 'Atbilde JĀ / NĒ uz aizvietošanas plānu', 'Brigādes cilvēks atbild JA (apstiprina) vai NE — vadītājs saņem push «X nevar».', true],
   ['sniegs', 'Sniega izsaukums ārējiem traktoristiem (SIA)', 'SMS uz uzņēmuma tālruni, kad izsaukts sniegs.', true],
+  ['neieradas', 'Neieradās → aizvietošana', 'Ja darbinieks ar piesaisti līdz iestatītajam laikam (Darba laiks → Iestatījumi, noklusējums 08:00) nav START — vadītājam push un aizvietošanas melnraksts šodienai (publicē tikai vadītājs). Prombūtnē un brīvdienās neziņo.', false],
+  ['boj', 'BOJ — ziņot par bojājumu', 'Darbinieks sūta «BOJ <kods> <teksts>» → Mājas lietā iedzīvotāju/darbinieku pieteikums, push vadītājam.', false],
   ['sia_darbs', 'Jauns darbs izvedējam / kurjeram (SIA)', 'Jauns izvešanas vai kaisāmmateriāla pieteikums — SMS uz uzņēmuma tālruni (Uzņēmumi → Tālrunis).', true]];
 export async function smsCfg(db) { const c = (await kv(db, 'sms:cfg')) || {}; const o = {}; SMS_F.forEach(([k, , , d]) => o[k] = typeof c[k] === 'boolean' ? c[k] : d); return o; }
 export async function smsOn(db, k) { return (await smsCfg(db))[k] !== false; }
@@ -625,8 +628,9 @@ export async function api(request, env, X) {
       if (b.preview) return out({ ok: true, text: await welcomeText(db, p) });
       return out(Object.assign({ ok: true }, await sendWelcome(env, p, true))); }
     if (a === 'saveCfg') { need(3); const c = Object.assign({}, await cfgOf(db));
-      if (okT(b.rits)) c.rits = b.rits; if (okT(b.vakars)) c.vakars = b.vakars; if (typeof b.atgadinat === 'boolean') c.atgadinat = b.atgadinat; if (typeof b.brivdienas === 'boolean') c.brivdienas = b.brivdienas; if (b.numurs != null) c.numurs = normPhone(b.numurs) || '';
+      if (okT(b.rits)) c.rits = b.rits; if (okT(b.vakars)) c.vakars = b.vakars; if (okT(b.noshow)) c.noshow = b.noshow; if (typeof b.atgadinat === 'boolean') c.atgadinat = b.atgadinat; if (typeof b.brivdienas === 'boolean') c.brivdienas = b.brivdienas; if (b.numurs != null) c.numurs = normPhone(b.numurs) || '';
       await kvSet(db, 'dl:cfg', c).run(); return out({ ok: true, cfg: c }); }
+    if (a === 'noshowPreview') { need(2); const C = await cfgOf(db), d = today(); return out({ ok: true, laiks: C.noshow, on: (await smsCfg(db)).neieradas, datums: d, list: await notStarted(db, d, C.noshow || '08:00'), log: await kv(db, 'noshow:log') }); }   // I2: kas šodien nav atnācis (bez sūtīšanas)
     if (a === 'registerHook') { need(3);
       if (!env.SMS_USER || !env.SMS_PASS || !env.DL_HOOK_KEY) throw new Error('Worker noslēpumi SMS_USER, SMS_PASS, DL_HOOK_KEY nav iestatīti');
       const u = new URL(request.url), i = u.pathname.indexOf('/dl'), base = u.origin + (i > 0 ? u.pathname.slice(0, i) : ''), res = [];   // piem. https://vaitkevix.cloud/sh/api
