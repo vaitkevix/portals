@@ -29,6 +29,7 @@ import * as mail from './mail.js';
 import * as parvmail from './parvmail.js';
 import * as rits from './rits.js';
 import * as noshow from './noshow.js';
+import * as mlreq from './mlreq.js';
 import { chkList, chkSave, chkTake } from './checklist.js';
 import { threadCounts, threadApi } from './thread.js';
 import * as sezona from './sezona.js';
@@ -105,7 +106,8 @@ export default {
     J('mail', () => mail.selfTest(env));
     J('parvMail', () => parvmail.cron(env));   // C8: rītdienas darbi pārvaldniekiem
     J('rits', () => rits.cron(env));
-    J('noshow', () => noshow.noShowCron(env));   // I2: neieradās → aizvietošanas melnraksts   // I1: rīta ziņa vadītājiem 07:15
+    J('noshow', () => noshow.noShowCron(env));
+    J('mlreqClean', () => mlreq.cleanup(env.DB));   // I2: neieradās → aizvietošanas melnraksts   // I1: rīta ziņa vadītājiem 07:15
     J('izv', () => izvN.maybeSwitch(env));
     J('izvReg', () => izvN.regCron(env));
     J('kaisReg', () => kais.regCron(env));
@@ -138,7 +140,7 @@ async function handleFetch(request, env, ctx) {
     if (url.pathname === '/portal' || url.pathname.endsWith('/portal')) { const X = new Ctx(env, ctx); return portal(request, env, ctx, { saved: (list) => peopleSaved(X, list), admin: (a, b, me) => masterAdmin(X, a, b, me), lists: async () => publicLists(await master(env.DB)) }); }
     if (url.pathname === '/img' || url.pathname.endsWith('/img')) return img(url, ctx, env);
     if (url.pathname === '/view') return viewApi(request, env, url);   // skats klientam (sh/skats.html)
-    if (url.pathname === '/maja') return majaApi(request, env, url);   // mājas darbi iedzīvotājiem (sh/maja.html)
+    if (url.pathname === '/maja') return majaApi(request, env, url, ctx);   // mājas darbi iedzīvotājiem (sh/maja.html)
     // vaitkevix.cloud/shaizvietosana, /shizvesana → lietotnes (GitHub Pages); …/api → šis API
     for (const base in SITES) {
       if (url.pathname === base) return Response.redirect(url.origin + base + '/' + url.search, 301);

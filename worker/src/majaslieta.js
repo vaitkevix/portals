@@ -10,6 +10,7 @@ import { aiCall } from './ai.js';
 import { today, nowStr, anorm, akey, splitAddr, CORS, out, cleanAddr, uid } from './util.js';
 import { audit } from './audit.js';
 import { majaAdmin } from './maja.js';
+import * as mlreq from './mlreq.js';
 
 export const KEY = 'ml', NAME = 'Mājas lieta';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
@@ -245,7 +246,8 @@ export async function api(request, env, X) {
       const objects = await all(db, 'SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, CASE WHEN o.piekluve != \'\' THEN 1 ELSE 0 END pk, k.kad_nr, k.atjaunots kad_t, (SELECT COUNT(*) FROM ml_doc d WHERE d.anorm = o.anorm AND d.dzests = 0) docs, (SELECT MAX(CAST(json_extract(b.value, \'$.virszemes_stavi\') AS REAL)) FROM json_each(CASE WHEN json_valid(k.dati) THEN k.dati ELSE \'{}\' END, \'$.buves\') b) st, (SELECT MAX(CAST(json_extract(b.value, \'$.pazemes_stavi\') AS REAL)) FROM json_each(CASE WHEN json_valid(k.dati) THEN k.dati ELSE \'{}\' END, \'$.buves\') b) pz, (SELECT SUM(CAST(json_extract(b.value, \'$.dzivokli\') AS REAL)) FROM json_each(CASE WHEN json_valid(k.dati) THEN k.dati ELSE \'{}\' END, \'$.buves\') b) dz, (SELECT SUM(CAST(json_extract(b.value, \'$.kopplatiba_m2\') AS REAL)) FROM json_each(CASE WHEN json_valid(k.dati) THEN k.dati ELSE \'{}\' END, \'$.buves\') b) m2, (SELECT MIN(CAST(json_extract(b.value, \'$.ekspluatacijas_gads\') AS REAL)) FROM json_each(CASE WHEN json_valid(k.dati) THEN k.dati ELSE \'{}\' END, \'$.buves\') b WHERE CAST(json_extract(b.value, \'$.ekspluatacijas_gads\') AS INTEGER) > 1700) gads FROM objects o LEFT JOIN ml_kad k ON k.anorm = o.anorm ORDER BY o.ord, o.adrese');
       if ((ROLE_W[role] || 0) < 2) objects.forEach(o => { delete o.pk; });
       const parts = partsOf(objects, await manualParts(db));
-      return out({ ok: true, me: { name: me.name, role }, objects, kinds: DOC_KINDS, parts, svc: await objinfo.svcMap(db).catch(() => ({})), names: Object.fromEntries(Object.keys(objinfo.SVC).map(x => [x, objinfo.SVC[x][2]])) });
+      const reqN = {}; (await all(db, "SELECT anorm, COUNT(*) n FROM ml_req WHERE statuss = 'jauns' GROUP BY anorm").catch(() => [])).forEach(r => reqN[r.anorm] = r.n);
+      return out({ ok: true, me: { name: me.name, role }, reqN, objects, kinds: DOC_KINDS, parts, svc: await objinfo.svcMap(db).catch(() => ({})), names: Object.fromEntries(Object.keys(objinfo.SVC).map(x => [x, objinfo.SVC[x][2]])) });
     }
     if (a === 'obj') {
       if (!k) throw new Error('Nav objekta');
@@ -280,6 +282,22 @@ export async function api(request, env, X) {
       const changes = W >= 2 ? await all(db, "SELECT laiks, kas, modulis, objekts, lauks, bija, kluva FROM audit WHERE objekts = ? OR objekts = ? OR objekts LIKE ? ORDER BY id DESC LIMIT 300", o.adrese, k, o.adrese + ' ·%').catch(() => []) : [];   // G3
       return out({ ok: true, iek, apk, skait, changes, iekVeidi: IEK_VEIDI, skVeidi: SK_VEIDI, obj: o, kad: kad || null, docs, hist: await history(db, k, o.adrese, pre), parts, manual: !!(man[k] && man[k] !== 'auto'), histParts, contacts, comm: W >= 2 ? comm : [], ed, maja });
     }
+    /* ---------- I3/I4 pieteikumi par māju (iedzīvotāji, darbinieki) — vadītājs savos objektos, admins visur; kontaktu redz vadītājs+ ---------- */
+    if (/^req[A-Z]/.test(a)) {
+      const W = ROLE_W[role] || 0;
+      if (a === 'reqList') {   // k — viens objekts; bez k — visi atvērtie (vadītājam savējie)
+        let mine = null; if (!k && W < 3) mine = new Set((await all(db, 'SELECT anorm, vaditajs FROM objects')).filter(o => mineObj(o.vaditajs, me.name)).map(o => o.anorm));
+        return out({ ok: true, list: await mlreq.list(db, k, mine, W >= 2), kat: mlreq.KAT, st: mlreq.ST, apps: mlreq.JOB_APPS, ai: (await db.prepare("SELECT v FROM kv WHERE k = 'mlreq:ai'").first().catch(() => null) || {}).v === '1' });
+      }
+      need('vaditajs');
+      const r = await db.prepare('SELECT r.anorm, o.vaditajs FROM ml_req r LEFT JOIN objects o ON o.anorm = r.anorm WHERE r.id = ?').bind(str(b.id, 20)).first();
+      if (!r) throw new Error('Pieteikums nav atrasts');
+      if (W < 3 && !mineObj(r.vaditajs, me.name)) throw new Error('Mainīt var savos objektos — šis ir cita vadītāja objekts');
+      if (a === 'reqSet') { await mlreq.setStatus(env, me.name, b.id, b.statuss, b.atbilde); return out({ ok: true, list: await mlreq.list(db, r.anorm, null, true) }); }
+      if (a === 'reqJob') { const j = await mlreq.makeJob(env, me.name, b.id, String(b.app || ''), b.datums, b.tips); return out({ ok: true, job: j, list: await mlreq.list(db, r.anorm, null, true) }); }
+      throw new Error('Nezināma darbība');
+    }
+    if (a === 'mlreqAi') { need('admin'); await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('mlreq:ai', ?)").bind(b.on ? '1' : '0').run(); await audit(db, me.name, NAME, 'Pieteikumi', ['AI kategorija', '', b.on ? 'ieslēgta' : 'izslēgta']); return out({ ok: true, ai: !!b.on }); }
     /* ---------- F-ml: iekārtas un apkopes, skaitītāju rādījumi — ml admin visur, vadītājs savos objektos ---------- */
     if (/^(iek|sk)[A-Z]/.test(a)) {
       need('vaditajs');

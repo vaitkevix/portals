@@ -4,16 +4,20 @@
 import { today, addDays, nowStr, anorm } from './util.js';
 import { planOf } from './view.js';
 import { audit } from './audit.js';
+import * as mlreq from './mlreq.js';
 
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
 const out = (o, s) => new Response(JSON.stringify(o), { status: s || 200, headers: Object.assign({ 'Content-Type': 'application/json;charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' }, CORS) });
 const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? r.v : null; };
 const TOK = /^[a-f0-9]{24}$/;
 const isoD = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '';
 
 /** GET /maja?k=<atslēga> */
-export async function majaApi(request, env, url) {
+export async function majaApi(request, env, url, ctx) {
+  if (request.method === 'OPTIONS') return new Response(null, { headers: Object.assign({}, CORS, { 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' }) });
+  if (request.method === 'POST') return mlreq.publicPost(request, env, ctx, out);   // I3: «Ziņot par problēmu»
   if (request.method !== 'GET') return out({ ok: false, error: 'Tikai GET' }, 405);
+  if (url.searchParams.get('r')) return mlreq.publicStatus(env, url.searchParams.get('r'), out);   // I3: pieteikuma statuss
   const k = url.searchParams.get('k') || '';
   if (!TOK.test(k)) return out({ ok: false, error: 'Nederīga saite' }, 404);
   const cache = typeof caches !== 'undefined' ? caches.default : null, ck = new Request('https://cache.sh/maja/' + k);
@@ -24,7 +28,7 @@ export async function majaApi(request, env, url) {
   const t = today(), to = addDays(t, 30);
   const plan = (await planOf(env.DB, [o.anorm], 30)).map(r => ({ app: r.app, datums: r.datums, no: r.no, lidz: r.lidz }));
   const notices = ((await env.DB.prepare("SELECT teksts, no, lidz FROM ml_notice WHERE anorm = ? AND (lidz = '' OR lidz >= ?) AND (no = '' OR no <= ?) ORDER BY no, izveidots").bind(o.anorm, t, to).all().catch(() => ({ results: [] }))).results || []);
-  const res = out({ ok: true, adrese: o.adrese, today: t, plan, notices });
+  const res = out({ ok: true, adrese: o.adrese, today: t, plan, notices, kat: mlreq.KAT });
   const cr = res.clone(), h = new Headers(cr.headers); h.set('Cache-Control', 'max-age=300');
   if (cache) await cache.put(ck, new Response(cr.body, { status: 200, headers: h }));
   return res;
