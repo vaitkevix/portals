@@ -51,8 +51,10 @@ export async function managers(env, app) {
   const rows = (await env.DB.prepare('SELECT name, perms, active FROM people').all()).results || [];
   return rows.filter(r => r.active).filter(r => { let p = {}; try { p = JSON.parse(r.perms || '{}'); } catch (e) {} return p.portal === 'admin' || p[app] === 'admin' || p[app] === 'vaditajs'; }).map(r => r.name);
 }
-/* Vai šis vārds ir cilvēks (nevis SIA), kam var sūtīt */
+/* Kam var sūtīt: aktīvi cilvēki UN aktīvi uzņēmumi (SIA abonē portālā ar uzņēmuma nosaukumu) */
 export async function personNames(env, names) {
   names = (names || []).filter(Boolean); if (!names.length) return [];
-  return ((await env.DB.prepare(`SELECT name FROM people WHERE active = 1 AND name IN (${names.map(() => '?').join(',')})`).bind(...names).all()).results || []).map(r => r.name);
+  const q = names.map(() => '?').join(',');
+  const r = await env.DB.batch([env.DB.prepare(`SELECT name FROM people WHERE active = 1 AND name IN (${q})`).bind(...names), env.DB.prepare(`SELECT name FROM companies WHERE active = 1 AND name IN (${q})`).bind(...names)]);
+  return [...new Set(r.flatMap(x => (x.results || []).map(y => y.name)))];
 }

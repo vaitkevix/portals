@@ -2,6 +2,7 @@
  * izpildītājs atzīmē sākumu, beigas un bildi. © VAITKEVIX, SIA
  * Maršruts POST /sniegs  { pin, action, … }.  Lomas: perms.sniegs = admin | vaditajs | izpilditajs; portāla admins = admin, citi = skatitajs; SIA ar veidu «traktorists» = izpilditajs.
  * Tabulas: sniegs_obj (traktorists, secība), sniegs_call (izsaukumi), sniegs_visit (adrese izsaukumā), sniegs_log. Laikapstākļi — kv 'wx' (wx.js). */
+import { sendSms } from './darbalaiks.js';
 import { personByPin, companyBy } from './portal.js';
 import { groupsOf } from './master.js';
 import { notify, managers, personNames } from './webpush.js';
@@ -26,6 +27,9 @@ const log = (db, t) => db.prepare('INSERT INTO sniegs_log (laiks, teksts) VALUES
 async function pushCrews(env, call, txt) {
   const names = ((await env.DB.prepare("SELECT DISTINCT brigade FROM sniegs_visit WHERE izs = ? AND brigade != ''").bind(call.id).all()).results || []).map(r => r.brigade);
   await notify(env, await personNames(env, names), { title: '❄ Sniega tīrīšana · ' + lvD(call.datums), body: txt, url: '/sh/#sniegs', urgent: true });
+  // ārējiem traktoristiem (SIA) arī SMS uz uzņēmuma tālruni — viņi bieži nav abonējuši paziņojumus
+  if (names.length) { const ph = ((await env.DB.prepare(`SELECT phone FROM companies WHERE active = 1 AND phone != '' AND name IN (${names.map(() => '?').join(',')})`).bind(...names).all()).results || []).map(r => r.phone);
+    if (ph.length) await sendSms(env, ph, 'SH sniega tīrīšana ' + lvD(call.datums) + ': ' + txt + ' Maršruts: vaitkevix.cloud/sh/#sniegs').catch(e => console.error('sniegs sms', e)); }
 }
 async function callVisits(db, call) {
   const objs = (await db.prepare('SELECT s.anorm, o.adrese, s.brigade, s.seq FROM sniegs_obj s JOIN objects o ON o.anorm = s.anorm WHERE s.aktivs = 1 ORDER BY s.brigade, s.seq, o.adrese').all()).results || [];

@@ -110,10 +110,10 @@ async function handleFetch(request, env, ctx) {
     if (url.pathname === '/kais' || url.pathname.endsWith('/kais')) return izv(request, url, env, ctx, 'kais');
     if (url.pathname === '/pers' || url.pathname.endsWith('/pers')) return pers(request, env, ctx);
     if (url.pathname === '/budz' || url.pathname.endsWith('/budz')) return budz(request, env, ctx);
-    if (url.pathname === '/pl' || url.pathname.endsWith('/pl')) return plausana(request, env, new Ctx(env, ctx));
+    if (url.pathname === '/pl' || url.pathname.endsWith('/pl')) return guestSafe(request, () => plausana(request, env, new Ctx(env, ctx)));
     if (url.pathname === '/dl/sms' || url.pathname.endsWith('/dl/sms')) return darbalaiks.hook(request, env, new Ctx(env, ctx), url);   // SMS vārtejas webhook
     if (url.pathname.endsWith('/apv.js')) return majaslieta.apvScript(env, ctx);   // apvienotie objekti visām lietotnēm
-    { const sk = url.pathname.replace(/^.*\//, ''); if (GRAF[sk] && !url.pathname.startsWith('/sh')) { const X = new Ctx(env, ctx); X.adm = (act, b, me) => masterAdmin(X, act, b, me); X.adm.renameObject = async (old, adrese, me) => { const r = await masterAdmin(X, 'renameObject', { old, adrese }, me); if (!r || !r.ok) throw new Error((r && r.error) || 'Neizdevās pārdēvēt'); return r; }; return GRAF[sk].api(request, env, X, fetchWx); } }   // X.adm — Mājas lietai (objekti caur to pašu administrēšanas loģiku)
+    { const sk = url.pathname.replace(/^.*\//, ''); if (GRAF[sk] && !url.pathname.startsWith('/sh')) { const X = new Ctx(env, ctx); X.adm = (act, b, me) => masterAdmin(X, act, b, me); X.adm.renameObject = async (old, adrese, me) => { const r = await masterAdmin(X, 'renameObject', { old, adrese }, me); if (!r || !r.ok) throw new Error((r && r.error) || 'Neizdevās pārdēvēt'); return r; }; return guestSafe(request, () => GRAF[sk].api(request, env, X, fetchWx)); } }   // X.adm — Mājas lietai (objekti caur to pašu administrēšanas loģiku)
     if (url.pathname === '/who' || url.pathname.endsWith('/who')) return who(request, env);
     if (url.pathname === '/portal' || url.pathname.endsWith('/portal')) { const X = new Ctx(env, ctx); return portal(request, env, ctx, { saved: (list) => peopleSaved(X, list), admin: (a, b, me) => masterAdmin(X, a, b, me), lists: async () => publicLists(await master(env.DB)) }); }
     if (url.pathname === '/img' || url.pathname.endsWith('/img')) return img(url, ctx, env);
@@ -648,6 +648,18 @@ async function site(request, url, base) {
   return new Response(r.body, { status: r.status, headers: h });
 }
 
+
+/* Grafika lietotnes bez ielogošanās (pārvaldnieku skats): grafiks redzams, bet bez vārdiem, piezīmēm, bildēm un žurnāla */
+const GUEST_DROP = ['brigade', 'izpilditajs', 'piezime', 'iemesls', 'foto', 'foto_pirms', 'izpilde', 'kas', 'piekluve', 'tel', 'phone'];
+async function guestSafe(request, run) {
+  let b = {}; try { b = await request.clone().json(); } catch (e) {}
+  const res = await run();
+  if (b.pin || ['boot', 'month', 'obj'].indexOf(b.action) === -1) return res;
+  let j; try { j = await res.clone().json(); } catch (e) { return res; }
+  const clean = (x) => { if (Array.isArray(x)) return x.map(clean); if (x && typeof x === 'object') { const o = {}; for (const k in x) if (GUEST_DROP.indexOf(k) === -1) o[k] = clean(x[k]); return o; } return x; };
+  j = clean(j); ['logs', 'crews', 'calls'].forEach(k => { if (Array.isArray(j[k])) j[k] = []; });
+  return new Response(JSON.stringify(j), { status: res.status, headers: res.headers });
+}
 function json(o) { return new Response(JSON.stringify(o), { headers: Object.assign({ 'Content-Type': 'application/json;charset=utf-8' }, CORS) }); }
 function checkKey(env, key) { if (!env.BRIDGE_KEY || key !== env.BRIDGE_KEY) throw new Error('Nav atļauts'); }
 

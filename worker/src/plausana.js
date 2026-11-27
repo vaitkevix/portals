@@ -3,6 +3,7 @@
  * Objekti un grupas — no portāla (tabulas objects, groups); pļaušanai savas tabulas pl_obj, pl_visit, pl_log. */
 import { personByPin, companyBy } from './portal.js';
 import { groupsOf } from './master.js';
+import { notify, managers } from './webpush.js';
 
 const TZ = 'Europe/Riga';
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
@@ -145,10 +146,11 @@ export async function plausana(request, env, X) {
       const t = today(), from = b.from || addDays(t, -7), to = b.to || addDays(t, 14);
       const objects = (await db.prepare('SELECT o.anorm, o.adrese, o.vaditajs, o.grupa, o.piekluve, p.m2, p.intervals, p.aktivs, p.brigade, p.piezime, p.lat, p.lng FROM objects o LEFT JOIN pl_obj p ON p.anorm = o.anorm JOIN obj_info i ON i.anorm = o.anorm AND i.zale = 1 ORDER BY o.ord').all()).results || [];
       if (ROLE_W[role] < 1) objects.forEach(o => { o.piekluve = ''; });   // vārtu / atslēgu kodi — tikai izpildītājam un vadītājam
-      const visits = (await db.prepare('SELECT * FROM pl_visit WHERE datums >= ? AND datums <= ? ORDER BY datums, prio DESC, adrese').bind(from, to).all()).results || [];
+      let visits = (await db.prepare('SELECT * FROM pl_visit WHERE datums >= ? AND datums <= ? ORDER BY datums, prio DESC, adrese').bind(from, to).all()).results || [];
+      if (me.company) visits = visits.filter(v => !v.brigade || v.brigade === me.name);   // SIA redz savus darbus
       const last = (await db.prepare("SELECT anorm, MAX(datums) d FROM pl_visit WHERE statuss = 'done' GROUP BY anorm").all()).results || [];
       const logs = ROLE_W[role] < 2 ? [] : ((await db.prepare('SELECT laiks, teksts FROM pl_log ORDER BY id DESC LIMIT 30').all()).results || []);
-      return out({ ok: true, me: { name: me.name, role }, today: t, cfg: await cfgOf(db), rain: (await kv(db, 'pl:rain')) || {}, objects, visits, last, logs,
+      return out({ ok: true, me: { name: me.name, role, company: !!me.company }, today: t, cfg: await cfgOf(db), rain: (await kv(db, 'pl:rain')) || {}, objects, visits, last, logs,
         groups: (await groupsOf(db).catch(() => [])).map(g => ({ name: g.name, adreses: g.adreses })) });
     }
     if (a === 'month') {
@@ -192,6 +194,8 @@ export async function plausana(request, env, X) {
         const d = nextDay(addDays(v.datums > today() ? v.datums : today(), 1), C, rain);
         await db.batch([db.prepare('UPDATE pl_visit SET datums = ?, prio = 1, parcelts = parcelts + 1, iemesls = ?, izpilditajs = ? WHERE id = ?').bind(d, why, me.name, v.id),
           log(db, v.adrese + ' → ' + lvD(d) + ' (' + why.toLowerCase() + ', ' + me.name + ')')]);
+        const pn = (async () => notify(env, await managers(env, 'pl'), { title: 'Pļaušana: nevar izpildīt', body: v.adrese + ' — ' + why + ' (' + me.name + '), pārcelts uz ' + lvD(d), url: '/sh/#pl' }))().catch(e => console.error('pl push', e));
+        if (X && X.bg) X.bg(pn); else await pn;
       }
       return out(Object.assign({ ok: true }, await schedule(db)));
     }
