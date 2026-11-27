@@ -70,8 +70,8 @@ export function parseCmd(t) {
   let s0 = String(t || '').trim().toUpperCase(); for (const [re, w] of RU_CMD) s0 = s0.replace(re, w);
   const s = s0.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
   let x;
-  if (/^(JA|YES|OK|LABI)[.! ]*$/.test(s)) return { cmd: 'ja' };
-  if (/^(NE|NEE|NO|NEVARU)[.! ]*$/.test(s)) return { cmd: 'ne' };
+  if (/^(JA|DA|YES|OK|LABI)[.! ]*$/.test(s)) return { cmd: 'ja' };
+  if (/^(NE|NET|NEE|NO|NEVARU)[.! ]*$/.test(s)) return { cmd: 'ne' };
   if (/^(STUNDAS|STUNDA|H)$/.test(s)) return { cmd: 'stundas' };
   if ((x = /^(SLIMS|SLIMA|SLIMI)(?:\s+(\S+?)(?:\s*-\s*(\S+))?)?$/.exec(s))) return { cmd: 'slims', no: x[2] || '', lidz: x[3] || '' };
   if ((x = /^(ATV|ATVALINAJUMS)\s+(\S+?)\s*-\s*(\S+)$/.exec(s))) return { cmd: 'atv', no: x[2], lidz: x[3] };
