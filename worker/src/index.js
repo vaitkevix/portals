@@ -27,6 +27,7 @@ import * as ai from './ai.js';
 import * as foto from './foto.js';
 import * as mail from './mail.js';
 import * as parvmail from './parvmail.js';
+import * as rits from './rits.js';
 import { chkList, chkSave, chkTake } from './checklist.js';
 import { threadCounts, threadApi } from './thread.js';
 import * as sezona from './sezona.js';
@@ -102,6 +103,7 @@ export default {
     J('peek', () => gsheets.peek(env, env.DB));
     J('mail', () => mail.selfTest(env));
     J('parvMail', () => parvmail.cron(env));   // C8: rītdienas darbi pārvaldniekiem
+    J('rits', () => rits.cron(env));   // I1: rīta ziņa vadītājiem 07:15
     J('izv', () => izvN.maybeSwitch(env));
     J('izvReg', () => izvN.regCron(env));
     J('kaisReg', () => kais.regCron(env));

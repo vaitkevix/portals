@@ -88,7 +88,7 @@ async function objectsOf(db, vards, extra) {
 /** { src, vards, no, lidz, prombutne, objekti?, kas } → melnraksti standing tabulā (melnraksts = '1'); dublikātus neveido */
 export async function standingDrafts(env, p) {
   const db = env.DB, t = today(); if (p.lidz && p.lidz < t) return 0;
-  const O = await objectsOf(db, p.vards, p.objekti); if (!O.length) return 0;
+  const O = p.objs ? p.objs.map(o => Object.assign({ am: o.amats === 'set' ? 'Sētnieks' : o.amats === 'abi' ? 'Abi' : 'Uzkopēja' }, o)) : await objectsOf(db, p.vards, p.objekti); if (!O.length) return 0;   // objs — jau zināmi objekti (Neieradās)
   const types = new Set((await all(db, "SELECT name FROM types WHERE grp = 'Aizvietošana'").catch(() => [])).map(r => r.name));
   const no = p.no > t ? p.no : t, st = [], mgr = {};
   for (const o of O) {
@@ -96,11 +96,11 @@ export async function standingDrafts(env, p) {
     if (await db.prepare('SELECT 1 FROM standing WHERE avots = ?').bind(avots).first()) continue;
     const tips = types.has(o.am) ? o.am : [...types][0] || o.am;
     st.push(db.prepare("INSERT INTO standing (id, adrese, tips, apraksts, vaditajs, prombutne, no, beigas, brivdienas, steidzami, laiks, foto, izlaistas, izveidots, seq, melnraksts, brigade, avots) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', '', ?, ?, '1', '', ?)")
-      .bind(uid(), o.adrese, tips, 'Aizvieto: ' + p.vards, o.vaditajs || '', p.prombutne, no, p.lidz || '', nowStr(), Date.now() * 100 + st.length, avots));
+      .bind(uid(), o.adrese, tips, p.apraksts || ('Aizvieto: ' + p.vards), o.vaditajs || '', p.prombutne, no, p.lidz || '', nowStr(), Date.now() * 100 + st.length, avots));
     if (o.vaditajs) (mgr[o.vaditajs] = mgr[o.vaditajs] || []).push(o.adrese);
   }
   if (st.length) await db.batch(st);
   const per = (d) => d ? d.slice(8) + '.' + d.slice(5, 7) + '.' : '…';
-  for (const m in mgr) await notify(env, [m], { title: 'Aizvietošana: jāapstiprina melnraksts', body: p.vards + ' ' + (p.prombutne === 'DNL' ? 'slimo' : 'prombūtnē') + ' ' + per(no) + '–' + per(p.lidz) + ': ' + mgr[m].slice(0, 3).join(', '), url: '/sh/#aizv' }).catch(() => 0);
+  if (!p.silent) for (const m in mgr) await notify(env, [m], { title: 'Aizvietošana: jāapstiprina melnraksts', body: p.vards + ' ' + (p.prombutne === 'DNL' ? 'slimo' : 'prombūtnē') + ' ' + per(no) + '–' + per(p.lidz) + ': ' + mgr[m].slice(0, 3).join(', '), url: '/sh/#aizv' }).catch(() => 0);
   return st.length;
 }
