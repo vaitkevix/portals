@@ -42,7 +42,7 @@ set();try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',s
 <style>
 :root{--r-base:14px;--r-xs:calc(var(--r-base)*.5);--r-sm:calc(var(--r-base)*.72);--r-md:var(--r-base);--r-lg:calc(var(--r-base)*1.43);--r-xl:calc(var(--r-base)*2);--r-pill:999px}/*SH rādiusi: maini --r-base*/
 
-:root{--bg:#f1f4f2;--surface:#fff;--surface-2:#f5f7f6;--line:rgba(20,40,32,.09);--line-2:#d6ddd9;--ink:#17201c;--ink-2:#47504c;--ink-3:#6d7672;
+:root{--bg:#f1f4f2;--surface:#fff;--surface-2:#f5f7f6;--line:rgba(20,40,32,.09);--line-2:#d6ddd9;--ink:#17201c;--ink-2:#47504c;--ink-3:#5f6864;
   --brand:#0f6b5c;--brand-2:#13897a;--brand-soft:rgba(15,107,92,.1);--warn:#c2410c;--red:#c02626;--r:16px;--shadow:0 1px 2px rgba(16,32,26,.06),0 8px 24px -12px rgba(16,32,26,.18)}
 :root[data-theme="dark"]{--bg:#0b120f;--surface:#151d1a;--surface-2:#1b2521;--line:rgba(255,255,255,.08);--line-2:#2b3833;--ink:#eef2ef;--ink-2:#b4bdb8;--ink-3:#8b958f;
   --brand:#22a08c;--brand-2:#2bb9a3;--brand-soft:rgba(34,160,140,.16);--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6)}
@@ -129,11 +129,26 @@ button{cursor:pointer}
 .appbar{display:flex;align-items:center;gap:10px;padding:calc(8px + var(--safe-t, env(safe-area-inset-top))) 12px 8px;background:var(--surface);border-bottom:1px solid var(--line)}
 .appbar .t{flex:1;min-width:0;font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .frames{position:relative;flex:1}
+/* Pieejamība un ielāde (2026-11-27) */
+html :focus-visible{outline:3px solid var(--ink-strong,#16201b)!important;outline-offset:2px}.sheet:focus-visible,.sheet:focus{outline:none!important}.pin:focus-visible,.search input:focus-visible{outline:none!important}
+.search:focus-within{box-shadow:0 0 0 2px var(--ink-strong,#16201b)}
+.lnk{display:block;width:100%;min-height:44px;margin-top:6px;border:0;background:none;font:inherit;font-size:14px;font-weight:800;color:var(--brand);cursor:pointer;border-radius:var(--r-md,14px)}
+.lnk.mut{color:var(--ink-3);font-weight:700;font-size:13.5px;margin-top:0}
+.fload{position:absolute;inset:0;z-index:2;background:var(--bg);padding:20px 18px;display:flex;flex-direction:column;gap:12px}
+.fload h3{margin:0;font-size:22px;font-weight:800;letter-spacing:-.02em}
+.fload .sk{height:72px;border-radius:var(--r-lg,20px);background:var(--surface);animation:flp 1.2s ease-in-out infinite alternate}.fload .sk.t{height:120px}
+@keyframes flp{from{opacity:.55}to{opacity:1}}@media(prefers-reduced-motion:reduce){.fload .sk{animation:none}}
+.fload .er{padding:16px;border-radius:var(--r-lg,20px);background:#fde4e1;color:#b42318;font-weight:800;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+:root[data-theme="dark"] .fload .er{background:#3d1f1c;color:#f97066}
+.fload .er .btn{width:auto;padding:0 18px;height:44px}
+#myToday .sec{margin-top:6px}
+@media(min-width:1100px){#myToday{display:none}}
+
 .dlm{display:flex;flex-direction:column;gap:6px;margin-top:10px;padding:10px 12px;border-radius:var(--r-md,14px);background:color-mix(in srgb,var(--bg) 55%,transparent);font-size:13px}.dlm b{font-size:12px}.dlm span{display:flex;align-items:center;gap:6px;font-weight:700}.dlm em{font-style:normal;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dlm small{font-size:11px;opacity:.75}.dlp{width:11px;height:11px;border-radius:50%;flex:none}.dlp.g{background:#3f9b62}.dlp.r{background:#d64545}
 html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotnes rāmis beidzas virs tās */
 .frames iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg)}
 .sw{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-left:auto}
-@media(max-width:560px){.appbar .t{display:none}}
+@media(max-width:560px){.appbar .t{font-size:14px}}
 .sw::-webkit-scrollbar{display:none}
 .sw button{flex:none;width:36px;height:36px;border-radius:var(--r-sm,10px);border:2px solid transparent;padding:0;background:none;overflow:hidden}
 .sw button.on{border-color:var(--brand)}
@@ -262,7 +277,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .ac .chip{margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;background:#fff;border-radius:var(--r-pill,999px);padding:4px 10px;font-size:12px;font-weight:800;display:flex;align-items:center;gap:5px}
 .ac .chip.w{color:#b45309}
 .ac b{display:block;font-size:clamp(17px,2.2vw,24px);font-weight:800;letter-spacing:-.02em;margin-top:18px;padding-right:52px}
-.ac small{display:block;font-size:13px;font-weight:700;opacity:.65;margin-top:2px;padding-right:52px}
+.ac small{display:block;font-size:13px;font-weight:700;opacity:.8;margin-top:2px;padding-right:52px}
 .arrow{position:absolute;right:14px;bottom:14px;width:46px;height:46px;border-radius:50%;background:#fff;display:grid;place-items:center;color:#17201c}
 .ib{display:inline-grid;place-items:center;flex:none;width:40px;height:40px;border-radius:var(--r-md,14px);color:#16201b}
 .ib .gl{display:block}
@@ -298,7 +313,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .dbk{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:13.5px;font-weight:700;color:var(--ink-2)}.dbk .btn{width:auto;height:40px;padding:0 14px;font-size:13.5px;margin-left:auto}.dbk .bad{color:var(--red)}
 
 .stats3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,45%),1fr));gap:12px}
-@media(max-width:520px){.ac{min-height:136px;padding:14px;border-radius:var(--r-xl,28px)}.ac b{font-size:17px;padding-right:0;margin-top:12px}.ac small{padding-right:0;font-size:12px}.ac .arrow{width:38px;height:38px;right:10px;bottom:auto;top:10px}.ac .atop .ib{width:36px;height:36px}.ac .chip{display:none}}
+@media(max-width:520px){.ac{min-height:136px;padding:14px;border-radius:var(--r-xl,28px)}.ac b{font-size:17px;padding-right:0;margin-top:12px}.ac small{padding-right:0;font-size:12px}.ac .arrow{width:38px;height:38px;right:10px;bottom:auto;top:10px}.ac .atop .ib{width:36px;height:36px}.ac .chip:not(.w){display:none}.ac .atop{display:grid;justify-items:start;gap:8px}.ac .chip.w{font-size:11.5px;padding:3px 9px;margin:0;max-width:100%}}
 .sx{position:relative;padding:16px 16px 18px;border-radius:var(--r-xl,28px);min-height:118px;border:0;text-align:left;color:#17201c}
 :root[data-theme="dark"] .sx{color:var(--ink)}
 .sx span{font-size:13px;font-weight:700;display:block;padding-right:6px}
@@ -394,11 +409,11 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
     <h2>SH | Portāls</h2>
     <p class="sub">Ienāciet ar savu PIN vai uzņēmuma paroli</p>
     <input type="text" name="username" autocomplete="username" value="SH portāls" hidden>
-    <input class="pin" id="pin" type="password" name="password" autocomplete="current-password" autocapitalize="characters" placeholder="PIN vai parole" aria-label="PIN vai parole">
-    <div class="err" id="loginErr"></div>
+    <input class="pin" id="pin" type="password" name="password" inputmode="numeric" autocomplete="current-password" autocapitalize="characters" placeholder="PIN" aria-label="PIN">
+    <div class="err" id="loginErr" role="alert"></div>
     <button class="btn" id="loginBtn" type="submit">Ienākt</button>
-    <button class="btn ghost" id="guestBtn" type="button" style="margin-top:8px">Tikai skatīties (pārvaldniekiem)</button>
-    <p class="copy" style="margin-top:6px">Bez PIN: visu darbu grafiki, pieteikumi un izpilde (bez piekļuves kodiem)</p>
+    <button class="lnk" id="pinMode" type="button">Ienākt ar uzņēmuma paroli</button>
+    <button class="lnk mut" id="guestBtn" type="button">Esmu pārvaldnieks — tikai apskatīt</button>
     <p class="copy">© VAITKEVIX, SIA</p>
   </form>
 </section>
@@ -420,6 +435,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
       </header>
       <div class="cols">
         <div class="colL">
+          <div id="myToday"></div>
           <h2 class="sec">Šodien <span id="todayN"></span></h2>
           <div class="apps" id="tiles"></div>
           <h2 class="sec">Kopsavilkums</h2>
@@ -487,7 +503,7 @@ const RNO = { dl: 'Darba laiku sētnieki un uzkopēji atzīmē ar SMS', aizv: 'A
 const rcol = (k, c) => { const L = S.roles[k] || []; return RKEY[c] ? RKEY[c].find(r => L.indexOf(r) !== -1) : (L.indexOf(c) !== -1 ? c : null); };
 const COLORS = ['#0f6b5c', '#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#475569'];
 
-function toast(m, type) { const t = document.createElement('div'); t.className = 'toast' + (type === 'err' ? ' err' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 3200); }
+function toast(m, type) { const t = document.createElement('div'); t.className = 'toast' + (type === 'err' ? ' err' : ''); t.setAttribute('role', type === 'err' ? 'alert' : 'status'); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 3200); }
 async function api(action, data) {
   const r = await fetch(API, { signal: self.AbortSignal && AbortSignal.timeout ? AbortSignal.timeout(90000) : undefined, method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action, t: S.t }, data || {})) }).catch(() => { throw new Error('Nav savienojuma ar serveri — mēģiniet vēlreiz'); });
   const j = await r.json().catch(() => ({ ok: false, error: 'Serveris neatbild — mēģiniet vēlreiz' }));
@@ -570,10 +586,11 @@ function appSub(k) {
 }
 function appChip(k) {
   const D = (S.dash || {})[k] || {};
-  if (k === 'izv' && D.urgent) return `<span class="chip w">● ${D.urgent} steidzami</span>`;
+  if (k === 'izv' && D.urgent) return `<span class="chip w">● ${D.urgent} ${D.urgent % 10 === 1 && D.urgent % 100 !== 11 ? 'steidzams' : 'steidzami'}</span>`;
   if (k === 'aizv' && D.unassigned) return `<span class="chip w">● ${D.unassigned} bez brigādes</span>`;
   if (k === 'dl' && D.trukst && D.darbaDiena) return `<span class="chip w">● ${D.trukst} trūkst</span>`;
-  if (GRAF.indexOf(k) !== -1 && (D.urgent || D.cant || D.late)) return `<span class="chip w">● ${D.urgent ? D.urgent + ' steidzami' : D.cant ? D.cant + ' nevar' : D.late + ' nokavēti'}</span>`;
+  const pl = (n, one, many) => n + ' ' + (n % 10 === 1 && n % 100 !== 11 ? one : many);
+  if (GRAF.indexOf(k) !== -1 && (D.urgent || D.cant || D.late)) return `<span class="chip w">● ${D.urgent ? pl(D.urgent, 'steidzams', 'steidzami') : D.cant ? D.cant + ' nevar izpildīt' : pl(D.late, 'nokavēts', 'nokavēti')}</span>`;
   const r = S.me.perms[k] || (GRAF.indexOf(k) !== -1 ? gRole(k) : ''); return r ? `<span class="chip">${esc(RL[r] || (r === 'izvedejs' ? 'Izvedējs' : r === 'kurjers' ? 'Kurjers' : r))}</span>` : '';
 }
 function home() {
@@ -637,6 +654,8 @@ function home() {
   ((D.kais && D.kais.top) || []).forEach(x => items.push(`<button class="ni k" data-app="kais" data-q="${esc(x.a)}"><i>${gl('kais')}</i><div><b>${esc(x.a)}</b><small>Kaisāmmateriāls${x.m ? ' · ' + esc(x.m) : ''}</small></div></button>`));
   GRAF.filter(k => D[k] && hasApp(k)).forEach(k => (D[k].next || []).slice(0, 2).forEach(x => items.push(`<button class="ni" data-app="${k}" data-q="${esc(x.adrese)}"><i>${gl(k)}</i><div><b>${esc(x.adrese)}</b><small>${esc(fmtD(x.datums))} · ${esc(APPS[k].name)}${x.steidzami ? ' · steidzami' : ''}</small></div></button>`)));
   $('nextList').innerHTML = items.length ? items.join('') : '<div class="card" style="padding:18px;text-align:center;font-weight:700;color:var(--ink-3)">Nav gaidošu darbu ✓</div>';
+  $('myToday').innerHTML = items.length ? `<h2 class="sec">Mani tuvākie darbi</h2><div class="nextl" style="margin:0">${items.slice(0, 4).join('')}</div>${items.length > 4 ? `<button class="btn ghost" id="myAll" type="button" style="margin-top:10px">Visi darbi (${items.length})</button>` : ''}` : '';
+  { const ma = $('myAll'); if (ma) ma.onclick = () => $('nextList').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   filterQ();
 }
 const DOTC = { aizv: 'var(--mint)', pl: '#7fd3b0', logi: '#7fbcf2', sniegs: '#b49ff5', darz: '#9ccf7a', stav: '#f6cc55' };
@@ -647,7 +666,7 @@ function drawCal() {
   let cells = '';
   for (let i = 0; i < 42; i++) { const d = new Date(start); d.setDate(start.getDate() + i); const k = ymd(d), v = D[k];
     if (i >= 35 && d.getMonth() !== m) break;
-    cells += `<button class="dd ${d.getMonth() !== m ? 'o' : ''} ${v ? 'has' : ''} ${k === td ? 'today' : ''}" data-day="${k}" title="${v ? v[0] + ' darbi, ' + v[1] + ' izpildīti · ' + AP[k].map(a => APPS[a].name).join(', ') : ''}">${d.getDate()}${v && k !== td ? `<small>${v[0]}</small>` : ''}${v ? `<span class="dots">${AP[k].slice(0, 4).map(a => `<i style="background:${DOTC[a]}"></i>`).join('')}</span>` : ''}</button>`; }
+    cells += `<button class="dd ${d.getMonth() !== m ? 'o' : ''} ${v ? 'has' : ''} ${k === td ? 'today' : ''}" data-day="${k}" aria-label="${d.getDate()}. ${esc(d.toLocaleDateString('lv-LV', { month: 'long' }))}${v ? ': ' + v[0] + ' darbi, ' + v[1] + ' izpildīti' : ''}" title="${v ? v[0] + ' darbi, ' + v[1] + ' izpildīti · ' + AP[k].map(a => APPS[a].name).join(', ') : ''}">${d.getDate()}${v && k !== td ? `<small>${v[0]}</small>` : ''}${v ? `<span class="dots">${AP[k].slice(0, 4).map(a => `<i style="background:${DOTC[a]}"></i>`).join('')}</span>` : ''}</button>`; }
   $('cal').innerHTML = `<div class="ch"><b>${(m => m[0].toUpperCase() + m.slice(1))(first.toLocaleDateString('lv-LV', { month: 'long' }))} ${y}</b><span><button data-cm="-1" aria-label="Iepriekšējais">‹</button><button data-cm="1" aria-label="Nākamais">›</button></span></div>
     <div class="g">${['P', 'O', 'T', 'C', 'Pk', 'S', 'Sv'].map(w => `<div class="wd">${w}</div>`).join('')}${cells}</div>`;
 }
@@ -655,15 +674,14 @@ $('cal').onclick = (e) => { const b = e.target.closest('[data-cm]'); if (b) { CA
   const d = e.target.closest('[data-day]'); if (!d) return; const SD = S.dash || {}, ks = ['aizv'].concat(GRAF).filter(k => SD[k] && SD[k].days && SD[k].days[d.dataset.day] && hasApp(k));
   if (ks.length === 1) return openApp(ks[0]);
   if (ks.length > 1) { const s = sheet(`<div class="hd"><h3>${esc(fmtD(d.dataset.day))}</h3>${X}</div><div class="plist">${ks.map(k => `<button class="prow" data-app="${k}">${ib(k, 18)}<div class="nm"><b>${APPS[k].name}</b><div class="chips"><span class="chip">${SD[k].days[d.dataset.day][0]} darbi · ${SD[k].days[d.dataset.day][1]} izdarīti</span></div></div>${CHEV}</button>`).join('')}</div>`);
-    s.onclick = (ev) => { const b = ev.target.closest('[data-app]'); if (b) { closeSheet(); openApp(b.dataset.app); } }; return; }
-  if (S.me && S.me.perms.aizv) openApp('aizv'); };
+    s.onclick = (ev) => { const b = ev.target.closest('[data-app]'); if (b) { closeSheet(); openApp(b.dataset.app); } }; return; } };
 function filterQ() {
   const q = ($('q').value || '').trim().toLowerCase();
-  document.querySelectorAll('#tiles [data-q], #nextList [data-q]').forEach(el => el.classList.toggle('hidden-q', !!q && !el.dataset.q.toLowerCase().includes(q) && !el.textContent.toLowerCase().includes(q)));
+  document.querySelectorAll('#tiles [data-q], #nextList [data-q], #myToday [data-q]').forEach(el => el.classList.toggle('hidden-q', !!q && !el.dataset.q.toLowerCase().includes(q) && !el.textContent.toLowerCase().includes(q)));
 }
 $('q').oninput = filterQ;
 $('q').onkeydown = (e) => { if (e.key === 'Enter') { const f = document.querySelector('#tiles [data-app]:not(.hidden-q), #nextList [data-app]:not(.hidden-q)'); if (f) openApp(f.dataset.app); } };
-['railBtns', 'stats', 'wide', 'nextList'].forEach(id => $(id).addEventListener('click', (e) => { if (e.target.closest('[data-adm]')) return openAdmin(); const t = e.target.closest('[data-app]'); if (t) openApp(t.dataset.app); }));
+['railBtns', 'stats', 'wide', 'nextList', 'myToday'].forEach(id => $(id).addEventListener('click', (e) => { if (e.target.closest('[data-adm]')) return openAdmin(); const t = e.target.closest('[data-app]'); if (t) openApp(t.dataset.app); }));
 $('railMenu').onclick = () => $('menuBtn').click();
 $('tiles').onclick = (e) => {
   if (e.target.closest('[data-adm]')) return openAdmin();
@@ -692,19 +710,38 @@ function openApp(k, noPush) {
   if (!hasApp(k)) return;
   show('vApp'); $('appTitle').textContent = APPS[k].name;
   const pin = ls.get('sh_pin'); if (pin) sso(pin);
-  if (!S.frames[k]) { const f = document.createElement('iframe'); f.src = APPS[k].path + (HX && HX.k === k ? '#' + HX.x : (S.me.company ? '#carrier' : '')); f.title = APPS[k].name; f.allow = 'geolocation; camera; clipboard-write'; $('frames').appendChild(f); S.frames[k] = f; }
+  if (!S.frames[k]) { const f = document.createElement('iframe'); f.src = APPS[k].path + (HX && HX.k === k ? '#' + HX.x : (S.me.company ? '#carrier' : '')); f.title = APPS[k].name; f.allow = 'geolocation; camera; clipboard-write'; $('frames').appendChild(f); frameLoading(k, f); S.frames[k] = f; }
   Object.keys(S.frames).forEach(x => S.frames[x].hidden = x !== k);
   $('appSw').innerHTML = apps().map(x => `<button data-sw="${x}" class="${x === k ? 'on' : ''}" title="${APPS[x].name}" aria-label="${APPS[x].name}">${ib(x, 18)}</button>`).join('');
   if (!noPush) history.pushState({ app: k }, '', '#' + k);
 }
 $('appSw').onclick = (e) => { const b = e.target.closest('[data-sw]'); if (b) openApp(b.dataset.sw, true), history.replaceState({ app: b.dataset.sw }, '', '#' + b.dataset.sw); };
 $('backBtn').onclick = () => { if (history.state && history.state.app) history.back(); else { home(); refresh(true); } };
-addEventListener('popstate', () => { const k = location.hash.slice(1); if (APPS[k] && S.me) openApp(k, true); else if (S.me) { home(); refresh(true); } });
+addEventListener('popstate', () => { if ($('sheetBg')) { closeSheet(true); return; } const k = location.hash.slice(1); if (APPS[k] && S.me) openApp(k, true); else if (S.me) { home(); refresh(true); } });
+
+/* Lietotne rāmī: kamēr ielādējas — nosaukums un pelēki bloki; pēc 15 s bez ielādes — «Mēģināt vēlreiz» */
+function frameLoading(k, f) {
+  const o = document.createElement('div'); o.className = 'fload'; o.setAttribute('role', 'status');
+  o.innerHTML = `<h3>${esc(APPS[k].name)} — atveras…</h3><div class="sk t"></div><div class="sk"></div><div class="sk"></div>`; $('frames').appendChild(o);
+  const sync = () => { o.hidden = f.hidden; }; const mo = new MutationObserver(sync); mo.observe(f, { attributes: true, attributeFilter: ['hidden'] });
+  let tm = setTimeout(() => { if (!o.isConnected) return; o.innerHTML = `<h3>${esc(APPS[k].name)}</h3><div class="er">Neizdevās atvērt — vājš tīkls?<button class="btn" type="button">Mēģināt vēlreiz</button></div>`;
+    o.querySelector('button').onclick = () => { o.remove(); mo.disconnect(); const n = f.cloneNode(); n.src = f.src; f.replaceWith(n); S.frames[k] = n; frameLoading(k, n); }; }, 15000);
+  f.addEventListener('load', () => { clearTimeout(tm); mo.disconnect(); o.remove(); }, { once: true });
+}
 
 /* ---------- Lapas ---------- */
-function sheet(html) { closeSheet(); const b = document.createElement('div'); b.className = 'sheet-bg'; b.id = 'sheetBg'; b.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
-  b.addEventListener('click', e => { if (e.target === b || (e.target.closest('.x') && !e.target.closest('.bk'))) closeSheet(); }); document.body.appendChild(b); return b.firstChild; }
-function closeSheet() { const b = $('sheetBg'); if (b) b.remove(); }
+/* Lapa: Esc un telefona «Atpakaļ» aizver; fokuss lapā un pēc aizvēršanas atpakaļ uz pogu, kas to atvēra */
+function sheet(html) { const had = $('sheetBg'); if (had) had.remove(); else S.sheetFrom = document.activeElement;
+  const b = document.createElement('div'); b.className = 'sheet-bg'; b.id = 'sheetBg'; b.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" tabindex="-1">${html}</div>`;
+  b.addEventListener('click', e => { if (e.target === b || (e.target.closest('.x') && !e.target.closest('.bk'))) closeSheet(); }); document.body.appendChild(b);
+  const sh = b.firstChild, h = sh.querySelector('h3'); if (h) { h.id = h.id || 'shT'; sh.setAttribute('aria-labelledby', h.id); }
+  if (!(history.state && history.state.sheet)) history.pushState(Object.assign({}, history.state, { sheet: 1 }), '');
+  setTimeout(() => { if (sh.isConnected && !sh.contains(document.activeElement)) sh.focus({ preventScroll: true }); }, 30);
+  return sh; }
+function closeSheet(fromPop) { const b = $('sheetBg'); if (!b) return; b.remove();
+  if (!fromPop && history.state && history.state.sheet) history.replaceState(Object.assign({}, history.state, { sheet: 0 }), '');
+  const f = S.sheetFrom; S.sheetFrom = null; if (f && f.isConnected && f.focus) f.focus({ preventScroll: true }); }
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('sheetBg')) { e.preventDefault(); closeSheet(); } });
 const X = '<button class="x" aria-label="Aizvērt">×</button>';
 
 /* Tēma: kopīga visām lietotnēm (localStorage sh_theme). Atvērtās lietotnes pārslēdzas uzreiz. */
@@ -1336,6 +1373,8 @@ addEventListener('hashchange', () => { const k = location.hash.slice(1); if (S.m
 /* ---------- Starts ---------- */
 (async function boot() {
   $('guestBtn').onclick = guest;
+  { const pm = $('pinMode'), setM = (txt) => { const i = $('pin'); i.inputMode = txt ? 'text' : 'numeric'; i.placeholder = txt ? 'Uzņēmuma parole' : 'PIN'; i.setAttribute('aria-label', i.placeholder); pm.textContent = txt ? 'Ienākt ar PIN' : 'Ienākt ar uzņēmuma paroli'; ls.set('sh_pinmode', txt ? 'txt' : ''); };
+    setM(ls.get('sh_pinmode') === 'txt'); pm.onclick = () => { setM($('pin').inputMode !== 'text'); const i = $('pin'); i.blur(); i.focus(); }; }
   if (/[?&]skats\b/.test(location.search) && !S.t) { history.replaceState(null, '', location.pathname + location.hash); ls.set('sh_guest', '1'); }   // pārvaldnieku saite vaitkevix.cloud/sh/?skats
   if (!S.t && ls.get('sh_guest')) { guest(); const k = location.hash.slice(1); if (APPS[k] && hasApp(k)) openApp(k, true); return; }
   if (!S.t) { show('vLogin'); setTimeout(() => $('pin').focus(), 200); return; }
