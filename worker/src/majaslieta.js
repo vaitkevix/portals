@@ -7,7 +7,9 @@ import { personByPin, people } from './portal.js';
 import { master } from './master.js';
 import * as objinfo from './objinfo.js';
 import { aiCall } from './ai.js';
-import { today, nowStr, anorm, akey, splitAddr, CORS, out, cleanAddr } from './util.js';
+import { today, nowStr, anorm, akey, splitAddr, CORS, out, cleanAddr, uid } from './util.js';
+import { audit } from './audit.js';
+import { majaAdmin } from './maja.js';
 
 export const KEY = 'ml', NAME = 'Mājas lieta';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
@@ -216,6 +218,8 @@ async function docPut(env, b) {
   return { key, ct, size: bin.length };
 }
 
+const nmV = (x) => String(x || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+const mineObj = (vad, name) => { const a = nmV(vad), b = nmV(name); return !!a && !!b && (a === b || a === b.split(' ')[0] || b.startsWith(a + ' ') || a.startsWith(b + ' ')); };
 export async function api(request, env, X) {
   if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
   let b = {}; try { b = await request.json(); } catch (e) { return out({ ok: false, error: 'Nederīgs pieprasījums' }, 400); }
@@ -252,7 +256,51 @@ export async function api(request, env, X) {
         }
         histParts.sort((a, b) => String(b.datums).localeCompare(String(a.datums))); histParts = histParts.slice(0, 300);
       }
-      return out({ ok: true, obj: o, kad: kad || null, docs, hist: await history(db, k, o.adrese, pre), parts, manual: !!(man[k] && man[k] !== 'auto'), histParts });
+      const W = ROLE_W[role] || 0, ed = W >= 3 || (W >= 2 && mineObj(o.vaditajs, me.name));
+      const contacts = await all(db, 'SELECT id, vards, loma, tel, epasts, piezime, kas, laiks FROM ml_contact WHERE anorm = ? AND dzests = 0 ORDER BY laiks', k).catch(() => []);
+      const comm = await all(db, 'SELECT id, datums, kas, ar, teksts, laiks FROM ml_comm WHERE anorm = ? AND dzests = 0 ORDER BY datums DESC, laiks DESC LIMIT 200', k).catch(() => []);
+      if (W < 2) contacts.forEach(c => { c.tel = ''; c.epasts = ''; });   // skatītājam — bez tālruņiem un e-pastiem
+      const maja = W >= 2 ? { token: ((await db.prepare('SELECT v FROM kv WHERE k = ?').bind('majaTok:' + k).first()) || {}).v || '',
+        notices: await all(db, "SELECT id, teksts, no, lidz, kas, izveidots FROM ml_notice WHERE anorm = ? AND (lidz = '' OR lidz >= ?) ORDER BY no DESC, izveidots DESC LIMIT 50", k, today()).catch(() => []) } : null;
+      return out({ ok: true, obj: o, kad: kad || null, docs, hist: await history(db, k, o.adrese, pre), parts, manual: !!(man[k] && man[k] !== 'auto'), histParts, contacts, comm: W >= 2 ? comm : [], ed, maja });
+    }
+    /* ---------- C7 kontakti un saziņas žurnāls; E8 mājas lapa iedzīvotājiem — ml admin visur, vadītājs savos objektos ---------- */
+    if (/^(contact|comm|maja)/.test(a)) {
+      need('vaditajs');
+      const ob = k && await db.prepare('SELECT anorm, adrese, vaditajs FROM objects WHERE anorm = ?').bind(k).first();
+      const own = async (an) => { const x = await db.prepare('SELECT vaditajs FROM objects WHERE anorm = ?').bind(an).first(); if ((ROLE_W[role] || 0) < 3 && !(x && mineObj(x.vaditajs, me.name))) throw new Error('Mainīt var savos objektos — šis ir cita vadītāja'); };
+      if (a === 'contactSave') {
+        if (!ob) throw new Error('Objekts nav atrasts'); await own(ob.anorm);
+        const c = b.c || {}, v = { vards: str(c.vards, 80), loma: str(c.loma, 60), tel: str(c.tel, 30).replace(/[^\d+ ]/g, ''), epasts: str(c.epasts, 120), piezime: str(c.piezime, 300) };
+        if (!v.vards) throw new Error('Ierakstiet vārdu'); if (v.epasts && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.epasts)) throw new Error('Nepareizs e-pasts');
+        const id = /^[a-z0-9]{10}$/.test(String(c.id || '')) ? c.id : '';
+        const old = id ? await db.prepare('SELECT * FROM ml_contact WHERE id = ? AND anorm = ?').bind(id, ob.anorm).first() : null;
+        if (old) await db.prepare('UPDATE ml_contact SET vards = ?, loma = ?, tel = ?, epasts = ?, piezime = ?, kas = ?, laiks = ? WHERE id = ?').bind(v.vards, v.loma, v.tel, v.epasts, v.piezime, me.name, nowStr(), id).run();
+        else await db.prepare('INSERT INTO ml_contact (id, anorm, vards, loma, tel, epasts, piezime, kas, laiks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(uid(), ob.anorm, v.vards, v.loma, v.tel, v.epasts, v.piezime, me.name, nowStr()).run();
+        await audit(db, me.name, 'Mājas lieta', ob.adrese, old ? ['vards', 'loma', 'tel', 'epasts', 'piezime'].filter(f => old[f] !== v[f]).map(f => ['Kontakts ' + f, old[f], v[f]]) : ['Kontakts', '', v.vards + (v.loma ? ' (' + v.loma + ')' : '')]);
+        return out({ ok: true, contacts: await all(db, 'SELECT id, vards, loma, tel, epasts, piezime, kas, laiks FROM ml_contact WHERE anorm = ? AND dzests = 0 ORDER BY laiks', ob.anorm) });
+      }
+      if (a === 'contactDel') {
+        const c = await db.prepare('SELECT * FROM ml_contact WHERE id = ? AND dzests = 0').bind(str(b.id, 20)).first(); if (!c) throw new Error('Kontakts nav atrasts'); await own(c.anorm);
+        await db.prepare('UPDATE ml_contact SET dzests = 1 WHERE id = ?').bind(c.id).run();
+        await audit(db, me.name, 'Mājas lieta', c.anorm, ['Kontakts', c.vards, 'noņemts']);
+        return out({ ok: true, contacts: await all(db, 'SELECT id, vards, loma, tel, epasts, piezime, kas, laiks FROM ml_contact WHERE anorm = ? AND dzests = 0 ORDER BY laiks', c.anorm) });
+      }
+      if (a === 'commAdd') {
+        if (!ob) throw new Error('Objekts nav atrasts'); await own(ob.anorm);
+        const tx = str(b.teksts, 2000), d = /^\d{4}-\d{2}-\d{2}$/.test(String(b.datums || '')) ? b.datums : today();
+        if (tx.length < 2) throw new Error('Ierakstiet, par ko bija saziņa');
+        await db.prepare('INSERT INTO ml_comm (id, anorm, datums, kas, ar, teksts, laiks) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(uid(), ob.anorm, d, me.name, str(b.ar, 80), tx, nowStr()).run();
+        await audit(db, me.name, 'Mājas lieta', ob.adrese, ['Saziņa ' + d, '', tx.slice(0, 120)]);
+        return out({ ok: true, comm: await all(db, 'SELECT id, datums, kas, ar, teksts, laiks FROM ml_comm WHERE anorm = ? AND dzests = 0 ORDER BY datums DESC, laiks DESC LIMIT 200', ob.anorm) });
+      }
+      if (/^maja/.test(a)) {   // E8: atslēga / QR un brīdinājumi — tā pati loģika kā portāla administrēšanā (maja.js)
+        let an = k; if (a === 'majaNoticeDel') { const n = await db.prepare('SELECT anorm FROM ml_notice WHERE id = ?').bind(str(b.id, 20)).first(); if (!n) throw new Error('Nav atrasts'); an = n.anorm; }
+        if (!an) throw new Error('Izvēlieties objektu'); await own(an);
+        if (['majaLink', 'majaNotices', 'majaNoticeSave', 'majaNoticeDel'].indexOf(a) === -1) throw new Error('Nezināma darbība');
+        return out(Object.assign({ ok: true }, await majaAdmin(env, a, Object.assign({}, b, { anorm: an }), me.name)));
+      }
+      throw new Error('Nezināma darbība');
     }
     /* ---------- Objekti ---------- */
     const adm = async (act, body) => { if (!X || !X.adm) throw new Error('Nav pieejams'); const r = await X.adm(act, body, me); if (r && r.ok === false) throw new Error(r.error || 'Kļūda'); return r || {}; };
