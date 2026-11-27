@@ -261,6 +261,26 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 :root[data-theme="dark"] .ac{color:var(--ink)}
 :root[data-theme="dark"] .ac .chip,:root[data-theme="dark"] .arrow{background:var(--surface);color:var(--ink)}
 .c-adm .arrow{background:#2b3732;color:#fff}.c-adm small{opacity:.7}
+/* Vadības panelis (Administrēšana → Panelis) */
+.dash-h{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 12px;font-size:13.5px;font-weight:700;color:var(--ink-2)}.dash-h .btn{width:auto;height:40px;padding:0 14px;font-size:13.5px;margin-left:auto}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.dk{display:flex;flex-direction:column;gap:2px;padding:14px 16px;border:0;border-radius:var(--r-lg,20px);text-align:left;color:#17201c;cursor:pointer;transition:transform .15s;min-height:44px}.dk:active{transform:scale(.98)}
+:root[data-theme="dark"] .dk{color:var(--ink)}
+.dk b{font-size:14.5px;font-weight:800}.dk .dn{font-size:34px;font-weight:800;letter-spacing:-.03em;line-height:1.1;margin-top:6px}.dk small{font-size:12.5px;font-weight:700;opacity:.7}
+.dk .dm{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:8px;font-size:12.5px;font-weight:700;opacity:.85}.dk .dm .mb{opacity:1}
+.dk.off{opacity:.55}
+.dsec{margin:18px 0 0;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-lg,20px);background:var(--surface)}
+.dsec h4{margin:0 0 10px;font-size:15px;font-weight:800}
+.dbars{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px;align-items:end;height:170px}
+.dcol{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px;min-width:0}
+.dstack{width:100%;max-width:44px;display:flex;flex-direction:column-reverse;border-radius:8px;overflow:hidden;min-height:2px;background:var(--surface-2)}
+.dstack i{display:block;width:100%;box-shadow:inset 0 0 0 1px rgba(23,32,28,.14)}
+.dcol span{font-size:12.5px;font-weight:800}.dcol small{font-size:11.5px;font-weight:700;color:var(--ink-3)}
+.dleg{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.dleg span{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--ink-2)}.dleg i{width:12px;height:12px;border-radius:4px;box-shadow:inset 0 0 0 1px rgba(23,32,28,.14)}
+.dlate{display:flex;flex-direction:column}.dlate div{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:14px;font-weight:700;min-width:0}.dlate div:first-child{border-top:0}
+.dlate .ch{flex:none;padding:3px 9px;border-radius:var(--r-pill,999px);font-size:12px;font-weight:800;color:#17201c}:root[data-theme="dark"] .dlate .ch{color:var(--ink)}.dlate .a{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dlate .d{flex:none;color:var(--red);font-size:13px}
+.dbk{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:13.5px;font-weight:700;color:var(--ink-2)}.dbk .btn{width:auto;height:40px;padding:0 14px;font-size:13.5px;margin-left:auto}.dbk .bad{color:var(--red)}
+
 .stats3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,45%),1fr));gap:12px}
 @media(max-width:520px){.ac{min-height:136px;padding:14px;border-radius:var(--r-xl,28px)}.ac b{font-size:17px;padding-right:0;margin-top:12px}.ac small{padding-right:0;font-size:12px}.ac .arrow{width:38px;height:38px;right:10px;bottom:auto;top:10px}.ac .atop .ib{width:36px;height:36px}.ac .chip{display:none}}
 .sx{position:relative;padding:16px 16px 18px;border-radius:var(--r-xl,28px);min-height:118px;border:0;text-align:left;color:#17201c}
@@ -701,8 +721,32 @@ $('menuBtn').onclick = () => {
   };
 };
 
+/* ---------- Vadības panelis: visu lietotņu kopskats (Worker /portal action=dashboard) ---------- */
+function drawPanel() {
+  if (!A.D || A.D.stale) { if (!A.D) adminShell('<div class="skel"></div>', null); api('dashboard').then(r => { A.D = r; if (A.tab === 'panel') drawPanel(); }).catch(e => toast(netMsg(e), 'err')); if (!A.D) return; }
+  const D = A.D, dd = (d) => d ? +d.slice(8, 10) + '.' + d.slice(5, 7) + '.' : '';
+  const mon = new Date(D.t + 'T12:00:00').toLocaleDateString('lv-LV', { month: 'long' });
+  const OPEN = (a) => a.app === 'izv' || a.app === 'kais';
+  const busy = (a) => a.doneM || a.doneW || a.today || a.next7 || a.overdue || (OPEN(a) && D.open[a.app] && D.open[a.app].n);
+  const card = (a) => `<button type="button" class="dk c-${a.app} ${busy(a) ? '' : 'off'}" data-app="${a.app}" aria-label="Atvērt ${esc(a.name)}"><b>${esc(a.name)}</b><span class="dn">${a.doneM}</span><small>izpildīts ${esc(mon)}</small>
+    <div class="dm"><span>Šonedēļ ${a.doneW}</span>${OPEN(a) ? `<span>Atvērti ${(D.open[a.app] || {}).n || 0}</span>` : `<span>Šodien ${a.today}</span><span>7 dienās ${a.next7}</span>`}${a.overdue ? `<span class="mb r">${OPEN(a) ? 'Gaida > 7 d.' : 'Nokavēti'} ${a.overdue}</span>` : ''}</div></button>`;
+  const tot = (w) => Object.values(w.n).reduce((x, y) => x + y, 0), max = Math.max(1, ...D.trend.map(tot));
+  const used = ORDER.filter(k => D.trend.some(w => w.n[k]));
+  const bars = D.trend.map(w => { const n = tot(w); return `<div class="dcol" title="Nedēļa no ${dd(w.wk)}: ${n}"><span>${n || ''}</span><div class="dstack" style="height:${Math.round(n / max * 130)}px">${used.filter(k => w.n[k]).map(k => `<i class="c-${k}" style="flex:${w.n[k]}" title="${esc(APPS[k].name)}: ${w.n[k]}"></i>`).join('')}</div><small>${dd(w.wk)}</small></div>`; }).join('');
+  const late = D.late.map(x => `<div><span class="ch c-${x.app}">${esc((APPS[x.app] || {}).name || x.app)}</span><span class="a">${esc(x.adrese)}</span><span class="d">kopš ${dd(x.datums)}</span></div>`).join('');
+  const B = D.backup, BH = D.backupHealth;
+  const bk = B ? `Pēdējā kopija ${dd(B.at.slice(0, 10))} ${B.at.slice(11, 16)} UTC · ${B.tables} tabulas, ${B.rows} rindas · glabājas ${B.kopijas}` : 'Kopijas vēl nav';
+  adminShell(`<div class="dash-h"><span>Šodien ${dd(D.t)} · Darba laikā atzīmējušies: ${D.dlToday}</span><button class="btn ghost" id="dRe">Atjaunot</button></div>
+    <div class="dgrid" id="dApps">${D.apps.filter(busy).concat(D.apps.filter(a => !busy(a))).map(card).join('')}</div>
+    <div class="dsec"><h4>Izpildīts pa nedēļām</h4>${used.length ? `<div class="dbars">${bars}</div><div class="dleg">${used.map(k => `<span><i class="c-${k}"></i>${esc(APPS[k].name)}</span>`).join('')}</div>` : '<p class="copy" style="text-align:left;margin:0">Pēdējās 8 nedēļās nav izpildītu darbu.</p>'}</div>
+    <div class="dsec"><h4>Nokavētie un ilgi gaidošie${D.lateN ? ' · ' + D.lateN : ''}</h4>${late ? `<div class="dlate">${late}</div>${D.lateN > D.late.length ? `<p class="copy" style="text-align:left">Rāda ${D.late.length} vecākos no ${D.lateN}</p>` : ''}` : '<p class="copy" style="text-align:left;margin:0">Nokavētu darbu nav.</p>'}</div>
+    <div class="dsec"><h4>Datu rezerves kopija</h4><div class="dbk"><span>${esc(bk)}</span>${BH && BH.n ? `<span class="bad">Kļūda: ${esc(BH.msg || '')}</span>` : ''}<button class="btn ghost" id="dBk">Izveidot tagad</button></div></div>`, null);
+  $('dRe').onclick = () => { A.D.stale = 1; drawPanel(); };
+  $('dApps').onclick = (e) => { const c = e.target.closest('[data-app]'); if (c) { closeSheet(); openApp(c.dataset.app); } };
+  $('dBk').onclick = async (e) => { const b = e.target; b.disabled = true; b.textContent = 'Veido…'; try { await api('backupNow'); toast('Rezerves kopija izveidota'); A.D.stale = 1; drawPanel(); } catch (err) { toast(netMsg(err), 'err'); b.disabled = false; b.textContent = 'Izveidot tagad'; } };
+}
 /* ---------- Administrēšana: cilvēki un pilnvaras + pamatdati (viens saraksts visām lietotnēm) ---------- */
-const TABS = [['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['companies', 'Uzņēmumi'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['review', 'Pārbaudīt']];
+const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['companies', 'Uzņēmumi'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['review', 'Pārbaudīt']];
 /* Objekti pārcelti uz Mājas lietu (2026-11-24): cilne paslēpta, kods paliek (atgriezt — izņemt 'objects' no ADM_HIDE) */
 const ADM_HIDE = ['objects'];
 const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kaisāmmateriāls)', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
@@ -744,6 +788,7 @@ const mgrNames = () => [...new Set(S.people.filter(p => p.active && (p.perms.por
 const remember = () => { const s = document.querySelector('#sheetBg .sheet'); if (s) A.st = s.scrollTop; };
 const qm = (t) => !A.q || String(t).toLowerCase().includes(A.q.toLowerCase());
 function drawAdmin() {
+  if (A.tab === 'panel') return drawPanel();
   if (A.tab === 'people') {
     const F = A.f.p || '', list = S.people.filter(p => qm(p.name + ' ' + (p.phone || '') + ' ' + (p.email || '')) && (!F || (F === 'admin' ? p.perms.portal === 'admin' : F === 'off' ? !p.active : (p.perms[F] && p.perms[F] !== ''))));
     const s = adminShell(`<div class="afil" id="pF"><select aria-label="Filtrs"><option value="">Visi cilvēki</option><option value="admin" ${F === 'admin' ? 'selected' : ''}>Portāla admini</option><option value="off" ${F === 'off' ? 'selected' : ''}>Neaktīvie</option>${ORDER.map(k => `<option value="${k}" ${F === k ? 'selected' : ''}>Ar piekļuvi: ${APPS[k].name}</option>`).join('')}</select><span class="n">${list.length}</span></div><div class="plist">${list.map(p => `<button class="prow ${p.active ? '' : 'off'}" data-p="${esc(p.name)}"><span class="dot" style="background:${esc(p.color || '')}"></span>
