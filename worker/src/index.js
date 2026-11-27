@@ -102,7 +102,9 @@ export default {
   }
 };
 
+let envRef = null;
 async function handleFetch(request, env, ctx) {
+    envRef = env;
     const url = new URL(request.url);
     if (url.pathname.startsWith('/sh/api/')) url.pathname = url.pathname.slice(7);   // API savā domēnā: vaitkevix.cloud/sh/api/… (Worker nosaukums vairs nav adresē)
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -650,10 +652,19 @@ async function site(request, url, base) {
 
 
 /* Grafika lietotnes bez ielogošanās (pārvaldnieku skats): grafiks redzams, bet bez vārdiem, piezīmēm, bildēm un žurnāla */
-const GUEST_DROP = ['brigade', 'izpilditajs', 'piezime', 'iemesls', 'foto', 'foto_pirms', 'izpilde', 'kas', 'piekluve', 'tel', 'phone'];
+const GUEST_DROP = ['vaditajs_tel', 'brigade', 'izpilditajs', 'piezime', 'iemesls', 'foto', 'foto_pirms', 'izpilde', 'kas', 'piekluve', 'tel', 'phone'];
+async function withMgrPhones(res) {
+  let j; try { j = await res.clone().json(); } catch (e) { return res; }
+  if (!j || !j.ok || !Array.isArray(j.objects)) return res;
+  const P = ((await envRef.DB.prepare("SELECT name, phone FROM people WHERE active = 1 AND phone != ''").all().catch(() => ({ results: [] }))).results || []);
+  const nm = (x) => String(x || '').trim().toLowerCase(), pick = (v) => { if (!v) return ''; const a = nm(v); const p = P.find(x => nm(x.name) === a) || P.find(x => nm(x.name).split(' ')[0] === a || nm(x.name).startsWith(a + ' ')); return p ? p.phone : ''; };
+  j.objects.forEach(o => { const t = pick(o.vaditajs); if (t) o.vaditajs_tel = t; });
+  return new Response(JSON.stringify(j), { status: res.status, headers: res.headers });
+}
 async function guestSafe(request, run) {
   let b = {}; try { b = await request.clone().json(); } catch (e) {}
   const res = await run();
+  if (b.pin && b.action === 'boot') return withMgrPhones(res);   // ielogotam — objekta vadītāja tālrunis pogai «Zvanīt vadītājam»
   if (b.pin || ['boot', 'month', 'obj'].indexOf(b.action) === -1) return res;
   let j; try { j = await res.clone().json(); } catch (e) { return res; }
   const clean = (x) => { if (Array.isArray(x)) return x.map(clean); if (x && typeof x === 'object') { const o = {}; for (const k in x) if (GUEST_DROP.indexOf(k) === -1) o[k] = clean(x[k]); return o; } return x; };
