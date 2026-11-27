@@ -6,6 +6,8 @@ const uid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 10);
 const J = (s) => { try { return JSON.parse(s || '{}') || {}; } catch (e) { return {}; } };
 const mins = (a, b) => { if (!/^\d\d:\d\d$/.test(a || '') || !/^\d\d:\d\d$/.test(b || '')) return 0; let m = (+b.slice(0, 2) * 60 + +b.slice(3)) - (+a.slice(0, 2) * 60 + +a.slice(3)); if (m < 0) m += 1440; return m; };
 const r2 = (n) => Math.round(n * 100) / 100;
+/* Bilžu lauks (id, Drive saites, «r2-…») → id saraksts ar komatiem, kā /img sagaida */
+const fid = (v) => String(v || '').split(/[\s,]+/).map(x => { const m = /[?&]id=([\w-]{20,80})/.exec(x) || /\/d\/([\w-]{20,80})/.exec(x); return m ? m[1] : /^[\w-]{20,80}$/.test(x) ? x : ''; }).filter(Boolean).join(',');
 /* Lietotne → kā skaita daudzumu rēķinam */
 export const UNITS = {
   aizv: { name: 'Aizvietošana', unit: 'darbi' },
@@ -79,12 +81,12 @@ export async function report(db, clientId, ym) {
   // Izvešana — izvestie m³ (pēc izpildes datuma)
   for (const t of await all(db, "SELECT adrese, m3, sia, izpildits, izv_kom, maisi, foto_pec FROM izv_task WHERE statuss = 'Izpildīts'")) {
     const d = dmyIso(t.izpildits); if (!d || d < d0 || d > d1) continue;
-    if (inC(norm(t.adrese), t.adrese)) rows.push({ app: 'izv', datums: d, adrese: t.adrese, daudz: r2(num(t.m3)), kas: t.sia, piez: [t.maisi, t.izv_kom].filter(Boolean).join(' · '), foto: '' });
+    if (inC(norm(t.adrese), t.adrese)) rows.push({ app: 'izv', datums: d, adrese: t.adrese, daudz: r2(num(t.m3)), kas: t.sia, piez: [t.maisi, t.izv_kom].filter(Boolean).join(' · '), foto: fid(t.foto_pec) });
   }
   // Kaisāmmateriāls — piegādātie maisi
-  for (const t of await all(db, "SELECT adrese, materials, piegadati, kurjers, piegadats, kurj_kom FROM kais_task WHERE statuss = 'Piegādāts'")) {
+  for (const t of await all(db, "SELECT adrese, materials, piegadati, kurjers, piegadats, kurj_kom, foto_pec FROM kais_task WHERE statuss = 'Piegādāts'")) {
     const d = dmyIso(t.piegadats); if (!d || d < d0 || d > d1) continue;
-    if (inC(norm(t.adrese), t.adrese)) rows.push({ app: 'kais', datums: d, adrese: t.adrese, daudz: num(t.piegadati), kas: t.kurjers, piez: [t.materials, t.kurj_kom].filter(Boolean).join(' · '), foto: '' });
+    if (inC(norm(t.adrese), t.adrese)) rows.push({ app: 'kais', datums: d, adrese: t.adrese, daudz: num(t.piegadati), kas: t.kurjers, piez: [t.materials, t.kurj_kom].filter(Boolean).join(' · '), foto: fid(t.foto_pec) });
   }
   rows.sort((a, b) => a.datums.localeCompare(b.datums) || a.adrese.localeCompare(b.adrese));
   rows.forEach(r => { r.cena = cen[r.app] || 0; r.summa = r.cena ? r2(r.daudz * r.cena) : 0; });

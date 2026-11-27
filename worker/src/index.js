@@ -6,6 +6,7 @@
  */
 
 import { backupD1 } from './backup.js';
+import { viewApi } from './view.js';
 import { portal, people, personByPin, seedFrom, peopleStmts, usersStmts, session, cleanSessions } from './portal.js';
 import { plausana, plCron } from './plausana.js';
 import * as logi from './logi.js';
@@ -116,6 +117,7 @@ async function handleFetch(request, env, ctx) {
     if (url.pathname === '/who' || url.pathname.endsWith('/who')) return who(request, env);
     if (url.pathname === '/portal' || url.pathname.endsWith('/portal')) { const X = new Ctx(env, ctx); return portal(request, env, ctx, { saved: (list) => peopleSaved(X, list), admin: (a, b, me) => masterAdmin(X, a, b, me), lists: async () => publicLists(await master(env.DB)) }); }
     if (url.pathname === '/img' || url.pathname.endsWith('/img')) return img(url, ctx, env);
+    if (url.pathname === '/view') return viewApi(request, env, url);   // skats klientam (sh/skats.html)
     // vaitkevix.cloud/shaizvietosana, /shizvesana → lietotnes (GitHub Pages); …/api → šis API
     for (const base in SITES) {
       if (url.pathname === base) return Response.redirect(url.origin + base + '/' + url.search, 301);
