@@ -12,6 +12,7 @@ import { profit, rentCfgSave } from './profit.js';
 import { siaMonth, siaApprove, siaApprovals } from './siadarbs.js';
 import { clientReqs, clientReqSet, setViewPin } from './view.js';
 import { majaAdmin } from './maja.js';
+import { week, move as weekMove } from './week.js';
 const AN = { portal: 'Portāls', aizv: 'Aizvietošana', izv: 'Izvešana', kais: 'Kaisāmmateriāls', pers: 'Personāls', budz: 'Budžets', pl: 'Pļaušana', logi: 'Logi', sniegs: 'Sniegs', darz: 'Dārzniecība', stav: 'Stāvvietas', dl: 'Darba laiks', ml: 'Mājas lieta' };
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
 export const APPS_P = ['aizv', 'izv', 'kais', 'pers', 'budz'];
@@ -246,6 +247,8 @@ export async function portal(request, env, ctx, hooks) {
       if (a === 'siaPeopleDel') await workerDel(env.DB, me, b.id);
       return pj({ ok: true, list: await workers(env.DB, me.name) });
     }
+    if (a === 'week' || a === 'weekMove') { if (me.company) throw new Error('Nav pieejams');   // C9 «Mana nedēļa»
+      if (a === 'weekMove') await weekMove(env.DB, me, b); return pj(Object.assign({ ok: true }, await week(env.DB, me, String(b.from || '')))); }
     if (me.perms.portal !== 'admin') return pj({ ok: false, error: 'Tikai administratoram' });
     if (a === 'siaMonthAdm') return pj(Object.assign({ ok: true }, await siaMonth(env.DB, String(b.company || ''), String(b.ym || ''))));
     if (a === 'siaApprove') { await siaApprove(env.DB, String(b.company || ''), String(b.ym || ''), me.name, !!b.undo); await audit(env.DB, me.name, 'SIA mēnesis', String(b.company || '') + ' · ' + String(b.ym || ''), ['statuss', b.undo ? 'saskaņots' : '', b.undo ? 'atcelts' : 'saskaņots']);
