@@ -4,6 +4,7 @@ import { closeCheck, closeLog } from './close.js';
 import { SMS_F, smsCfg } from './darbalaiks.js';
 import { dashboard } from './dashboard.js';
 import * as rits from './rits.js';
+import * as mailbox from './mailbox.js';
 import { viewLink, viewTokens } from './view.js';
 import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo, invoiceIssue, invoices, invoiceSet, priceChange, priceIndex, ctUpload, ctGet } from './klienti.js';
 import { notify } from './webpush.js';
@@ -254,6 +255,7 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'ritsOff') { if (me.company) throw new Error('Nav pieejams'); return pj(Object.assign({ ok: true }, await rits.setOff(env.DB, me.name, !!b.off))); }   // I1: vadītājs izslēdz sev
     if (a === 'ritsCard') { if (me.company) throw new Error('Nav pieejams'); return pj({ ok: true, rits: await rits.card(env, me.name) }); }
     if (me.perms.portal !== 'admin') return pj({ ok: false, error: 'Tikai administratoram' });
+    if (/^mail(Drafts|Allow|Ai|Reject|Approve)$/.test(a)) return pj(Object.assign({ ok: true }, await mailbox.adminApi(env, ctx, a, b, me.name)));   // I5
     if (a === 'ritsCfg') return pj({ ok: true, cfg: await rits.mailCfg(env.DB), off: await rits.offList(env.DB), log: await env.DB.prepare("SELECT v FROM kv WHERE k = 'rits:log'").first().then(r => r ? parse(r.v) : null).catch(() => null) });
     if (a === 'ritsCfgSave') { const was = await rits.mailCfg(env.DB), c = Object.assign({}, was, { on: !!b.on }); await env.DB.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('mail:rits', ?)").bind(JSON.stringify(c)).run();
       if (was.on !== c.on) await audit(env.DB, me.name, 'E-pasts', 'Rīta ziņa vadītājiem', ['e-pasts', was.on ? 'ieslēgts' : 'izslēgts', c.on ? 'ieslēgts' : 'izslēgts']); return pj({ ok: true, cfg: c, off: await rits.offList(env.DB) }); }

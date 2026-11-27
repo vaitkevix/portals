@@ -31,6 +31,7 @@ import * as parvmail from './parvmail.js';
 import * as rits from './rits.js';
 import * as noshow from './noshow.js';
 import * as mlreq from './mlreq.js';
+import * as mailbox from './mailbox.js';
 import { chkList, chkSave, chkTake } from './checklist.js';
 import { threadCounts, threadApi } from './thread.js';
 import * as sezona from './sezona.js';
@@ -91,6 +92,9 @@ export default {
     if (guard && res && (res.headers.get('Content-Type') || '').indexOf('json') !== -1) ctx.waitUntil(rlAfter(env, ip, u0, res.clone()).catch(() => 0));
     return res;
   },
+
+  /** I5: Cloudflare Email Routing → pieteikumi@vaitkevix.cloud → melnraksts (mail_draft). Kļūda nekad neatraida vēstuli. */
+  async email(message, env, ctx) { try { await mailbox.receive(message, env, ctx); } catch (e) { console.error('mailbox', e); } },
 
   /** Cron: lietotāji, darbu veidi un objekti no Google tabulas */
   async scheduled(event, env, ctx) {

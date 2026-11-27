@@ -8,6 +8,8 @@ import { notify, managers } from './webpush.js';
 import { put as fotoPut } from './foto.js';
 import { aiContent, aiJson, aiLimit, imgPart } from './ai.js';
 import { audit } from './audit.js';
+import * as izvN from './izvesana.js';
+import * as kaisN from './kaisammaterials.js';
 
 export const KAT = ['Tīrība / atkritumi', 'Bojājums', 'Apgaismojums', 'Durvis / slēdzene', 'Lifts', 'Ūdens / noplūde', 'Apkure', 'Teritorija / sniegs / ledus', 'Troksnis / kaimiņi', 'Cits'];
 export const ST = ['jauns', 'darbā', 'atrisināts'];
@@ -112,24 +114,42 @@ export async function setStatus(env, who, id, statuss, atbilde) {
   await audit(db, who, 'Mājas lieta', r.adrese, [['Pieteikums ' + (r.kategorija || ''), r.statuss, st], ['Atbilde iedzīvotājam', r.atbilde, at]].filter(x => x[1] !== x[2]));
   return r;
 }
+/** Darbs citā lietotnē (kopīgs Mājas lietas pieteikumiem un e-pasta melnrakstiem).
+ * j: { app, anorm, datums, apraksts, steidz (bool), foto (R2 id), tips (aizv), daudzums, materials (kais) } → { app, id, datums } */
+export async function createJob(env, ctx, who, j) {
+  const db = env.DB, app = j.app; if (!JOB_APPS[app] && app !== 'izv' && app !== 'kais') throw new Error('Izvēlieties lietotni');
+  const t = today(), d = /^\d{4}-\d{2}-\d{2}$/.test(String(j.datums || '')) && j.datums >= t ? j.datums : t;
+  const o = await db.prepare('SELECT anorm, adrese, vaditajs FROM objects WHERE anorm = ?').bind(String(j.anorm || '')).first(); if (!o) throw new Error('Izvēlieties objektu no saraksta');
+  const apr = String(j.apraksts || '').slice(0, 500), nid = uid(), fotoUrl = j.foto ? fotoUrlOf(j.foto) : '';
+  if (app === 'aizv') {
+    const T = (await all(db, "SELECT name, grp FROM types ORDER BY ord").catch(() => [])), ok = T.find(x => x.name === j.tips && x.grp !== 'Aizvietošana') || T.find(x => x.grp === 'Papilddarbs') || T.find(x => x.grp !== 'Aizvietošana');
+    if (!ok) throw new Error('Nav darbu veidu (Administrēšana → Saraksti)');
+    await db.prepare("INSERT INTO jobs (id, datums, adrese, anorm, tips, apraksts, vaditajs, brigade, statuss, izveidots, foto, steidzami, seq) VALUES (?, ?, ?, ?, ?, ?, ?, '', 'jauns', ?, ?, ?, ?)")
+      .bind(nid, d, o.adrese, o.anorm, ok.name, apr, o.vaditajs || who, nowStr(), j.foto || '', j.steidz ? '1' : '', Date.now() * 100).run();
+    return { app, id: nid, datums: d, adrese: o.adrese };
+  }
+  if (app === 'izv') {
+    if (!fotoUrl) throw new Error('Izvešanai vajag bildi (pielikumā nav bildes)');
+    const r = await izvN.saveTask(env, { address: o.adrese, requester: who, bagsEst: String(j.daudzums || ''), comment: apr, photos: [fotoUrl], urgent: !!j.steidz, deadline: j.datums || '' }, ctx);
+    if (r && r.status === 'error') throw new Error(r.message || 'Neizdevās izveidot izvešanu');
+    return { app, id: (r && r.id) || '', datums: d, adrese: o.adrese };
+  }
+  if (app === 'kais') {
+    const r = await kaisN.saveTask(env, ctx || { waitUntil() {} }, null, { address: o.adrese, requester: who, material: String(j.materials || ''), bagsEst: j.daudzums || '', comment: apr, photo: fotoUrl });
+    return { app, id: (r && r.id) || '', datums: d, adrese: o.adrese };
+  }
+  await db.prepare(`INSERT INTO ${app}_visit (id, anorm, adrese, datums, brigade, avots, termins, steidzami, apraksts, prio, pieteica, izveidots) VALUES (?, ?, ?, ?, '', 'pieteikums', '', ?, ?, ?, ?, ?)`)
+    .bind(nid, o.anorm, o.adrese, d, j.steidz ? 1 : 0, apr, j.steidz ? 1 : 0, who, nowStr()).run();
+  return { app, id: nid, datums: d, adrese: o.adrese };
+}
+const fotoUrlOf = (id) => /^https?:/.test(id) ? id : 'https://vaitkevix.cloud/sh/api/img?id=' + id + '&sz=w1600';
 /** Izveido darbu citā lietotnē no pieteikuma: aizv → jobs (statuss 'jauns', vadītājs piešķir brigādi); logi/darz/stav/pl → vienreizējs pieteikums grafikā */
 export async function makeJob(env, who, id, app, datums, tips) {
   const db = env.DB, r = await db.prepare('SELECT * FROM ml_req WHERE id = ?').bind(String(id || '')).first(); if (!r) throw new Error('Pieteikums nav atrasts');
   if (!JOB_APPS[app]) throw new Error('Izvēlieties lietotni');
-  const t = today(), d = /^\d{4}-\d{2}-\d{2}$/.test(String(datums || '')) && datums >= t ? datums : t;
-  const o = await db.prepare('SELECT anorm, adrese, vaditajs FROM objects WHERE anorm = ?').bind(r.anorm).first(); if (!o) throw new Error('Objekts nav atrasts');
-  const apr = ((r.avots === 'darbinieks' ? 'Bojājums: ' : 'Iedzīvotājs: ') + (r.kategorija ? r.kategorija + ' — ' : '') + r.teksts).slice(0, 500), nid = uid();
-  if (app === 'aizv') {
-    const T = (await all(db, "SELECT name, grp FROM types ORDER BY ord").catch(() => [])), ok = T.find(x => x.name === tips && x.grp !== 'Aizvietošana') || T.find(x => x.grp === 'Papilddarbs') || T.find(x => x.grp !== 'Aizvietošana');
-    if (!ok) throw new Error('Nav darbu veidu (Administrēšana → Saraksti)');
-    await db.prepare("INSERT INTO jobs (id, datums, adrese, anorm, tips, apraksts, vaditajs, brigade, statuss, izveidots, foto, seq) VALUES (?, ?, ?, ?, ?, ?, ?, '', 'jauns', ?, ?, ?)")
-      .bind(nid, d, o.adrese, o.anorm, ok.name, apr, o.vaditajs || who, nowStr(), r.foto || '', Date.now() * 100).run();
-  } else {
-    const T = app + '_visit';
-    await db.prepare(`INSERT INTO ${T} (id, anorm, adrese, datums, brigade, avots, termins, steidzami, apraksts, prio, pieteica, izveidots) VALUES (?, ?, ?, ?, '', 'pieteikums', '', ?, ?, ?, ?, ?)`)
-      .bind(nid, o.anorm, o.adrese, d, r.steidz === 'augsta' ? 1 : 0, apr, r.steidz === 'augsta' ? 1 : 0, who, nowStr()).run();
-  }
-  await db.prepare("UPDATE ml_req SET statuss = 'darbā', darbs = ?, apstr = ?, atjaunots = ? WHERE id = ?").bind(app + ':' + nid, who, nowStr(), r.id).run();
-  await audit(db, who, 'Mājas lieta', o.adrese, ['Pieteikums → darbs', r.kategorija || 'pieteikums', JOB_APPS[app] + ' ' + lvD(d)]);
-  return { app, id: nid, datums: d };
+  const apr = ((r.avots === 'darbinieks' ? 'Bojājums: ' : 'Iedzīvotājs: ') + (r.kategorija ? r.kategorija + ' — ' : '') + r.teksts).slice(0, 500);
+  const j = await createJob(env, null, who, { app, anorm: r.anorm, datums, apraksts: apr, steidz: r.steidz === 'augsta', foto: app === 'aizv' ? r.foto : '', tips });
+  await db.prepare("UPDATE ml_req SET statuss = 'darbā', darbs = ?, apstr = ?, atjaunots = ? WHERE id = ?").bind(app + ':' + j.id, who, nowStr(), r.id).run();
+  await audit(db, who, 'Mājas lieta', r.adrese, ['Pieteikums → darbs', r.kategorija || 'pieteikums', JOB_APPS[app] + ' ' + lvD(j.datums)]);
+  return { app, id: j.id, datums: j.datums };
 }

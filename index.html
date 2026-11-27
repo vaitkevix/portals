@@ -224,6 +224,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .ochk input{position:absolute;opacity:0;width:0;height:0}.ochk i{width:18px;height:18px;border-radius:var(--r-xs,7px);border:2px solid var(--ink-3);display:grid;place-items:center;flex:none}
 .ochk input:checked+i{background:var(--ink);border-color:var(--ink)}.ochk input:checked+i::after{content:'';width:5px;height:9px;border:solid var(--surface);border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg)}
 .ochk:has(input:checked){background:var(--surface);border-color:var(--ink)}.chip.off{opacity:.55}
+.fld{display:block;margin:0 0 10px;min-width:0}.fld>span{display:block;font-size:13px;font-weight:800;margin:0 0 5px}
 .mcard .mh{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px}.mfld{margin:0 0 10px}.mfld label{display:block;font-size:13px;font-weight:800;margin:0 0 5px}.minp{width:100%;height:44px;border-radius:var(--r-md,14px);border:1px solid var(--line-2);background:var(--surface);padding:0 12px;font:inherit;font-size:15px;min-width:0}.mfld .hint{margin-top:4px}
 .tgl{display:flex;align-items:center;gap:10px;font-size:15px;cursor:pointer}.tgl input{width:22px;height:22px;accent-color:var(--ink)}
 .row2 .btn{width:auto;padding:0 14px;height:46px;font-size:14px;white-space:nowrap}
@@ -846,6 +847,49 @@ function drawSms() {
     try { await api('smsCfgSave', { cfg: { [k]: v } }); A.SMS.list.find(x => x.k === k).on = v; toast((v ? 'Ieslēgts: ' : 'Izslēgts: ') + A.SMS.list.find(x => x.k === k).n); drawSms(); }
     catch (err) { c.checked = !v; toast(netMsg(err), 'err'); } finally { c.disabled = false; } };
 }
+/* ---------- I5 E-pasta pieteikumi (pieteikumi@vaitkevix.cloud → melnraksti; darbu izveido tikai «Apstiprināt») ---------- */
+const MB = { st: 'jauns' };
+function drawMbox() {
+  if (!A.MB || A.MB.st !== MB.st) { adminShell('<div class="skel"></div>', null); api('mailDrafts', { st: MB.st }).then(r => { A.MB = Object.assign(r, { st: MB.st }); if (A.tab === 'mbox') drawMbox(); }).catch(e => toast(netMsg(e), 'err')); return; }
+  const R = A.MB, C = R.cnt || {}, SN = { jauns: 'Jauni', nezinams: 'Nezināmi sūtītāji', apstiprinats: 'Apstiprināti', noraidits: 'Noraidīti' };
+  const row = (r) => { const a = r.ai || {};
+    return `<div class="perm" style="margin:0 0 10px"><div style="display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline"><b style="overflow-wrap:anywhere;flex:1 1 200px">${esc(r.tema || '(bez tēmas)')}</b><span class="hint">${esc(r.laiks)}</span></div>
+      <div class="hint" style="overflow-wrap:anywhere">${esc(r.no)}${+r.pielikumi ? ' · pielikumi ' + esc(r.pielikumi) : ''}</div>
+      ${a.kopsavilkums ? `<div style="margin:6px 0 0;font-weight:700;overflow-wrap:anywhere">AI: ${esc(a.kopsavilkums)}</div>` : ''}
+      <details style="margin:6px 0 0"><summary class="hint" style="cursor:pointer">Vēstules teksts</summary><div style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:13.5px;margin-top:6px">${esc(r.teksts)}</div></details>
+      ${r.foto ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${r.foto.split(',').filter(Boolean).map(f => `<a href="/sh/api/img?id=${encodeURIComponent(f)}&sz=w1600" target="_blank" rel="noopener"><img src="/sh/api/img?id=${encodeURIComponent(f)}&sz=w300" alt="Pielikums" style="width:64px;height:64px;object-fit:cover;border-radius:10px"></a>`).join('')}</div>` : ''}
+      ${r.statuss === 'jauns' || r.statuss === 'nezinams' ? `<div class="row2" style="gap:8px;flex-wrap:wrap;margin-top:10px">${r.statuss === 'jauns' ? `<button class="btn" data-mok="${esc(r.id)}" style="flex:1 1 140px">Pārbaudīt un apstiprināt</button>` : `<button class="btn ghost" data-mallow="${esc(r.no)}" style="flex:1 1 140px">Atļaut šo sūtītāju</button>`}<button class="btn ghost" data-mno="${esc(r.id)}" style="flex:1 1 120px">Noraidīt</button></div>`
+        : `<div class="hint" style="margin-top:6px">${r.statuss === 'apstiprinats' ? 'Izveidots: ' + esc((R.apps[(r.rezultats || '').split(':')[0]] || r.rezultats)) : 'Noraidīts'} · ${esc(r.kas)} ${esc(r.apstr)}</div>`}</div>`; };
+  const s = adminShell(`<div class="dash-h"><span>Vēstules uz <b>${esc(R.adrese)}</b> kļūst par melnrakstiem — darbs rodas tikai pēc «Apstiprināt».</span></div>
+    <div class="seg" id="mbSt" style="margin:0 0 12px">${Object.keys(SN).map(k => `<button type="button" data-st="${k}" class="${MB.st === k ? 'on' : ''}">${SN[k]}${C[k] ? ' · ' + C[k] : ''}</button>`).join('')}</div>
+    ${R.list.length ? R.list.map(row).join('') : '<p class="copy">Nav vēstuļu ✓</p>'}
+    <div class="perm"><div class="pt">Atļautie sūtītāji</div><p class="hint" style="margin:0 0 6px">Bez šī saraksta zināmi ir klientu, pārvaldnieku un Pilnvaru e-pasti. Var rakstīt arī domēnu, piem. <b>@namu-serviss.lv</b>. Pārējie nonāk «Nezināmi sūtītāji» bez AI un pielikumiem.</p>
+      <textarea id="mbAllow" class="minp" style="width:100%;min-height:70px;border-radius:12px;padding:10px;font:inherit" placeholder="adrese@piem.lv, @domens.lv">${esc((R.allow || []).join(', '))}</textarea><button class="btn ghost" id="mbAllowGo" style="margin-top:6px">Saglabāt sarakstu</button></div>`, null);
+  const reload = () => { A.MB = null; drawMbox(); };
+  $('mbSt').onclick = (e) => { const b = e.target.closest('[data-st]'); if (b) { MB.st = b.dataset.st; drawMbox(); } };
+  $('mbAllowGo').onclick = async (e) => { e.target.disabled = true; try { const r = await api('mailAllow', { list: $('mbAllow').value }); A.MB.allow = r.allow; toast('Saglabāts: ' + r.allow.length, 'ok'); } catch (err) { toast(netMsg(err), 'err'); } e.target.disabled = false; };
+  s.querySelectorAll('[data-mno]').forEach(b => b.onclick = async () => { if (!confirm('Noraidīt šo vēstuli? Darbs netiks izveidots.')) return; try { await api('mailReject', { id: b.dataset.mno }); toast('Noraidīts'); reload(); } catch (e) { toast(netMsg(e), 'err'); } });
+  s.querySelectorAll('[data-mallow]').forEach(b => b.onclick = async () => { const L = [...new Set((R.allow || []).concat([b.dataset.mallow]))]; try { await api('mailAllow', { list: L.join(',') }); toast('Atļauts: ' + b.dataset.mallow + ' (nākamās vēstules)', 'ok'); reload(); } catch (e) { toast(netMsg(e), 'err'); } });
+  s.querySelectorAll('[data-mok]').forEach(b => b.onclick = () => mboxApprove(R.list.find(x => x.id === b.dataset.mok)));
+}
+function mboxApprove(r) {
+  const R = A.MB, a = r.ai || {}, t = ymd(new Date());
+  const s = sheet(`<div class="hd"><button class="x bk" id="mbB" aria-label="Atpakaļ" style="font-size:18px">‹</button><h3>Apstiprināt pieteikumu</h3>${X}</div>
+    <p class="copy" style="text-align:left;margin:0 0 10px;overflow-wrap:anywhere">${esc(r.no)} · ${esc(r.tema)}</p>
+    <label class="fld"><span>Lietotne</span><select id="mbA" class="minp"><option value="">— izvēlieties —</option>${Object.keys(R.apps).map(k => `<option value="${k}" ${a.app === k ? 'selected' : ''}>${esc(R.apps[k])}</option>`).join('')}</select></label>
+    <label class="fld"><span>Objekts${a.adrese && !a.anorm ? ' <small class="hint" style="display:inline">· vēstulē: ' + esc(a.adrese) + '</small>' : ''}</span><select id="mbO" class="minp"><option value="">— izvēlieties —</option>${R.objects.map(([k, v]) => `<option value="${esc(k)}" ${a.anorm === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Darbs</span><textarea id="mbD" class="minp" style="min-height:80px;padding:10px;border-radius:12px;font:inherit">${esc(a.darbs || r.tema)}</textarea></label>
+    <div class="row2" style="gap:8px;flex-wrap:wrap"><label class="fld" style="flex:1 1 140px"><span>Datums / termiņš</span><input id="mbT" type="date" class="minp" min="${t}" value="${esc(a.termins && a.termins >= t ? a.termins : t)}"></label>
+      <label class="fld" style="flex:1 1 140px"><span>Daudzums</span><input id="mbQ" class="minp" value="${esc(a.daudzums || '')}" placeholder="maisi, kg…"></label></div>
+    <label class="fld"><span>Materiāls (kaisāmmateriālam)</span><select id="mbM" class="minp"><option value=""></option>${['sāls', 'smilts', 'mix'].map(m => `<option ${a.materials === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+    <label class="tgl" style="margin:6px 0"><input type="checkbox" id="mbS" ${a.steidzami ? 'checked' : ''}> Steidzami</label>
+    ${!a.ai ? '<p class="hint">AI izvilkums nav pieejams — aizpildiet laukus paši.</p>' : ''}
+    <button class="btn" id="mbGo" style="width:100%;height:48px;margin-top:8px">Izveidot pieteikumu</button>`);
+  $('mbB').onclick = () => { A.tab = 'mbox'; drawAdmin(); };
+  $('mbGo').onclick = async (e) => { const f = { app: $('mbA').value, anorm: $('mbO').value, darbs: $('mbD').value, datums: $('mbT').value, daudzums: $('mbQ').value, materials: $('mbM').value, steidzami: $('mbS').checked };
+    if (!f.app) return toast('Izvēlieties lietotni', 'err'); if (!f.anorm) return toast('Izvēlieties objektu', 'err');
+    e.target.disabled = true; try { const r2 = await api('mailApprove', { id: r.id, f }); toast('Izveidots: ' + R.apps[r2.job.app] + ' · ' + r2.job.adrese, 'ok'); A.MB = null; A.tab = 'mbox'; drawAdmin(); } catch (err) { e.target.disabled = false; toast(netMsg(err), 'err'); } };
+}
 /* ---------- C9 «Mana nedēļa»: 7 dienas × mani objekti × lietotnes; grafika darbu var pārcelt ---------- */
 const WK = { from: '' };
 const WAPP = { aizv: 'Aizv.', pl: 'Pļaušana', logi: 'Logi', sniegs: 'Sniegs', darz: 'Dārzs', stav: 'Stāvv.' };
@@ -928,7 +972,7 @@ function drawPanel() {
   $('dBk').onclick = async (e) => { const b = e.target; b.disabled = true; b.textContent = 'Veido…'; try { await api('backupNow'); toast('Rezerves kopija izveidota'); A.D.stale = 1; drawPanel(); } catch (err) { toast(netMsg(err), 'err'); b.disabled = false; b.textContent = 'Izveidot tagad'; } };
 }
 /* ---------- Administrēšana: cilvēki un pilnvaras + pamatdati (viens saraksts visām lietotnēm) ---------- */
-const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['invoices', 'Rēķini'], ['close', 'Slēgšana'], ['companies', 'Uzņēmumi'], ['kreq', 'Klientu pieteikumi'], ['maja', 'Mājas lapas'], ['season', 'Sezona'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['sms', 'SMS'], ['audit', 'Žurnāls'], ['review', 'Pārbaudīt']];
+const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['invoices', 'Rēķini'], ['close', 'Slēgšana'], ['companies', 'Uzņēmumi'], ['kreq', 'Klientu pieteikumi'], ['maja', 'Mājas lapas'], ['season', 'Sezona'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['mbox', 'E-pasta pieteikumi'], ['sms', 'SMS'], ['audit', 'Žurnāls'], ['review', 'Pārbaudīt']];
 /* Objekti pārcelti uz Mājas lietu (2026-11-24): cilne paslēpta, kods paliek (atgriezt — izņemt 'objects' no ADM_HIDE) */
 const ADM_HIDE = ['objects'];
 const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kaisāmmateriāls)', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
@@ -973,6 +1017,7 @@ const qm = (t) => !A.q || String(t).toLowerCase().includes(A.q.toLowerCase());
 function drawAdmin() {
   if (A.tab === 'panel') return drawPanel();
   if (A.tab === 'sms') return drawSms();
+  if (A.tab === 'mbox') return drawMbox();
   if (A.tab === 'invoices') return drawInvoices();
   if (A.tab === 'close') return drawClose();
   if (A.tab === 'audit') return drawAudit();
