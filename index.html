@@ -594,7 +594,7 @@ function appChip(k) {
   const r = S.me.perms[k] || (GRAF.indexOf(k) !== -1 ? gRole(k) : ''); return r ? `<span class="chip">${esc(RL[r] || (r === 'izvedejs' ? 'Izvedējs' : r === 'kurjers' ? 'Kurjers' : r))}</span>` : '';
 }
 function home() {
-  show('vHome');
+  show('vHome'); if (S.tourLater && !$('sheetBg')) setTimeout(maybeTour, 600); prefetchApps();
   const d = new Date(), h = d.getHours(), me = S.me, D = S.dash || {};
   $('today').textContent = d.toLocaleDateString('lv-LV', { weekday: 'long', day: 'numeric', month: 'long' });
   $('hi').textContent = (h < 11 ? 'Labrīt' : h < 18 ? 'Labdien' : 'Labvakar') + ', ' + (me.company ? me.name : me.name.split(' ')[0]);
@@ -740,7 +740,8 @@ function sheet(html) { const had = $('sheetBg'); if (had) had.remove(); else S.s
   return sh; }
 function closeSheet(fromPop) { const b = $('sheetBg'); if (!b) return; b.remove();
   if (!fromPop && history.state && history.state.sheet) history.replaceState(Object.assign({}, history.state, { sheet: 0 }), '');
-  const f = S.sheetFrom; S.sheetFrom = null; if (f && f.isConnected && f.focus) f.focus({ preventScroll: true }); }
+  const f = S.sheetFrom; S.sheetFrom = null; if (f && f.isConnected && f.focus) f.focus({ preventScroll: true });
+  if (S.tourLater && $('vApp').hidden) setTimeout(maybeTour, 600); }
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('sheetBg')) { e.preventDefault(); closeSheet(); } });
 const X = '<button class="x" aria-label="Aizvērt">×</button>';
 
@@ -1387,7 +1388,11 @@ addEventListener('hashchange', () => { const k = location.hash.slice(1); if (S.m
 setInterval(() => { if (S.me && !document.hidden && !$('vHome').hidden) refresh(true); }, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.me && !$('vHome').hidden) refresh(true); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-function maybeTour() { if (window.SHXR) SHXR.maybeTour(); }
+/* Pamācība tikai sākuma ekrānā — ja atvērta lietotne vai logs, atliek līdz atgriešanās sākumā */
+function maybeTour() { if (!$('vApp').hidden || $('sheetBg')) { S.tourLater = 1; return; } S.tourLater = 0; if (window.SHXR) SHXR.maybeTour(); }
+/* Dīkstāvē iepriekš ielādē 2 biežāk vajadzīgās lietotnes (pirmā atvēršana ātrāka) */
+function prefetchApps() { if (S.prefetched || !S.me) return; S.prefetched = 1; const go = () => apps().slice(0, 2).forEach(k => { const l = document.createElement('link'); l.rel = 'prefetch'; l.href = APPS[k].path; document.head.appendChild(l); });
+  (window.requestIdleCallback || ((f) => setTimeout(f, 2500)))(go, { timeout: 5000 }); }
 </script>
 <script>
 window.SHX = { app: 'portal', external: true, a2hs: true,

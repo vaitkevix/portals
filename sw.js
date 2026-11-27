@@ -1,7 +1,6 @@
 // SH | Portāls — service worker: instalēšana + push paziņojumi (Web Push). Dati vienmēr no tīkla. © VAITKEVIX, SIA
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
-self.addEventListener('fetch', () => {});
 self.addEventListener('push', (e) => {
   let m = {}; try { m = e.data ? e.data.json() : {}; } catch (err) { m = { title: 'SH | Portāls', body: e.data ? e.data.text() : '' }; }
   e.waitUntil(self.registration.showNotification(m.title || 'SH | Portāls', { body: m.body || '', icon: 'icon-192.png?v=4', badge: 'favicon-32.png?v=4', tag: m.tag || undefined, data: { url: m.url || '/sh/' } }));
