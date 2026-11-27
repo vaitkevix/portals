@@ -42,7 +42,7 @@ import { master, objMoveStmts, importAll as importMaster, legacyPayload, publicL
 const TZ = 'Europe/Riga';
 const PROMBUTNE = ['Atvaļinājums', 'DNL', 'Vakance'];
 const STAND_PROMB = ['DNL', 'Vakance'];
-const JOB_F = ['id', 'datums', 'adrese', 'tips', 'apraksts', 'vaditajs', 'brigade', 'statuss', 'publicets', 'izpildits', 'izveidots', 'komentars', 'foto', 'iemesls', 'lidz', 'serija', 'prombutne', 'steidzami', 'laiks', 'parbaude', 'parbKom', 'grupa'];
+const JOB_F = ['id', 'datums', 'adrese', 'tips', 'apraksts', 'vaditajs', 'brigade', 'statuss', 'publicets', 'izpildits', 'izveidots', 'komentars', 'foto', 'iemesls', 'lidz', 'serija', 'prombutne', 'steidzami', 'laiks', 'parbaude', 'parbKom', 'grupa', 'sakts', 'parcelts'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
 
 /* ---------------- HTTP ---------------- */
@@ -101,9 +101,13 @@ export default {
     J('mail', () => mail.selfTest(env));
     J('parvMail', () => parvmail.cron(env));   // C8: rītdienas darbi pārvaldniekiem
     J('izv', () => izvN.maybeSwitch(env));
+    J('izvReg', () => izvN.regCron(env));
+    J('kaisReg', () => kais.regCron(env));
     J('pers', () => persN.maybeSwitch(env));
     J('persResend', () => persN.resendQueued(env));
+    J('persEnd', () => persN.endCron(env));
     J('budz', () => budzN.maybeSwitch(env));
+    J('budzRem', () => budzN.remindCron(env));
     J('kais', () => kais.maybeSwitch(env).then(() => kais.pushSheet(env)));
     ctx.waitUntil((async () => { await cronJob(env, 'wx', () => wxCron(env)); for (const k in GRAF) await cronJob(env, 'cron ' + k, () => GRAF[k].cron(env)); })());
   }
@@ -118,6 +122,7 @@ async function handleFetch(request, env, ctx) {
     if (url.pathname === '/izv' || url.pathname.endsWith('/izv')) return izv(request, url, env, ctx, 'izv');
     if (url.pathname === '/kais' || url.pathname.endsWith('/kais')) return izv(request, url, env, ctx, 'kais');
     if (url.pathname === '/pers' || url.pathname.endsWith('/pers')) return pers(request, env, ctx);
+    if (url.pathname.endsWith('/budz/akc')) return budzN.acceptPage(request, env, url);   // klienta akcepts (publiska saite ar atslēgu)
     if (url.pathname === '/budz' || url.pathname.endsWith('/budz')) return budz(request, env, ctx);
     if (url.pathname === '/pl' || url.pathname.endsWith('/pl')) return guestSafe(request, () => plausana(request, env, new Ctx(env, ctx)));
     if (url.pathname === '/dl/sms' || url.pathname.endsWith('/dl/sms')) return darbalaiks.hook(request, env, new Ctx(env, ctx), url);   // SMS vārtejas webhook
@@ -156,7 +161,8 @@ async function handleFetch(request, env, ctx) {
       if (req.action === 'syncConfig') { checkKey(env, req.key); return json(Object.assign({ ok: true }, await syncConfig(X))); }
       if (req.action === 'export') return json(Object.assign({ ok: true }, await exportTable(X, req)));
       if (req.action === 'teamView') return json(Object.assign({ ok: true }, await teamView(X, req, await teamOk(X, req))));
-      if (/^team(Done|Cant|Problem)$/.test(req.action) && !(await teamOk(X, req))) return json({ ok: false, error: 'Lai atzīmētu, vajag brigādes saiti no vadītāja vai PIN', code: 'teamkey' });
+      if (/^team(Done|Cant|Problem|Start)$/.test(req.action) && !(await teamOk(X, req))) return json({ ok: false, error: 'Lai atzīmētu, vajag brigādes saiti no vadītāja vai PIN', code: 'teamkey' });
+      if (req.action === 'teamStart') return json(Object.assign({ ok: true }, await startJob(X, null, req)));
       if (req.action === 'teamDone') return json(Object.assign({ ok: true }, await teamDone(X, req)));
       if (req.action === 'teamCant') return json(Object.assign({ ok: true }, await teamCant(X, req)));
       if (req.action === 'teamProblem') return json(Object.assign({ ok: true }, await teamProblem(X, req)));
@@ -190,10 +196,10 @@ async function cronJob(env, name, f) {
 const APPS = {
   izv: { gas: 'IZV_GAS_URL', reads: ['getBoot', 'getTasks', 'getInitialData'], boot: 'getBoot',
     fns: ['getBoot', 'getTasks', 'getHist', 'getInitialData', 'saveTask', 'updateTask', 'setTaskCancelled', 'getAccess', 'checkCarrierPin', 'completeTask', 'reportProblem', 'reportPdf',
-      'geocodeAddresses', 'aiParseMessage', 'aiCheckPhoto', 'aiCompare', 'aiAsk', 'aiMonthSummary', 'saveFileToDrive', 'portalCarrier', 'addPhotos', 'deleteTask', 'removePhoto', 'carrierAnswer'],
+      'geocodeAddresses', 'aiParseMessage', 'aiCheckPhoto', 'aiCompare', 'aiAsk', 'aiMonthSummary', 'saveFileToDrive', 'portalCarrier', 'addPhotos', 'deleteTask', 'removePhoto', 'carrierAnswer', 'regList', 'regSave'],
     async: ['saveTask', 'completeTask', 'reportProblem', 'updateTask', 'setTaskCancelled'], open: ['getBoot', 'getTasks', 'getHist', 'getInitialData', 'reportPdf', 'checkCarrierPin', 'portalCarrier'], pinFns: ['completeTask', 'reportProblem'], idRe: /^TASK-\d{10,}$/, idPrefix: 'TASK-' },
   kais: { gas: 'KAIS_GAS_URL', reads: ['getTasks', 'getInitialData'], boot: null,
-    fns: ['getTasks', 'getInitialData', 'saveTask', 'completeTask', 'saveFileToDrive', 'carrierAnswer'],
+    fns: ['getTasks', 'getInitialData', 'saveTask', 'completeTask', 'saveFileToDrive', 'carrierAnswer', 'reportProblem', 'cancelTask', 'regList', 'regSave', 'geocodeAddresses'],
     async: ['saveTask', 'completeTask'], open: ['getTasks', 'getInitialData'], pinFns: [], idRe: /^KM-\d{10,}$/, idPrefix: 'KM-' }
 };
 const IZV_FRESH_MS = 20000;
@@ -938,7 +944,8 @@ const ACTIONS = {
     const [jobs, units, staff, probs, stand] = await Promise.all([visibleJobs(X, u, r.date), X.units(r.date), X.staff(), problems(X, u), standingFor(X, u)]);
     const crews = {}; units.forEach(x => crews[x.name] = x.persons);
     const apst = await kvGet(X.db, 'aizv:conf:' + r.date).then(v => { try { return Object.values(JSON.parse(v || '{}')); } catch (e) { return []; } }).catch(() => []);   // B4: JĀ / NĒ no SMS
-    return { jobs, units, crews, staff, teamLink: u.role === 'admin' && X.env.APP_URL ? X.env.APP_URL + '?k=' + await teamKey(X) : '', problems: probs, standing: stand, brigades: stand.some(x => x.melnraksts) ? await brigadeNames(X) : [], apst };
+    const warn = u.role === 'brigade' ? null : await loadWarn(X, r.date, units, jobs);
+    return { warn, jobs, units, crews, staff, teamLink: u.role === 'admin' && X.env.APP_URL ? X.env.APP_URL + '?k=' + await teamKey(X) : '', problems: probs, standing: stand, brigades: stand.some(x => x.melnraksts) ? await brigadeNames(X) : [], apst };
   },
 
   setUnit: async (X, u, r) => {
@@ -1101,7 +1108,7 @@ const ACTIONS = {
     if (u.role === 'brigade') throw new Error('Nav atļauts');
     let list = (await X.all('SELECT * FROM jobs WHERE datums >= ? AND datums <= ? ORDER BY datums, seq', r.from, r.to)).map(jobOut);
     if (u.role === 'vaditajs') list = list.filter(await mineOf(X, u));
-    return { jobs: list.map(j => ({ datums: j.datums, adrese: j.adrese, tips: j.tips, vaditajs: j.vaditajs, brigade: j.brigade, statuss: j.statuss, lidz: j.lidz, prombutne: j.prombutne, foto: j.foto ? 1 : 0, parbaude: j.parbaude, iemesls: j.iemesls, steidzami: j.steidzami })) };
+    return { jobs: list.map(j => ({ datums: j.datums, adrese: j.adrese, tips: j.tips, vaditajs: j.vaditajs, brigade: j.brigade, statuss: j.statuss, lidz: j.lidz, prombutne: j.prombutne, foto: j.foto ? 1 : 0, parbaude: j.parbaude, iemesls: j.iemesls, steidzami: j.steidzami, laiks: j.laiks, sakts: j.sakts, izpildits: j.izpildits, parcelts: j.parcelts ? 1 : 0 })) };
   },
 
   deleteJob: async (X, u, r) => {
@@ -1181,6 +1188,38 @@ const ACTIONS = {
     await updJob(X, job).run();
     if (r.done && job.vaditajs && job.vaditajs !== u.name) X.notify([job.vaditajs], '✓ Izpildīts · ' + job.brigade, job.adrese + (job.komentars ? ' — ' + job.komentars : '') + (ids.length ? ' 📷' + ids.length : ''));
     return { job };
+  },
+
+  start: async (X, u, r) => startJob(X, u, r),
+
+  /* Pārcelt uz citu dienu ar vēsturi (iemesls, kas), nevis dzēst/veidot no jauna */
+  moveJob: async (X, u, r) => {
+    if (u.role === 'brigade') throw new Error('Nav atļauts');
+    const job = await X.job(r.id); if (!job) throw new Error('Darbs nav atrasts');
+    if (u.role !== 'admin' && job.vaditajs !== u.name) throw new Error('Pārcelt var darba vadītājs vai admins');
+    const uz = String(r.datums || ''), why = String(r.iemesls || '').trim().slice(0, 300);
+    if (!isDate(uz)) throw new Error('Norādiet jauno datumu');
+    if (uz === job.datums) throw new Error('Jaunais datums ir tas pats');
+    if (!why) throw new Error('Norādiet iemeslu');
+    if (job.statuss === 'izpildīts') throw new Error('Izpildītu darbu pārcelt nevar');
+    await assertOpen(X.db, job.datums); await assertOpen(X.db, uz);
+    let H = []; try { H = JSON.parse(job.parcelts || '[]'); } catch (e) {}
+    H.push({ no: job.datums, uz, iemesls: why, kas: u.name, laiks: now() });
+    const no = job.datums; job.datums = uz; job.parcelts = JSON.stringify(H.slice(-20)); job.publicets = ''; job.sakts = '';
+    if (job.statuss === 'nevar izpildīt') { job.statuss = job.brigade ? 'piešķirts' : 'jauns'; job.iemesls = ''; job.izpildits = ''; }
+    await updJob(X, job).run();
+    await audit(X.db, u.name, 'Aizvietošana', job.adrese, [['Datums (pārcelts)', no, uz], ['Iemesls', '', why]]);
+    if (u.role !== 'admin') X.notify(await X.names('admin'), '↷ Pārcelts · ' + job.adrese, lvDate(no) + ' → ' + lvDate(uz) + ' — ' + why);
+    return { job };
+  },
+
+  /* Vienības slodzes robeža: vairāk par N adresēm dienā → brīdinājums (0 = izslēgts) */
+  setMaxAddr: async (X, u, r) => {
+    requireAdmin(u);
+    const n = Math.max(0, Math.min(200, parseInt(r.n, 10) || 0)), old = await kvGet(X.db, 'aizv:maxAddr');
+    await kvSet(X.db, 'aizv:maxAddr', String(n)).run();
+    await audit(X.db, u.name, 'Aizvietošana', 'Iestatījumi', ['Max adreses vienībai', old || '', String(n)]);
+    return { warn: await loadWarn(X, r.date, await X.units(r.date), await visibleJobs(X, u, r.date)) };
   },
 
   cantDo: async (X, u, r) => {
@@ -1298,11 +1337,31 @@ async function teamView(X, r, full) {
   const [units, all, objs, users, types] = await Promise.all([X.units(date), X.jobsOn(date), X.objects(), X.users(), X.types()]);
   const jobs = all.filter(j => j.brigade).map(j => ({ id: j.id, datums: j.datums, adrese: j.adrese, tips: j.tips, apraksts: j.apraksts, vaditajs: j.vaditajs,
     brigade: j.brigade, statuss: j.statuss, lidz: j.lidz, prombutne: j.prombutne, foto: j.foto, komentars: j.komentars, iemesls: j.iemesls, izpildits: j.izpildits,
-    steidzami: j.steidzami, laiks: j.laiks, parbaude: j.parbaude, parbKom: j.parbKom }));
+    steidzami: j.steidzami, laiks: j.laiks, parbaude: j.parbaude, parbKom: j.parbKom, sakts: j.sakts }));
   const addrs = new Set(jobs.map(j => norm(j.adrese)));
   return { date, units, jobs, canEdit: !!full, meta: { objects: objs.filter(o => addrs.has(norm(o.adrese))).map(o => full ? o : Object.assign({}, o, { piekluve: '' })), managers: users.filter(x => x.role === 'vaditajs').map(x => ({ name: x.name, color: x.color })), colors: await peopleColors(X), jobTypes: types } };
 }
 
+/* «Sākt»: izpildītājs sāk darbu → laiks sakts (plānotais pret faktisko). u = null — brigādes saite (teamOk jau pārbaudīts) */
+async function startJob(X, u, r) {
+  const job = await X.job(r.id);
+  if (!job || !job.brigade) throw new Error('Darbs nav atrasts vai nav piešķirts vienībai');
+  if (u) await canMark(u, job);
+  await assertOpen(X.db, job.datums);
+  if (job.statuss === 'izpildīts' || job.statuss === 'nevar izpildīt') throw new Error('Darbs jau atzīmēts');
+  job.sakts = r.undo ? '' : now();
+  await X.run('UPDATE jobs SET sakts = ? WHERE id = ?', job.sakts, job.id);
+  return { job };
+}
+/* Slodzes un konfliktu brīdinājumi: cilvēks vairākās vienībās vienā dienā; vienībai > N adrešu (kv aizv:maxAddr) */
+async function loadWarn(X, date, units, jobs) {
+  const max = parseInt(await kvGet(X.db, 'aizv:maxAddr'), 10) || 0, P = {}, C = {}, out = [];
+  (units || []).forEach(un => (un.persons || []).forEach(p => { const k = p.trim().toLowerCase(); (P[k] = P[k] || { p, u: [] }).u.push(un.name); }));
+  Object.values(P).filter(x => x.u.length > 1).forEach(x => out.push({ k: 'dub', t: x.p + ' ir vairākās vienībās: ' + x.u.join(', ') }));
+  (jobs || []).forEach(j => brigs(j.brigade).forEach(b => { (C[b] = C[b] || new Set()).add(j.anorm || norm(j.adrese)); }));
+  if (max) Object.entries(C).filter(([, s]) => s.size > max).forEach(([b, s]) => out.push({ k: 'slodze', t: b + ': ' + s.size + ' adreses (robeža ' + max + ')' }));
+  return { list: out, max, count: Object.fromEntries(Object.entries(C).map(([b, s]) => [b, s.size])) };
+}
 /** Pārceltu darbu (↻) izpilda vēl tajā pašā vakarā → datums atpakaļ uz šodienu (lai neaiziet uz rītdienu/nākamo mēnesi) */
 function doneToday(job) { if (/^↻ no /.test(job.apraksts || '') && job.datums > today()) job.datums = today(); }
 async function teamDone(X, r) {
