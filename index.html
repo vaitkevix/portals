@@ -181,6 +181,8 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .afil select{height:40px;border:0;border-radius:var(--r-pill,999px);background:var(--surface-2);padding:0 12px;font:inherit;font-weight:700;color:var(--ink);max-width:100%}
 .f select.fsel{width:100%;height:46px;border:0;border-radius:var(--r-lg,20px);background:var(--surface-2);padding:0 14px;font:inherit;font-weight:700;color:var(--ink)}
 .kcen{display:grid;gap:6px}.kc{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border-radius:var(--r-md,14px);background:var(--surface-2);font-weight:700;font-size:14px}.kc span{flex:1;min-width:0;display:flex;align-items:center;gap:8px}.kc input{width:90px!important;height:38px!important;text-align:right;border:0;border-radius:var(--r-sm,10px);background:var(--surface);font:inherit;font-weight:800;padding:0 10px}.kc small{width:64px;color:var(--ink-3);font-weight:700}
+.afil input[type=search]{height:40px;border:0;border-radius:var(--r-pill,999px);background:var(--surface-2);padding:0 14px;font:inherit;font-weight:600;color:var(--ink)}
+.au-ch{font-size:13px;font-weight:600;color:var(--ink-2);margin-top:6px;overflow-wrap:anywhere}.au-ch .au-l{color:var(--ink-3)}.au-ch .au-b{text-decoration:line-through;color:var(--ink-3)}
 .afil .n{font-size:13px;font-weight:700;color:var(--ink-3);margin-left:4px}
 @media(min-width:900px){.sheet.adm .plist{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .adm-top input{flex:1;height:44px;border-radius:var(--r-md,14px);border:1px solid var(--line-2);background:var(--surface-2);padding:0 14px;outline:none;min-width:0}
@@ -824,7 +826,7 @@ function drawPanel() {
   $('dBk').onclick = async (e) => { const b = e.target; b.disabled = true; b.textContent = 'Veido…'; try { await api('backupNow'); toast('Rezerves kopija izveidota'); A.D.stale = 1; drawPanel(); } catch (err) { toast(netMsg(err), 'err'); b.disabled = false; b.textContent = 'Izveidot tagad'; } };
 }
 /* ---------- Administrēšana: cilvēki un pilnvaras + pamatdati (viens saraksts visām lietotnēm) ---------- */
-const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['invoices', 'Rēķini'], ['close', 'Slēgšana'], ['companies', 'Uzņēmumi'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['sms', 'SMS'], ['review', 'Pārbaudīt']];
+const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['invoices', 'Rēķini'], ['close', 'Slēgšana'], ['companies', 'Uzņēmumi'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['sms', 'SMS'], ['audit', 'Žurnāls'], ['review', 'Pārbaudīt']];
 /* Objekti pārcelti uz Mājas lietu (2026-11-24): cilne paslēpta, kods paliek (atgriezt — izņemt 'objects' no ADM_HIDE) */
 const ADM_HIDE = ['objects'];
 const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kaisāmmateriāls)', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
@@ -870,6 +872,7 @@ function drawAdmin() {
   if (A.tab === 'sms') return drawSms();
   if (A.tab === 'invoices') return drawInvoices();
   if (A.tab === 'close') return drawClose();
+  if (A.tab === 'audit') return drawAudit();
   if (A.tab === 'people') {
     const F = A.f.p || '', list = S.people.filter(p => qm(p.name + ' ' + (p.phone || '') + ' ' + (p.email || '')) && (!F || (F === 'admin' ? p.perms.portal === 'admin' : F === 'off' ? !p.active : (p.perms[F] && p.perms[F] !== ''))));
     const s = adminShell(`<div class="afil" id="pF"><select aria-label="Filtrs"><option value="">Visi cilvēki</option><option value="admin" ${F === 'admin' ? 'selected' : ''}>Portāla admini</option><option value="off" ${F === 'off' ? 'selected' : ''}>Neaktīvie</option>${ORDER.map(k => `<option value="${k}" ${F === k ? 'selected' : ''}>Ar piekļuvi: ${APPS[k].name}</option>`).join('')}</select><span class="n">${list.length}</span></div><div class="plist">${list.map(p => `<button class="prow ${p.active ? '' : 'off'}" data-p="${esc(p.name)}"><span class="dot" style="background:${esc(p.color || '')}"></span>
@@ -1295,6 +1298,22 @@ function drawClose() {
   s.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { A.cym = new Date(Date.UTC(y, m - 1 + +b.dataset.m, 1)).toISOString().slice(0, 7); A.CL = null; drawClose(); });
   const d1 = $('clDo'); if (d1) d1.onclick = () => { if (!confirm('Slēgt ' + mon + '?' + (bad ? '\n\nIr ' + bad + ' brīdinājumi.' : '') + '\nPēc tam darbus, atzīmes un labojumus šim mēnesim mainīt nevarēs.')) return; api('closeMonth', { ym }).then(r => { A.CL = r; toast('Mēnesis slēgts'); drawClose(); }).catch(e => toast(netMsg(e), 'err')); };
   const d2 = $('clOpen'); if (d2) d2.onclick = () => { const why = prompt('Kāpēc atvērt ' + mon + '? (ierakstās žurnālā)'); if (why === null) return; api('openMonth', { ym, iemesls: why }).then(r => { A.CL = r; toast('Mēnesis atvērts'); drawClose(); }).catch(e => toast(netMsg(e), 'err')); };
+}
+/* ---------- Audita žurnāls (D8): kas, kad, ko mainīja ---------- */
+function drawAudit() {
+  const f = A.auF || (A.auF = { modulis: '', kas: '', q: '' }), key = JSON.stringify(f);
+  if (!A.AU || A.AU.key !== key) { if (!A.AU) adminShell('<div class="skel"></div>', null); api('audit', f).then(r => { A.AU = Object.assign(r, { key }); if (A.tab === 'audit') drawAudit(); }).catch(e => toast(netMsg(e), 'err')); if (!A.AU) return; }
+  const R = A.AU, lt = (t) => t ? t.slice(8, 10) + '.' + t.slice(5, 7) + '. ' + t.slice(11, 16) : '';
+  const v = (x) => x === '' ? '—' : esc(x.length > 120 ? x.slice(0, 120) + '…' : x);
+  const s = adminShell(`<div class="afil" id="auF"><select data-f="modulis" aria-label="Modulis"><option value="">Visi moduļi</option>${R.moduli.map(m => `<option ${f.modulis === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
+      <select data-f="kas" aria-label="Kas mainīja"><option value="">Visi cilvēki</option>${R.kas.map(m => `<option ${f.kas === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
+      <input type="search" id="auQ" placeholder="Meklēt…" value="${esc(f.q)}" aria-label="Meklēt žurnālā" style="flex:1;min-width:140px"><span class="n">${R.list.length}</span></div>
+    <div class="plist">${R.list.map(r => `<div class="prow"><div class="nm"><b>${esc(r.objekts || r.modulis)}</b><div class="chips"><span class="chip a">${esc(r.modulis)}</span><span class="chip">${esc(r.kas)}</span><span class="chip">${esc(lt(r.laiks))}</span></div>
+      <div class="au-ch"><span class="au-l">${esc(r.lauks)}</span> <span class="au-b">${v(r.bija)}</span> → <b>${v(r.kluva)}</b></div></div></div>`).join('') || empty()}</div>
+    ${R.list.length >= 400 ? '<p class="copy">Rāda jaunākos 400 — sašauriniet filtru</p>' : ''}`, null);
+  s.querySelector('#auF').onchange = (e) => { const el = e.target.closest('[data-f]'); if (!el) return; f[el.dataset.f] = el.value; drawAudit(); };
+  const qi = $('auQ'); if (A.auFoc) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); A.auFoc = 0; }
+  let tm = 0; qi.oninput = (e) => { clearTimeout(tm); tm = setTimeout(() => { f.q = e.target.value.trim(); A.auFoc = 1; drawAudit(); }, 400); };
 }
 function editFirma() {
   api('firma').then(r => { const F = r.firma;

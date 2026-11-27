@@ -6,6 +6,8 @@ import { dashboard } from './dashboard.js';
 import { viewLink, viewTokens } from './view.js';
 import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo, invoiceIssue, invoices, invoiceSet } from './klienti.js';
 import { notify } from './webpush.js';
+import { audit, diff, auditList } from './audit.js';
+const AN = { portal: 'Portāls', aizv: 'Aizvietošana', izv: 'Izvešana', kais: 'Kaisāmmateriāls', pers: 'Personāls', budz: 'Budžets', pl: 'Pļaušana', logi: 'Logi', sniegs: 'Sniegs', darz: 'Dārzniecība', stav: 'Stāvvietas', dl: 'Darba laiks', ml: 'Mājas lieta' };
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
 export const APPS_P = ['aizv', 'izv', 'kais', 'pers', 'budz'];
 export const ROLES = {
@@ -198,35 +200,39 @@ export async function portal(request, env, ctx, hooks) {
       if (await env.DB.prepare('SELECT 1 FROM companies WHERE UPPER(pass) = UPPER(?) AND pass != \'\'').bind(pin).first()) return pj({ ok: false, error: 'Šāds PIN sakrīt ar kāda uzņēmuma paroli — izvēlieties citu' });
       const rec = { name, pin, color: String(p.color || '').slice(0, 20), phone: String(p.phone || '').trim().slice(0, 40), email: String(p.email || '').trim().slice(0, 120), active: p.active !== false, perms: cleanPerms(p.perms) };
       if (old === me.name && rec.perms.portal !== 'admin') return pj({ ok: false, error: 'Sev administratora tiesības noņemt nevar' });
-      const i = list.findIndex(x => x.name === old);
+      const i = list.findIndex(x => x.name === old), prev = i >= 0 ? JSON.parse(JSON.stringify(list[i])) : null;
       if (i >= 0) list[i] = Object.assign(list[i], rec); else list.push(rec);
       await hooks.saved(list);
+      { const flat = (p) => p && Object.assign({ name: p.name, color: p.color, phone: p.phone, email: p.email, active: p.active ? 'jā' : 'nē', pin: p.pin }, Object.fromEntries(Object.keys(ROLES).map(k => ['Tiesības: ' + (AN[k] || k), (p.perms || {})[k] || ''])));
+        const F = ['name', 'phone', 'email', 'active', 'color', 'pin'].concat(Object.keys(ROLES).map(k => 'Tiesības: ' + (AN[k] || k)));
+        await audit(env.DB, me.name, 'Cilvēki', name, prev ? diff(flat(prev), flat(rec), F, ['pin']) : [['izveidots', '', name]]); }
       return pj({ ok: true, people: await people(env.DB) });
     }
     if (a === 'del') {
       if (b.name === me.name) return pj({ ok: false, error: 'Sevi dzēst nevar' });
       const list = (await people(env.DB)).filter(x => x.name !== b.name);
       await hooks.saved(list);
+      await audit(env.DB, me.name, 'Cilvēki', String(b.name || ''), ['dzēsts', String(b.name || ''), '']);
       return pj({ ok: true, people: await people(env.DB) });
     }
     /* Klienti un izpildes akti */
     if (a === 'clients') return pj(Object.assign({ ok: true }, await clientsData(env.DB)));
-    if (a === 'saveClient') { await saveClient(env.DB, b.client || {}); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
-    if (a === 'delClient') { await delClient(env.DB, String(b.id || '')); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
+    if (a === 'saveClient') { await saveClient(env.DB, b.client || {}, me.name); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
+    if (a === 'delClient') { await delClient(env.DB, String(b.id || ''), me.name); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
     if (a === 'firma') return pj(Object.assign({ ok: true }, { firma: await firma(env.DB) }));
-    if (a === 'firmaSave') return pj({ ok: true, firma: await saveFirma(env.DB, b.firma) });
+    if (a === 'firmaSave') return pj({ ok: true, firma: await saveFirma(env.DB, b.firma, me.name) });
     if (a === 'invoiceNo') return pj(Object.assign({ ok: true }, await invoiceNo(env.DB, String(b.client || ''), String(b.ym || ''))));
     /* Mēneša slēgšana (D2): pārbaudes → slēgt; slēgtā mēnesī Worker atraida darbu/atzīmju izmaiņas */
     if (a === 'closeCheck') return pj(Object.assign({ ok: true }, await closeCheck(env.DB, String(b.ym || ''))));
     if (a === 'closeMonth') { const ym = String(b.ym || ''); if (!/^\d{4}-\d{2}$/.test(ym)) throw new Error('Nederīgs mēnesis');
       if (ym >= new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Riga' }).format(new Date()).slice(0, 7)) throw new Error('Slēgt var tikai pagājušu mēnesi');
       await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind('close:' + ym, JSON.stringify({ kas: me.name, laiks: new Date().toISOString() })).run();
-      await closeLog(env.DB, me.name + ' slēdza ' + ym); return pj(Object.assign({ ok: true }, await closeCheck(env.DB, ym))); }
-    if (a === 'openMonth') { const ym = String(b.ym || ''); await env.DB.prepare('DELETE FROM kv WHERE k = ?').bind('close:' + ym).run(); await closeLog(env.DB, me.name + ' atvēra ' + ym + (b.iemesls ? ' — ' + String(b.iemesls).slice(0, 120) : ''));
+      await closeLog(env.DB, me.name + ' slēdza ' + ym); await audit(env.DB, me.name, 'Slēgšana', ym, ['statuss', 'atvērts', 'slēgts']); return pj(Object.assign({ ok: true }, await closeCheck(env.DB, ym))); }
+    if (a === 'openMonth') { const ym = String(b.ym || ''); await env.DB.prepare('DELETE FROM kv WHERE k = ?').bind('close:' + ym).run(); await closeLog(env.DB, me.name + ' atvēra ' + ym + (b.iemesls ? ' — ' + String(b.iemesls).slice(0, 120) : '')); await audit(env.DB, me.name, 'Slēgšana', ym, ['statuss', 'slēgts', 'atvērts' + (b.iemesls ? ' — ' + String(b.iemesls).slice(0, 120) : '')]);
       return pj(Object.assign({ ok: true }, await closeCheck(env.DB, ym))); }
     if (a === 'invoiceIssue') { return pj({ ok: true, invoice: await invoiceIssue(env.DB, String(b.client || ''), String(b.ym || ''), me.name) }); }
     if (a === 'invoices') return pj(Object.assign({ ok: true }, await invoices(env.DB, { st: String(b.st || '') })));
-    if (a === 'invoiceSet') return pj({ ok: true, invoice: await invoiceSet(env.DB, b) });
+    if (a === 'invoiceSet') return pj({ ok: true, invoice: await invoiceSet(env.DB, b, me.name) });
     if (a === 'clientReport') return pj(Object.assign({ ok: true }, await report(env.DB, String(b.client || ''), String(b.ym || ''))));
     if (a === 'viewLink') return pj(Object.assign({ ok: true }, await viewLink(env.DB, String(b.client || ''), !!b.revoke)));
     if (a === 'viewTokens') return pj({ ok: true, tokens: await viewTokens(env.DB) });
@@ -235,8 +241,10 @@ export async function portal(request, env, ctx, hooks) {
       const st = (await env.DB.prepare('SELECT virziens, COUNT(*) n FROM dl_sms WHERE laiks >= ? GROUP BY virziens').bind(m0).all().catch(() => ({ results: [] }))).results || [];
       const ping = await env.DB.prepare("SELECT v FROM kv WHERE k = 'dl:ping'").first().catch(() => null), dc = await env.DB.prepare("SELECT v FROM kv WHERE k = 'dl:cfg'").first().catch(() => null);
       return pj({ ok: true, list: SMS_F.map(([k, n, d]) => ({ k, n, d, on: c[k] })), stats: Object.fromEntries(st.map(r => [r.virziens, r.n])), ping: parse(ping && ping.v), varteja: !!(env.SMS_USER && env.SMS_PASS), laiki: parse(dc && dc.v) }); }
-    if (a === 'smsCfgSave') { const cur = await smsCfg(env.DB), inn = b.cfg || {}; SMS_F.forEach(([k]) => { if (typeof inn[k] === 'boolean') cur[k] = inn[k]; });
+    if (a === 'smsCfgSave') { const cur = await smsCfg(env.DB), was = Object.assign({}, cur), inn = b.cfg || {}; SMS_F.forEach(([k]) => { if (typeof inn[k] === 'boolean') cur[k] = inn[k]; });
+      await audit(env.DB, me.name, 'SMS', 'SMS funkcijas', SMS_F.filter(([k]) => was[k] !== cur[k]).map(([k, n]) => [n, was[k] ? 'ieslēgts' : 'izslēgts', cur[k] ? 'ieslēgts' : 'izslēgts']));
       await env.DB.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('sms:cfg', ?)").bind(JSON.stringify(cur)).run(); return pj({ ok: true, cfg: cur }); }
+    if (a === 'audit') return pj(Object.assign({ ok: true }, await auditList(env.DB, { modulis: b.modulis, kas: b.kas, q: b.q })));
     if (a === 'dashboard') return pj(Object.assign({ ok: true }, await dashboard(env.DB)));
     /* D1 rezerves kopija (R2 backup/) */
     if (a === 'backupInfo') { const g = async (k) => { const r = await env.DB.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? parse(r.v) : null; }; return pj({ ok: true, info: await g('backup:info'), health: await g('health:backup') }); }

@@ -1,6 +1,7 @@
 /* SH | Klienti un izpildes akti: klienti ar cenām par vienību katrai lietotnei, objektu piesaiste, mēneša atskaite no visām lietotnēm
  * (daudzums × cena), CSV rēķinam un izpildes akts ar bildēm. Tikai portāla administratoram. © VAITKEVIX, SIA */
 import { akey, splitAddr } from './util.js';
+import { audit, diff } from './audit.js';
 const uid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 10);
 const J = (s) => { try { return JSON.parse(s || '{}') || {}; } catch (e) { return {}; } };
 const mins = (a, b) => { if (!/^\d\d:\d\d$/.test(a || '') || !/^\d\d:\d\d$/.test(b || '')) return 0; let m = (+b.slice(0, 2) * 60 + +b.slice(3)) - (+a.slice(0, 2) * 60 + +a.slice(3)); if (m < 0) m += 1440; return m; };
@@ -29,8 +30,12 @@ export async function clientsData(db) {
   return { clients, units: UNITS };
 }
 const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-export async function saveClient(db, c) {
+const CL_F = ['name', 'regnr', 'adrese', 'epasts', 'kontakts', 'liguma_nr', 'aktivs'];
+const clFlat = (c, n) => c ? Object.assign(Object.fromEntries(CL_F.map(f => [f, f === 'aktivs' ? (c[f] === false || c[f] === 0 ? 'nē' : 'jā') : c[f]])), Object.fromEntries(Object.keys(UNITS).map(k => ['cena ' + UNITS[k].name, (J(c.cenas)[k] || c.cenas && c.cenas[k]) || ''])), { objekti: n }) : {};
+export async function saveClient(db, c, who) {
   const id = c.id || uid(), name = String(c.name || '').trim().slice(0, 120); if (!name) throw new Error('Ierakstiet klienta nosaukumu');
+  const prev = c.id ? await db.prepare('SELECT * FROM clients WHERE id = ?').bind(c.id).first() : null;
+  const prevN = prev ? ((await db.prepare('SELECT COUNT(*) n FROM client_obj WHERE client = ?').bind(id).first()) || {}).n || 0 : 0;
   const cen = {}; Object.keys(UNITS).forEach(k => { const v = +String((c.cenas || {})[k] || '').replace(',', '.'); if (v > 0) cen[k] = r2(v); });
   const st = [db.prepare('INSERT INTO clients (id, name, regnr, adrese, epasts, kontakts, liguma_nr, cenas, aktivs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, regnr = excluded.regnr, adrese = excluded.adrese, epasts = excluded.epasts, kontakts = excluded.kontakts, liguma_nr = excluded.liguma_nr, cenas = excluded.cenas, aktivs = excluded.aktivs')
     .bind(id, name, String(c.regnr || '').slice(0, 30), String(c.adrese || '').slice(0, 200), String(c.epasts || '').slice(0, 120), String(c.kontakts || '').slice(0, 120), String(c.liguma_nr || '').slice(0, 60), JSON.stringify(cen), c.aktivs === false ? 0 : 1)];
@@ -39,9 +44,15 @@ export async function saveClient(db, c) {
     for (const a of c.objekti.slice(0, 2000)) st.push(db.prepare('INSERT OR REPLACE INTO client_obj (anorm, client) VALUES (?, ?)').bind(norm(a), id));   // objekts — vienam klientam
   }
   for (let i = 0; i < st.length; i += 90) await db.batch(st.slice(i, i + 90));
+  if (who) { const now = Object.assign({}, c, { name, cenas: cen }), n = Array.isArray(c.objekti) ? c.objekti.length : prevN;
+    await audit(db, who, 'Klienti', name, prev ? diff(clFlat(prev, prevN), clFlat(now, n), Object.keys(clFlat(now, n))) : [['izveidots', '', name]]); }
   return id;
 }
-export async function delClient(db, id) { await db.batch([db.prepare('DELETE FROM client_obj WHERE client = ?').bind(id), db.prepare('DELETE FROM clients WHERE id = ?').bind(id)]); }
+export async function delClient(db, id, who) {
+  const c = await db.prepare('SELECT name FROM clients WHERE id = ?').bind(id).first();
+  await db.batch([db.prepare('DELETE FROM client_obj WHERE client = ?').bind(id), db.prepare('DELETE FROM clients WHERE id = ?').bind(id)]);
+  if (who && c) await audit(db, who, 'Klienti', c.name, ['dzēsts', c.name, '']);
+}
 
 /* Mēneša izpilde klientam (vai visiem): rindas pa darbiem + kopsavilkums pa lietotnēm */
 export async function report(db, clientId, ym) {
@@ -108,8 +119,9 @@ export async function firma(db) {
   const r = await db.prepare("SELECT v FROM kv WHERE k = 'firma'").first(); const o = J(r && r.v);
   const D = { nosaukums: 'SIA SELECTUM HOME', apmaksa_dienas: '14', prefikss: 'SH' }; Object.keys(o).forEach(k => { if (o[k]) D[k] = o[k]; }); return D;
 }
-export async function saveFirma(db, b) {
+export async function saveFirma(db, b, who) {
   const o = {}; FIRMA.forEach(k => o[k] = String((b || {})[k] || '').trim().slice(0, 200));
+  if (who) { const r = await db.prepare("SELECT v FROM kv WHERE k = 'firma'").first(); await audit(db, who, 'Rekvizīti', 'Mūsu rekvizīti', diff(J(r && r.v), o, FIRMA)); }
   await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('firma', ?)").bind(JSON.stringify(o)).run(); return firma(db);
 }
 /** Rēķina numurs klientam un mēnesim: viens un tas pats, ja izrakstīts atkārtoti; jauns — nākamais gada secībā (SH-2026-001) */
@@ -155,10 +167,12 @@ export async function invoices(db, f) {
   const sum = (a) => Math.round(a.reduce((s, o) => s + o.atlikums, 0) * 100) / 100;
   return { list: R, kopa: { neapmaksats: sum(L.filter(o => o.atlikums > 0)), kave: sum(L.filter(o => o.kave > 0)), kaveN: L.filter(o => o.kave > 0).length } };
 }
-export async function invoiceSet(db, b) {
+export async function invoiceSet(db, b, who) {
   const r = await db.prepare('SELECT * FROM invoice WHERE nr = ?').bind(String(b.nr || '')).first(); if (!r) throw new Error('Rēķins nav atrasts');
+  const after = async () => { if (!who) return; const n = await db.prepare('SELECT * FROM invoice WHERE nr = ?').bind(r.nr).first(); await audit(db, who, 'Rēķini', r.nr + ' · ' + r.klients, diff(r, n, ['statuss', 'apmaksats', 'apm_summa', 'piezime'])); };
   const st = INV_ST.indexOf(b.statuss) !== -1 ? b.statuss : r.statuss, d = /^\d{4}-\d{2}-\d{2}$/.test(b.apmaksats || '') ? b.apmaksats : (st === 'apmaksāts' && !r.apmaksats ? nowRiga() : r.apmaksats);
   const s = st === 'apmaksāts' ? r.ar_pvn : st === 'daļēji' ? Math.max(0, Math.min(r.ar_pvn, +b.apm_summa || r.apm_summa || 0)) : st === 'anulēts' ? 0 : r.apm_summa;
   await db.prepare('UPDATE invoice SET statuss = ?, apmaksats = ?, apm_summa = ?, piezime = ? WHERE nr = ?').bind(st, d || '', s, String(b.piezime != null ? b.piezime : r.piezime).slice(0, 300), r.nr).run();
+  await after();
   return invRow(await db.prepare('SELECT * FROM invoice WHERE nr = ?').bind(r.nr).first());
 }
