@@ -248,7 +248,7 @@ function invRow(r) {
   return o;
 }
 export async function invoices(db, f) {
-  const L = ((await db.prepare('SELECT * FROM invoice ORDER BY datums DESC, nr DESC LIMIT 500').all()).results || []).map(invRow).map(o => { delete o.dati; return o; });
+  const L = ((await db.prepare('SELECT * FROM invoice ORDER BY datums DESC, nr DESC LIMIT 500').all()).results || []).map(invRow).map(o => { o.regnr = ((o.dati || {}).client || {}).regnr || ''; delete o.dati; return o; });
   const R = f && f.st ? L.filter(o => f.st === 'kave' ? o.kave > 0 : o.statuss === f.st) : L;
   const sum = (a) => Math.round(a.reduce((s, o) => s + o.atlikums, 0) * 100) / 100;
   return { list: R, kopa: { neapmaksats: sum(L.filter(o => o.atlikums > 0)), kave: sum(L.filter(o => o.kave > 0)), kaveN: L.filter(o => o.kave > 0).length } };

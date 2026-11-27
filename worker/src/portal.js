@@ -7,6 +7,7 @@ import { viewLink, viewTokens } from './view.js';
 import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo, invoiceIssue, invoices, invoiceSet, priceChange, priceIndex, ctUpload, ctGet } from './klienti.js';
 import { notify } from './webpush.js';
 import { audit, diff, auditList } from './audit.js';
+import { dlHoursMonth, persMonth } from './exports.js';
 const AN = { portal: 'Portāls', aizv: 'Aizvietošana', izv: 'Izvešana', kais: 'Kaisāmmateriāls', pers: 'Personāls', budz: 'Budžets', pl: 'Pļaušana', logi: 'Logi', sniegs: 'Sniegs', darz: 'Dārzniecība', stav: 'Stāvvietas', dl: 'Darba laiks', ml: 'Mājas lieta' };
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
 export const APPS_P = ['aizv', 'izv', 'kais', 'pers', 'budz'];
@@ -223,6 +224,8 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'priceIndex') { const r = await priceIndex(env.DB, b.pct, String(b.no || ''), me.name); return pj(Object.assign({ ok: true, n: r.n }, await clientsData(env.DB))); }
     if (a === 'ctUpload') { await ctUpload(env, String(b.client || ''), b.name, b.data, me.name); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
     if (a === 'ctGet') return await ctGet(env, String(b.client || ''), P_CORS);
+    if (a === 'dlHours') return pj({ ok: true, list: await dlHoursMonth(env.DB, String(b.ym || '')) });
+    if (a === 'persMonth') return pj({ ok: true, list: await persMonth(env.DB, String(b.ym || '')) });
     if (a === 'budzApproved') return pj({ ok: true, list: ((await env.DB.prepare("SELECT id, nosaukums, adrese, pasutitajs, bez_pvn, atjaunots FROM budz_budget WHERE statuss = 'Apstiprināts' AND bez_pvn > 0 ORDER BY atjaunots DESC LIMIT 200").all().catch(() => ({ results: [] }))).results || []) });
     if (a === 'firma') return pj(Object.assign({ ok: true }, { firma: await firma(env.DB) }));
     if (a === 'firmaSave') return pj({ ok: true, firma: await saveFirma(env.DB, b.firma, me.name) });

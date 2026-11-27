@@ -1328,15 +1328,23 @@ async function printInvoice(I, w) {
     w.document.open(); w.document.write(xdoc('Rēķins ' + I.nr + ' · ' + c.name, 'Rēķins', '#e2ddf2', body, 'Nr. ' + esc(I.nr))); w.document.close();
   } catch (e) { w.close(); toast(netMsg(e), 'err'); }
 }
+/* CSV grāmatvedībai (D6): UTF-8 ar BOM, semikols, decimālkomats, datumi DD.MM.GGGG */
+function csvDl(file, head, rows) {
+  const q = (v) => { if (v == null) return ''; if (typeof v === 'number') return String(Math.round(v * 100) / 100).replace('.', ','); const t = String(v); return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const txt = '\ufeff' + [head].concat(rows).map(r => r.map(q).join(';')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv;charset=utf-8' })); a.download = file; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
 /* ---------- Rēķinu reģistrs (D1) un mēneša slēgšana (D2) ---------- */
 function drawInvoices() {
   if (!A.INV || A.INV.st !== (A.invSt || '')) { if (!A.INV) adminShell('<div class="skel"></div>', null); api('invoices', { st: A.invSt || '' }).then(r => { A.INV = Object.assign(r, { st: A.invSt || '' }); if (A.tab === 'invoices') drawInvoices(); }).catch(e => toast(netMsg(e), 'err')); if (!A.INV) return; }
   const R = A.INV, K = R.kopa || {}, stc = { 'izrakstīts': '#fdf0d5', 'daļēji': '#e2ddf2', 'apmaksāts': '#d6e8e1', 'anulēts': '#f1f4f2' };
   const lv = (d) => d ? d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4) : '';
   const s = adminShell(`<div class="stats3" style="margin:0 0 12px"><div class="sx c-izv"><b style="font-size:26px">${eur(K.neapmaksats || 0)}</b><small>neapmaksāts kopā</small></div><div class="sx" style="background:#fde4e1"><b style="font-size:26px">${eur(K.kave || 0)}</b><small>kavēti · ${K.kaveN || 0} rēķini</small></div></div>
-    <div class="afil" id="ivF"><select aria-label="Statuss"><option value="">Visi rēķini</option><option value="kave" ${A.invSt === 'kave' ? 'selected' : ''}>Kavēti</option>${['izrakstīts', 'daļēji', 'apmaksāts', 'anulēts'].map(x => `<option ${A.invSt === x ? 'selected' : ''}>${x}</option>`).join('')}</select><span class="n">${R.list.length} rēķini</span></div>
+    <div class="afil" id="ivF"><select aria-label="Statuss"><option value="">Visi rēķini</option><option value="kave" ${A.invSt === 'kave' ? 'selected' : ''}>Kavēti</option>${['izrakstīts', 'daļēji', 'apmaksāts', 'anulēts'].map(x => `<option ${A.invSt === x ? 'selected' : ''}>${x}</option>`).join('')}</select><span class="n">${R.list.length} rēķini</span>${R.list.length ? '<button class="btn ghost" id="ivCsv" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">CSV grāmatvedībai</button>' : ''}</div>
     <div class="plist">${R.list.map(o => `<button class="prow" data-nr="${esc(o.nr)}"><div class="nm"><b>${esc(o.nr)} · ${esc(o.klients)}</b><div class="chips"><span class="chip" style="background:${stc[o.statuss] || '#f1f4f2'}">${esc(o.statuss)}</span>${o.kave ? `<span class="chip" style="background:#fde4e1;color:#b42318">kavē ${o.kave} d.</span>` : ''}<span class="chip">${eur(o.ar_pvn)}</span><span class="chip">par ${esc(o.ym)}</span><span class="chip">līdz ${esc(lv(o.termins))}</span></div></div>${CHEV}</button>`).join('') || empty()}</div>`, null);
   s.querySelector('#ivF select').onchange = (e) => { A.invSt = e.target.value; A.INV = null; drawInvoices(); };
+  if ($('ivCsv')) $('ivCsv').onclick = () => csvDl('rekini' + (A.invSt ? '-' + A.invSt : '') + '-' + new Date().toISOString().slice(0, 10) + '.csv', ['Nr.', 'Datums', 'Termiņš', 'Klients', 'Reģ. nr.', 'Summa bez PVN', 'PVN', 'Summa ar PVN', 'Statuss'],
+    R.list.map(o => [o.nr, lv(o.datums), lv(o.termins), o.klients, o.regnr || '', +o.summa || 0, +o.pvn || 0, +o.ar_pvn || 0, o.statuss]));
   s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-nr]'); if (!r) return; const o = R.list.find(x => x.nr === r.dataset.nr); if (o) editInvoice(o); };
 }
 function editInvoice(o) {
@@ -1359,8 +1367,14 @@ function drawClose() {
     <div class="dsec" style="margin-top:0"><h4>Pārbaudes pirms slēgšanas</h4><div class="dlate">${C.checks.map(x => `<div><span class="ch" style="background:${x.v ? '#fde4e1' : '#d6e8e1'}">${x.v ? x.v : '✓'}</span><span class="a">${esc(x.n)}${x.d ? ' — ' + esc(x.d) : ''}</span></div>`).join('')}</div>
       <p class="copy" style="text-align:left">Secība: tabele (Darba laiks) → algas (Personāls) → rēķini (Atskaites) → akti → slēgt. Slēgtā mēnesī darbu, atzīmju un labojumu izmaiņas Worker atraida.</p>
       ${C.closed ? '<button class="btn ghost" id="clOpen">Atvērt mēnesi (ierakstās žurnālā)</button>' : `<button class="btn" id="clDo">Slēgt ${esc(mon)}${bad ? ' (' + bad + ' brīdinājumi)' : ''}</button>`}</div>
+    <div class="dsec"><h4>Eksports grāmatvedībai</h4><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" id="clDl" style="width:auto;padding:0 16px">Darba laika tabele (CSV)</button><button class="btn ghost" id="clPers" style="width:auto;padding:0 16px">Personāla izmaiņas (CSV)</button></div></div>
     ${C.log && C.log.length ? `<div class="dsec"><h4>Žurnāls</h4><div class="dlate">${C.log.map(l => `<div><span class="a">${esc(l.t)}</span><span class="d" style="color:var(--ink-3)">${esc(l.laiks.slice(0, 10))}</span></div>`).join('')}</div></div>` : ''}`, null);
   s.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { A.cym = new Date(Date.UTC(y, m - 1 + +b.dataset.m, 1)).toISOString().slice(0, 7); A.CL = null; drawClose(); });
+  const lv = (d) => d ? d.split('-').reverse().join('.') : '';
+  $('clDl').onclick = async (e) => { const b = e.target; b.disabled = true; try { const L = (await api('dlHours', { ym })).list; if (!L.length) return toast('Šajā mēnesī nav atzīmju');
+    csvDl('tabele-' + ym + '.csv', ['Vārds', 'Tālrunis', 'Stundas', 'Dienas', 'Posmi bez STOP'], L.map(x => [x.vards, x.phone, x.stundas, x.dienas, x.bezBeigam])); } catch (err) { toast(netMsg(err), 'err'); } finally { b.disabled = false; } };
+  $('clPers').onclick = async (e) => { const b = e.target; b.disabled = true; try { const L = (await api('persMonth', { ym })).list; if (!L.length) return toast('Šajā mēnesī nav personāla izmaiņu');
+    csvDl('personals-' + ym + '.csv', ['ID', 'Veids', 'Darbinieks', 'Datums', 'SIA', 'Objekts', 'Amats', 'Alga', 'Slodze', 'Iemesls', 'Statuss'], L.map(x => [x.id, x.veids, x.darbinieks, lv(x.datums), x.sia, x.objekts, x.amats, x.alga, x.slodze, x.iemesls, x.statuss])); } catch (err) { toast(netMsg(err), 'err'); } finally { b.disabled = false; } };
   const d1 = $('clDo'); if (d1) d1.onclick = () => { if (!confirm('Slēgt ' + mon + '?' + (bad ? '\n\nIr ' + bad + ' brīdinājumi.' : '') + '\nPēc tam darbus, atzīmes un labojumus šim mēnesim mainīt nevarēs.')) return; api('closeMonth', { ym }).then(r => { A.CL = r; toast('Mēnesis slēgts'); drawClose(); }).catch(e => toast(netMsg(e), 'err')); };
   const d2 = $('clOpen'); if (d2) d2.onclick = () => { const why = prompt('Kāpēc atvērt ' + mon + '? (ierakstās žurnālā)'); if (why === null) return; api('openMonth', { ym, iemesls: why }).then(r => { A.CL = r; toast('Mēnesis atvērts'); drawClose(); }).catch(e => toast(netMsg(e), 'err')); };
 }
