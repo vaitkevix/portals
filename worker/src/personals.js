@@ -9,6 +9,7 @@ import { anorm } from './util.js';
 import { normPhone as dlPhone, workerHours } from './darbalaiks.js';
 import { allAlgas } from './objinfo.js';
 import * as PC from './perscard.js';
+import * as AB from './prombutnes.js';
 
 const TAB = { hire: 'Personāls · Pieņemšana', vac: 'Personāls · Atvaļinājumi', users: '⚙ Personāls Lietotāji', lists: '⚙ Personāls Saraksti', set: '⚙ Personāls Iestatījumi' };
 const HIRE_HEADERS = ['ID', 'Iesniegts', 'Iesniedza', 'Vārds, Uzvārds', 'Personas kods', 'Deklarētā adrese', 'Telefons', 'E-pasts', 'Invaliditāte', 'Pensionārs', 'Veselības pārbaude',
@@ -33,7 +34,7 @@ const BEGIN_TIME = ['Kodu kalkulators', 'Aplikācija viedtālrunī'];
 const STATUSES = ['Jauns', 'Apstrādē', 'Apstiprināts', 'Noraidīts'];
 const INVAL = ['NĒ', '1. grupa', '2. grupa', '3. grupa'];
 const OBJ_SEP = '; ', AM_SEP = ' — ';
-const READS = ['login', 'records', 'calendar', 'days', 'pay', 'employee', 'mailSet', 'docGet', 'gdprExport'], WRITES = ['hire', 'vacation', 'change', 'bonus', 'status', 'delete', 'saveMailSet', 'resend', 'checkSet', 'docUpload', 'docSet', 'gdprAnon'];
+const READS = ['login', 'records', 'calendar', 'days', 'pay', 'employee', 'mailSet', 'docGet', 'gdprExport', 'absList', 'mgrPay'], WRITES = ['absSave', 'absDel', 'hire', 'vacation', 'change', 'bonus', 'status', 'delete', 'saveMailSet', 'resend', 'checkSet', 'docUpload', 'docSet', 'gdprAnon'];
 
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? r.v : null; };
@@ -571,6 +572,10 @@ async function setStatus(env, user, type, id, status, comment) {
   comment = String(comment || '').trim();
   await db.prepare('UPDATE ' + tbl + ' SET statuss = ?, komentars = ? WHERE id = ?').bind(status, comment, row.id).run();
   if (status === 'Apstiprināts' && type !== 'vac') await dlSync(env).catch(e => console.error('dlSync', e));
+  if (status === 'Apstiprināts' && type === 'vac' && !row.strada) {   // C4: apstiprināts atvaļinājums → aizvietošanas melnraksts darbinieka objektos
+    const a = toDate(row.no), b = toDate(row.lidz);
+    if (a && b) await AB.standingDrafts(env, { src: 'vac:' + row.id, vards: row.darbinieks, no: iso(a), lidz: iso(b), prombutne: 'Atvaļinājums', objekti: row.objekts, kas: user.name }).catch(e => console.error('vac drafts', e));
+  }
   if (String(row.statuss) !== status && yes(await settings(db), 'ZINOT_VADITAJAM', 'JĀ')) {   // paziņojums darbu vadītājam
     const to = await userEmail(db, row.iesniedza);
     if (to) {
@@ -694,6 +699,60 @@ async function mailStatus(env, to, type, id, name, status, comment) {
 }
 
 /* ---------- /pers {action, pin, login, ...} → {ok, ...} ---------- */
+/* ---------- C3 prombūtnes un C5 vadītāja algu kopsavilkums ---------- */
+const nmK = (x) => AB.vkey(x);
+const isMineV = (vad, name) => { const a = nmK(vad), b = nmK(name); return !!a && !!b && (a === b || a === b.split(' ')[0] || b.startsWith(a + ' ') || a.startsWith(b + ' ')); };
+/** Vadītāja darbinieki: viņš iesniedza pieņemšanu/grozījumus/atvaļinājumu VAI darbinieks strādā viņa objektos (Darba laiks). { vkey: { vards, phone } } */
+async function myEmployees(db, user) {
+  const M = {}, add = (v, ph) => { const k = nmK(v); if (!k) return; const x = M[k] || (M[k] = { vards: String(v).trim(), phone: '' }); if (ph && !x.phone) x.phone = ph; };
+  const own = (r) => user.role === 'admin' || r.iesniedza === user.name;
+  (await rowsOf(db, 'hire')).filter(r => r.statuss !== 'Noraidīts' && r.vards && own(r)).forEach(r => add(r.vards, dlPhone(r.tel)));
+  for (const t of ['chg', 'vac', 'bonus']) (await rowsOf(db, t)).filter(r => r.darbinieks && own(r)).forEach(r => add(r.darbinieks));
+  const O = new Set((await all(db, 'SELECT anorm, vaditajs FROM objects')).filter(o => user.role === 'admin' || isMineV(o.vaditajs, user.name)).map(o => o.anorm));
+  const A = await all(db, 'SELECT phone, anorm FROM dl_assign').catch(() => []);
+  (await all(db, 'SELECT phone, vards, anorm, aktivs FROM dl_worker').catch(() => [])).filter(w => w.aktivs && (O.has(w.anorm) || A.some(a => a.phone === w.phone && O.has(a.anorm)))).forEach(w => add(w.vards, w.phone));
+  return M;
+}
+async function absOut(db, user, req) {
+  const t = todayIso(), no = /^\d{4}-\d{2}-\d{2}$/.test(req.no || '') ? req.no : t.slice(0, 4) + '-01-01', lidz = /^\d{4}-\d{2}-\d{2}$/.test(req.lidz || '') ? req.lidz : String(+t.slice(0, 4) + 1) + '-12-31';
+  let list = await AB.absList(db, no, lidz);
+  if (user.role !== 'admin') { const M = await myEmployees(db, user); list = list.filter(r => r.kas === user.name || M[r.vkey]); }
+  return { list: list.map(r => ({ id: r.id, vards: r.vards, tips: r.tips, veids: AB.ABS_T[r.tips] || r.tips, no: r.no, lidz: r.lidz, piezime: r.piezime, avots: r.avots, kas: r.kas, izveidots: r.izveidots, var: user.role === 'admin' || r.kas === user.name })), tipi: AB.ABS_T };
+}
+/** C5: vadītāja mēneša kopsavilkums par saviem darbiniekiem — stundas pret slodzi, aizvietošanas darbi, piemaksu ieteikums (tikai ieteikums, nekādas naudas) */
+async function mgrPay(db, user, men) {
+  if (user.viewer) throw new Error('Nav pieejams skatītājam.');
+  if (!ymOk(men)) throw new Error('Nepareizs mēnesis.');
+  const [y, m] = men.split('-').map(Number), start = men + '-01', end = iso(new Date(Date.UTC(y, m, 0))), t = todayIso(), upto = end < t ? end : t;
+  const M = await myEmployees(db, user), keys = Object.keys(M); if (!keys.length) return { menesis: men, rows: [] };
+  // slodze: pēdējais apstiprinātais grozījums «Alga / slodze» līdz mēneša beigām; citādi pieņemšanas objekta slodze (Mājas lieta → algas); citādi pilna
+  const sl = {}; (await rowsOf(db, 'chg')).filter(g => g.statuss === 'Apstiprināts' && (g.slodze || g.stundas)).forEach(g => { const sp = g.speka_no ? iso(toDate(g.speka_no) || new Date(0)) : ''; if (!sp || sp <= end) sl[nmK(g.darbinieks)] = { slodze: g.slodze, stundas: Number(String(g.stundas || '').replace(',', '.')) || 0 }; });
+  let work = 0; for (let d = start; d <= upto; d = iso(addDays(new Date(d + 'T00:00:00Z'), 1))) { const wd = new Date(d + 'T12:00:00Z').getUTCDay(); if (wd && wd !== 6 && !lvHolidays(y).has(d)) work++; }
+  const H = await workerHours(db, start, end).catch(() => ({})), byName = {}; Object.values(H).forEach(h => { if (h.vards) byName[nmK(h.vards)] = h; });
+  const AM = await AB.absMap(db, start, upto);
+  // Aizvietošana: vienības sastāvā (crew.persons) šajā dienā un tās darbs izpildīts
+  const crew = await all(db, 'SELECT datums, name, persons FROM crew WHERE datums >= ? AND datums <= ?', start, end).catch(() => []);
+  const jobs = await all(db, "SELECT datums, brigade, adrese FROM jobs WHERE datums >= ? AND datums <= ? AND statuss = 'izpildīts' AND brigade != ''", start, end).catch(() => []);
+  const vac = (await rowsOf(db, 'vac')).filter(r => r.statuss === 'Apstiprināts' && r.strada);
+  const bonus = (await rowsOf(db, 'bonus')).filter(b => b.menesis === men && b.statuss !== 'Noraidīts');
+  const rows = keys.map(k => {
+    const e = M[k], h = (e.phone && H[e.phone]) || byName[k], st = Math.round(((h && h.min) || 0) / 6) / 10;
+    const s = sl[k] || {}, hNed = s.stundas > 0 ? s.stundas : /nepiln/i.test(s.slodze || '') ? 20 : 40;
+    const absD = Object.keys(AM[k] || {}).filter(d => { const wd = new Date(d + 'T12:00:00Z').getUTCDay(); return wd && wd !== 6 && !lvHolidays(y).has(d); }).length;
+    const norma = Math.round(Math.max(0, work - absD) * hNed / 5 * 10) / 10;
+    const aj = jobs.filter(j => crew.some(c => c.datums === j.datums && String(j.brigade).split('|').map(x => x.trim()).indexOf(c.name) !== -1 && String(c.persons).split(',').some(p => nmK(p) === k)));
+    const ieteik = [];
+    if (norma > 0 && st > norma * 1.05) ieteik.push({ iemesls: 'Virsstundas', txt: 'Virs normas ' + String(Math.round((st - norma) * 10) / 10).replace('.', ',') + ' h' });
+    if (aj.length) ieteik.push({ iemesls: 'Aizvietošana', txt: aj.length + ' aizvietošanas darbi' });
+    const sv = vac.filter(r => nmK(r.darbinieks) === k && dmyOverlap(r, start, end)); if (sv.length) ieteik.push({ iemesls: 'Strādāja atvaļinājuma laikā', txt: 'Strādāja atvaļinājuma laikā (' + sv.map(r => r.no + '–' + r.lidz).join(', ') + ')' });
+    if (h && h.navBeigu) ieteik.push({ iemesls: '', txt: h.navBeigu + ' posmi bez STOP — vispirms labojiet Darba laikā' });
+    const bz = bonus.filter(b => nmK(b.darbinieks) === k);
+    return { vards: e.vards, stundas: st, dienas: h ? h.dienas : 0, norma, slodze: s.slodze ? s.slodze + (s.stundas ? ' · ' + s.stundas + ' h/ned.' : '') : '', prombutne: absD, aizv: aj.length, aizvAdr: [...new Set(aj.map(j => j.adrese))].slice(0, 6), ieteik, piemaksas: bz.map(b => ({ iemesls: b.iemesls, summa: Number(b.summa) || 0, statuss: b.statuss })) };
+  }).filter(r => r.stundas || r.aizv || r.ieteik.length || r.prombutne).sort((a, b) => a.vards.localeCompare(b.vards, 'lv'));
+  return { menesis: men, darbaDienas: work, lidz: upto, rows };
+}
+const dmyOverlap = (r, a, b) => { const x = toDate(r.no), y = toDate(r.lidz); return x && y && iso(x) <= b && iso(y) >= a; };
+
 export async function api(env, req) {
   const db = env.DB;
   try {
@@ -717,6 +776,10 @@ export async function api(env, req) {
     else if (action === 'docGet') out = await PC.docGet(env, user, req.id);
     else if (action === 'gdprExport') out = await PC.gdprExport(db, user, req);
     else if (action === 'gdprAnon') out = await PC.gdprAnon(db, user, req);
+    else if (action === 'absList') out = await absOut(db, user, req);
+    else if (action === 'absSave') { await AB.absSave(env, user, req.form || {}); out = await absOut(db, user, req); }
+    else if (action === 'absDel') { await AB.absDel(db, user, req.id); out = await absOut(db, user, req); }
+    else if (action === 'mgrPay') out = await mgrPay(db, user, req.menesis);
     else if (action === 'days') out = { days: previewDays(req.no, req.lidz) };
     else if (action === 'records') out = { hire: await getRecords(db, user, 'hire'), vac: await getRecords(db, user, 'vac'), chg: await getRecords(db, user, 'chg'), bonus: await getRecords(db, user, 'bonus') };
     else if (action === 'mailSet') out = await mailSet(db, user);
