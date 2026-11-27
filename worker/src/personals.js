@@ -10,6 +10,7 @@ import { normPhone as dlPhone, workerHours } from './darbalaiks.js';
 import { allAlgas } from './objinfo.js';
 import * as PC from './perscard.js';
 import * as AB from './prombutnes.js';
+import { audit } from './audit.js';
 
 const TAB = { hire: 'Personāls · Pieņemšana', vac: 'Personāls · Atvaļinājumi', users: '⚙ Personāls Lietotāji', lists: '⚙ Personāls Saraksti', set: '⚙ Personāls Iestatījumi' };
 const HIRE_HEADERS = ['ID', 'Iesniegts', 'Iesniedza', 'Vārds, Uzvārds', 'Personas kods', 'Deklarētā adrese', 'Telefons', 'E-pasts', 'Invaliditāte', 'Pensionārs', 'Veselības pārbaude',
@@ -34,7 +35,7 @@ const BEGIN_TIME = ['Kodu kalkulators', 'Aplikācija viedtālrunī'];
 const STATUSES = ['Jauns', 'Apstrādē', 'Apstiprināts', 'Noraidīts'];
 const INVAL = ['NĒ', '1. grupa', '2. grupa', '3. grupa'];
 const OBJ_SEP = '; ', AM_SEP = ' — ';
-const READS = ['login', 'records', 'calendar', 'days', 'pay', 'employee', 'mailSet', 'docGet', 'gdprExport', 'absList', 'mgrPay'], WRITES = ['absSave', 'absDel', 'hire', 'vacation', 'change', 'bonus', 'status', 'delete', 'saveMailSet', 'resend', 'checkSet', 'docUpload', 'docSet', 'gdprAnon'];
+const READS = ['login', 'records', 'calendar', 'days', 'pay', 'employee', 'mailSet', 'docGet', 'gdprExport', 'absList', 'mgrPay'], WRITES = ['absSave', 'absDel', 'hire', 'vacation', 'change', 'bonus', 'status', 'delete', 'saveMailSet', 'resend', 'checkSet', 'docUpload', 'docSet', 'gdprAnon', 'endJob'];
 
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? r.v : null; };
@@ -404,7 +405,48 @@ async function employee(db, user, vards) {
   ev.sort((a, b) => key(b.d).localeCompare(key(a.d)));
   const vacDays = V.filter(r => r.statuss === 'Apstiprināts' && String(r.no).slice(-4) === todayIso().slice(0, 4)).reduce((n, r) => n + (Number(r.darba_dienas) || 0), 0);
   const kart = await PC.card(db, name).catch(() => null);
-  return { vards: name, cur, dl, vacDays, kart, gdpr: user.role === 'admin' && !user.viewer && user.label === 'Administrators', labot: user.role === 'admin' && !user.viewer, piemaksas: user.viewer ? 0 : B.filter(r => r.statuss === 'Apstiprināts').reduce((n, r) => n + (Number(r.summa) || 0), 0), vesture: ev };
+  const beigas = await db.prepare("SELECT pedeja, iemesls, kas, laiks, dl_done FROM pers_end WHERE vkey = ? AND atcelts = '' ORDER BY laiks DESC").bind(k.replace(/\s+/g, ' ')).first().catch(() => null);
+  if (beigas && !cur.beidz) cur.beidz = beigas.pedeja.split('-').reverse().join('.');
+  return { beigas, vards: name, cur, dl, vacDays, kart, gdpr: user.role === 'admin' && !user.viewer && user.label === 'Administrators', labot: user.role === 'admin' && !user.viewer, piemaksas: user.viewer ? 0 : B.filter(r => r.statuss === 'Apstiprināts').reduce((n, r) => n + (Number(r.summa) || 0), 0), vesture: ev };
+}
+
+/* ---------- DARBA ATTIECĪBU IZBEIGŠANA (no kartītes): pēdējā diena → pēc tās Darba laikā neaktīvs; kontrolsaraksts «Atlaižot» ---------- */
+async function endDl(db, e, t) {
+  let w = e.phone ? await db.prepare('SELECT phone FROM dl_worker WHERE phone = ?').bind(e.phone).first() : null;
+  if (!w) w = await db.prepare('SELECT phone FROM dl_worker WHERE lower(trim(vards)) = ?').bind(e.vkey).first();
+  if (w) await db.prepare('UPDATE dl_worker SET aktivs = 0 WHERE phone = ?').bind(w.phone).run();
+  await db.prepare('UPDATE pers_end SET dl_done = ? WHERE id = ?').bind(t + (w ? ' · izslēgts' : ' · nav Darba laikā'), e.id).run();
+  await db.prepare('INSERT OR REPLACE INTO pers_check (vkey, posms, punkts, vards, izdarits, datums, kas, laiks) VALUES (?, ?, ?, ?, 1, ?, ?, ?)').bind(e.vkey, 'atl', 'dl', e.vards, t, 'sistēma', t).run().catch(() => {});
+  await audit(db, 'sistēma', 'Personāls', e.vards, ['Darba laiks', 'aktīvs', w ? 'izslēgts (pēc ' + e.pedeja + ')' : 'nav Darba laikā']);
+}
+async function endJob(env, user, b) {
+  const db = env.DB;
+  if (user.role !== 'admin' || user.viewer) throw new Error('Izbeigt var tikai administrators.');
+  const v = String(b.vards || '').trim().slice(0, 120); if (!v) throw new Error('Nav darbinieka.');
+  const vkey = v.toLowerCase().replace(/\s+/g, ' '), t = todayIso();
+  const cur = await db.prepare("SELECT * FROM pers_end WHERE vkey = ? AND atcelts = '' ORDER BY laiks DESC").bind(vkey).first();
+  if (b.cancel) {
+    if (!cur) throw new Error('Izbeigšana nav atrasta.');
+    if (cur.dl_done) throw new Error('Jau izpildīts (Darba laikā izslēgts) — atjaunot var Darba laikā.');
+    await db.prepare('UPDATE pers_end SET atcelts = ? WHERE id = ?').bind(t + ' ' + user.name, cur.id).run();
+    await audit(db, user.name, 'Personāls', v, ['Darba attiecību beigas', cur.pedeja, 'atcelts']);
+    return employee(db, user, v);
+  }
+  const ped = String(b.pedeja || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(ped)) throw new Error('Norādiet pēdējo darba dienu.');
+  const iem = String(b.iemesls || '').trim().slice(0, 200); if (!iem) throw new Error('Norādiet iemeslu.');
+  if (cur && cur.dl_done) throw new Error('Darba attiecības jau izbeigtas ' + cur.pedeja + '.');
+  const h = (await all(db, "SELECT tel FROM pers_hire WHERE lower(trim(vards)) = ? AND statuss NOT IN ('Noraidīts', 'Dzēsts') ORDER BY row DESC", vkey))[0];
+  const phone = (h && dlPhone(h.tel)) || '', laiks = new Date().toISOString();
+  if (cur) await db.prepare('UPDATE pers_end SET pedeja = ?, iemesls = ?, kas = ?, laiks = ?, phone = ? WHERE id = ?').bind(ped, iem, user.name, laiks, phone, cur.id).run();
+  else await db.prepare('INSERT INTO pers_end (id, vkey, vards, pedeja, iemesls, phone, kas, laiks) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind('E' + Date.now().toString(36), vkey, v, ped, iem, phone, user.name, laiks).run();
+  await audit(db, user.name, 'Personāls', v, [['Darba attiecību beigas · pēdējā diena', cur ? cur.pedeja : '', ped], ['Iemesls', cur ? cur.iemesls : '', iem]]);
+  if (ped < t) { const e = await db.prepare("SELECT * FROM pers_end WHERE vkey = ? AND atcelts = '' ORDER BY laiks DESC").bind(vkey).first(); if (e) await endDl(db, e, t); }   // datums jau pagājis → uzreiz
+  return employee(db, user, v);
+}
+/** Cron: pēc pēdējās darba dienas → Darba laikā neaktīvs (dati paliek) */
+export async function endCron(env) {
+  const db = env.DB, t = todayIso();
+  for (const e of await all(db, "SELECT * FROM pers_end WHERE atcelts = '' AND dl_done = '' AND pedeja < ?", t).catch(() => [])) await endDl(db, e, t);
 }
 
 /* ---------- ALGAS UN PIEMAKSAS ---------- */
@@ -770,6 +812,7 @@ export async function api(env, req) {
     else if (action === 'bonus') out = await submitBonus(env, user, req.form || {});
     else if (action === 'pay') out = await payMonth(db, user, req.menesis);
     else if (action === 'employee') out = await employee(db, user, req.vards);
+    else if (action === 'endJob') out = await endJob(env, user, req);
     else if (action === 'checkSet') out = { kart: await PC.checkSet(db, user, req) };
     else if (action === 'docUpload') out = { kart: await PC.docUpload(env, user, req) };
     else if (action === 'docSet') out = { kart: await PC.docSet(db, user, req) };
