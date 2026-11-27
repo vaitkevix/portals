@@ -3,9 +3,12 @@
 import * as G from './sheets.js';
 import * as F from './foto.js';
 import { newJob, answer } from './siadarbs.js';
+import { audit } from './audit.js';
+import { today as todayR, addDays } from './util.js';
+import { geocodeAddresses } from './izvesana.js';
 
 const TAB = 'Kaisāmmateriāls · Pieteikumi';
-const BAG_KG = 25, PENDING = 'Gaida piegādi', DONE = 'Piegādāts';
+const BAG_KG = 25, PENDING = 'Gaida piegādi', DONE = 'Piegādāts', CANCELLED = 'Atcelts';
 const HEAD = ['ID', 'Datums', 'Adrese', 'Pasūtītājs', 'Materiāls', 'Pasūtīti maisi', 'Komentārs', 'Bilde (pieteikums)', 'Statuss', 'Kurjers',
   'Bilde (pēc piegādes)', 'Piegādāti maisi', 'Kurjera komentārs', 'Piegādes laiks', 'Pasūtīts (kg)', 'Piegādāts (kg)'];
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
@@ -14,7 +17,7 @@ const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WH
 export const isNative = async (env) => (await kvGet(env.DB, 'kais:native')) === '1';
 
 const out = (t) => ({ rowIndex: t.row, id: t.id, date: t.datums, address: t.adrese, requester: t.pasutitajs, material: t.materials, bagsEst: t.maisi, comment: t.komentars,
-  photoBefore: t.foto_pirms, status: t.statuss || PENDING, sia: t.kurjers, photoAfter: t.foto_pec, m3Hauled: t.piegadati, carrierComment: t.kurj_kom, deliveredAt: t.piegadats, accepted: t.pienem || '', declined: t.nevar || '' });
+  photoBefore: t.foto_pirms, status: t.statuss || PENDING, sia: t.kurjers, photoAfter: t.foto_pec, m3Hauled: t.piegadati, carrierComment: t.kurj_kom, deliveredAt: t.piegadats, accepted: t.pienem || '', declined: t.nevar || '', problem: t.problema || '', problemPhoto: t.prob_foto || '', cancelled: t.atcelts || '' });
 
 export async function tasks(db) { return (await all(db, 'SELECT * FROM kais_task ORDER BY row')).map(out); }
 /** Agrāk kopija kv portālam; tagad portāls lasa kais_task ar SQL — nekas nav jādara. */
@@ -81,6 +84,95 @@ export async function completeTask(env, ctx, gas, d) {
   return { status: 'success' };
 }
 
+/* ---------- problēma / atteikums (kurjers) un atcelšana ar iemeslu (admins vai pieteicējs) ---------- */
+export async function reportProblem(env, gas, d, me) {
+  const db = env.DB; d = d || {};
+  if (!me || !((me.perms || {}).kais === 'kurjers' || isAdm(me))) return { status: 'error', message: 'Problēmu ziņot var kurjers vai administrators' };
+  const reason = String(d.reason || '').trim().slice(0, 80); if (!reason) return { status: 'error', message: 'Izvēlieties iemeslu' };
+  const t = await db.prepare('SELECT * FROM kais_task WHERE id = ?').bind(String(d.id || '')).first();
+  if (!t) return { status: 'error', message: 'Pieteikums nav atrasts' };
+  if ((t.statuss || PENDING) !== PENDING) return { status: 'error', message: 'Pieteikums vairs negaida piegādi' };
+  const photo = d.photo ? await savePhoto(env, gas, d.photo, t.id + '_Problema.jpg') : '';
+  const text = nowLV() + ' · ' + (me.name || '') + ' · ' + reason + (d.comment ? ' — ' + String(d.comment).trim().slice(0, 300) : '');
+  await db.prepare('UPDATE kais_task SET problema = ?, prob_foto = ? WHERE id = ?').bind(text, photo || t.prob_foto || '', t.id).run();
+  await audit(db, me.name, 'Kaisāmmateriāls', t.adrese, ['Problēma', t.problema || '', text]);
+  return { status: 'success', tasks: await tasks(db) };
+}
+export async function cancelTask(env, d, me) {
+  const db = env.DB; d = d || {};
+  const t = await db.prepare('SELECT * FROM kais_task WHERE id = ?').bind(String(d.id || '')).first();
+  if (!t) return { status: 'error', message: 'Pieteikums nav atrasts' };
+  if (!me || me.company || !(isAdm(me) || ((me.perms || {}).kais === 'pieteicejs' && t.pasutitajs === me.name))) return { status: 'error', message: 'Atcelt var administrators vai pieteikuma autors' };
+  if (d.undo) {
+    if (t.statuss !== CANCELLED) return { status: 'error', message: 'Pieteikums nav atcelts' };
+    await db.prepare('UPDATE kais_task SET statuss = ?, sheet = 0 WHERE id = ?').bind(PENDING, t.id).run();
+    await audit(db, me.name, 'Kaisāmmateriāls', t.adrese, ['Statuss', CANCELLED, PENDING]);
+    return { status: 'success', tasks: await tasks(db) };
+  }
+  if (t.statuss !== PENDING) return { status: 'error', message: 'Atcelt var tikai gaidošu pieteikumu' };
+  const why = String(d.reason || '').trim().slice(0, 300); if (!why) return { status: 'error', message: 'Norādiet iemeslu' };
+  await db.prepare('UPDATE kais_task SET statuss = ?, atcelts = ?, sheet = 0 WHERE id = ? AND statuss = ?').bind(CANCELLED, nowLV() + ' · ' + me.name + ' · ' + why, t.id, PENDING).run();
+  await audit(db, me.name, 'Kaisāmmateriāls', t.adrese, [['Statuss', PENDING, CANCELLED], ['Atcelšanas iemesls', '', why]]);
+  return { status: 'success', tasks: await tasks(db) };
+}
+
+/* ---------- sezonas pieteikumi (kais_reg): ziemā ik N dienas un/vai pēc apstiprināta sniega izsaukuma ---------- */
+const inSeason = (r, d) => { const m = +String(d).slice(5, 7), a = +r.no_men || 1, b = +r.lidz_men || 12; return a <= b ? m >= a && m <= b : m >= a || m <= b; };
+export async function regList(db, me) {
+  if (!me || me.company || !(isAdm(me) || (me.perms || {}).kais === 'pieteicejs')) return { status: 'error', message: 'Sezonas pieteikumus pārvalda administrators vai pieteicējs' };
+  return { status: 'success', list: await all(db, 'SELECT * FROM kais_reg ORDER BY aktivs DESC, adrese') };
+}
+export async function regSave(env, d, me) {
+  const db = env.DB; d = d || {};
+  if (!me || me.company || !(isAdm(me) || (me.perms || {}).kais === 'pieteicejs')) return { status: 'error', message: 'Sezonas pieteikumus pārvalda administrators vai pieteicējs' };
+  const old = d.id ? await db.prepare('SELECT * FROM kais_reg WHERE id = ?').bind(String(d.id)).first() : null;
+  if (d.id && !old) return { status: 'error', message: 'Nav atrasts' };
+  if (old && !isAdm(me) && old.izveidoja !== me.name) return { status: 'error', message: 'Mainīt var tas, kas izveidoja, vai administrators' };
+  const adrese = String(d.adrese || '').trim(); if (!adrese) return { status: 'error', message: 'Norādiet adresi' };
+  if (!old || old.adrese !== adrese) { const an = (x) => String(x || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!((await all(db, 'SELECT adrese FROM objects')).some(o => an(o.adrese) === an(adrese)))) return { status: 'error', message: 'Adrese nav Mājas lietas objektu sarakstā' }; }
+  const ik = Math.max(0, Math.min(90, parseInt(d.ik, 10) || 0)), sn = d.sniegs ? 1 : 0;
+  if (!ik && !sn) return { status: 'error', message: 'Norādiet «ik N dienas» vai atzīmējiet «pēc sniega izsaukuma»' };
+  const v = { adrese, ik, sn, nak: /^\d{4}-\d{2}-\d{2}$/.test(String(d.nakamais || '')) ? String(d.nakamais) : (ik ? addDays(todayR(), ik) : ''), ak: d.aktivs === 0 || d.aktivs === false ? 0 : 1,
+    no: Math.max(1, Math.min(12, +d.no_men || 11)), li: Math.max(1, Math.min(12, +d.lidz_men || 3)), mat: String(d.materials || 'Sāls').slice(0, 40), mai: String(d.maisi || '').replace(/[^0-9.,]/g, '').slice(0, 6), kom: String(d.komentars || '').slice(0, 300) };
+  if (old) await db.prepare('UPDATE kais_reg SET adrese=?, ik=?, nakamais=?, aktivs=?, no_men=?, lidz_men=?, sniegs=?, materials=?, maisi=?, komentars=? WHERE id = ?').bind(v.adrese, v.ik, v.nak, v.ak, v.no, v.li, v.sn, v.mat, v.mai, v.kom, old.id).run();
+  else await db.prepare('INSERT INTO kais_reg (id, adrese, ik, nakamais, aktivs, no_men, lidz_men, sniegs, materials, maisi, komentars, pasutitajs, izveidoja, izveidots) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .bind('K' + Date.now().toString(36), v.adrese, v.ik, v.nak, v.ak, v.no, v.li, v.sn, v.mat, v.mai, v.kom, me.name, me.name, nowLV()).run();
+  await audit(db, me.name, 'Kaisāmmateriāls', adrese, ['Sezonas pieteikums', old ? 'ik ' + old.ik + ' d.' + (old.sniegs ? ' + sniegs' : '') + (old.aktivs ? '' : ' (apturēts)') : '', 'ik ' + ik + ' d.' + (sn ? ' + sniegs' : '') + (v.ak ? '' : ' (apturēts)')]);
+  return regList(db, me);
+}
+async function regTask(env, r, why) {
+  const db = env.DB;
+  if (await db.prepare('SELECT 1 FROM kais_task WHERE adrese = ? AND statuss = ?').bind(r.adrese, PENDING).first()) return 0;   // jau gaida — otru neveido
+  const id = 'KM-' + (Date.now() + Math.floor(Math.random() * 1000));
+  await db.prepare('INSERT INTO kais_task (id, row, datums, adrese, pasutitajs, materials, maisi, komentars, foto_pirms, statuss, sheet) SELECT ?, COALESCE(MAX(row), 1) + 1, ?, ?, ?, ?, ?, ?, ?, ?, 0 FROM kais_task')
+    .bind(id, nowLV(), r.adrese, r.pasutitajs || 'Sezonas', r.materials || 'Sāls', r.maisi || '', '🔁 ' + why + (r.komentars ? ' · ' + r.komentars : ''), '', PENDING).run();
+  await newJob(env, 'kais', { adrese: r.adrese, materials: r.materials || '' });
+  return 1;
+}
+/** Cron: sezonā, kad nākamais ≤ šodien → pieteikums; nākamais += ik */
+export async function regCron(env) {
+  if (!await isNative(env)) return;
+  const db = env.DB, t = todayR();
+  for (const r of await all(db, "SELECT * FROM kais_reg WHERE aktivs = 1 AND ik > 0 AND nakamais != '' AND nakamais <= ?", t).catch(() => [])) {
+    let n = r.nakamais; while (n <= t) n = addDays(n, r.ik);
+    const u = await db.prepare('UPDATE kais_reg SET nakamais = ?, pedejais = ? WHERE id = ? AND nakamais = ?').bind(n, t, r.id, r.nakamais).run();
+    if (u.meta && u.meta.changes && inSeason(r, t)) await regTask(env, r, 'Sezonas pieteikums (ik ' + r.ik + ' d.)');
+  }
+}
+/** Sniega izsaukums apstiprināts (sniegs.js) → pieteikums objektiem ar atzīmi «pēc sniega izsaukuma» */
+export async function onSnowCall(env, datums) {
+  try {
+    if (!await isNative(env)) return 0;
+    const db = env.DB; let n = 0;
+    for (const r of await all(db, 'SELECT * FROM kais_reg WHERE aktivs = 1 AND sniegs = 1')) { if (!inSeason(r, datums || todayR())) continue;
+      if (r.pedejais === 'sn:' + datums) continue;
+      await db.prepare('UPDATE kais_reg SET pedejais = ? WHERE id = ?').bind('sn:' + datums, r.id).run();
+      n += await regTask(env, r, 'Pēc sniega izsaukuma ' + String(datums).split('-').reverse().join('.')); }
+    return n;
+  } catch (e) { console.error('kais onSnowCall', e); return 0; }
+}
+
 /** Nesinhronizētās rindas → tabula (jaunas pieliek beigās ar kg formulām, esošās atjauno pēc ID kolonnā A) */
 export async function pushSheet(env) {
   if (!env.GOOGLE_SA || (await kvGet(env.DB, 'noGoogle')) === '1') return;
@@ -128,6 +220,11 @@ export async function handle(env, ctx, fn, args, gas, me) {
     return await completeTask(env, ctx, gas, d);
   }
   if (fn === 'carrierAnswer') { const r = await answer(env, 'kais', a[0], me); if (r.status === 'success') r.tasks = await tasks(db); return r; }
+  if (fn === 'reportProblem') return await reportProblem(env, gas, a[0], me);
+  if (fn === 'cancelTask') return await cancelTask(env, a[0], me);
+  if (fn === 'regList') return await regList(db, me);
+  if (fn === 'regSave') return await regSave(env, a[0], me);
+  if (fn === 'geocodeAddresses') return await geocodeAddresses(db, a[0]);
   if (fn === 'saveFileToDrive') return await savePhoto(env, gas, a[0], a[1] || 'bilde.jpg');
   return undefined;
 }

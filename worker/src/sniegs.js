@@ -3,6 +3,7 @@
  * Maršruts POST /sniegs  { pin, action, … }.  Lomas: perms.sniegs = admin | vaditajs | izpilditajs; portāla admins = admin, citi = skatitajs; SIA ar veidu «traktorists» = izpilditajs.
  * Tabulas: sniegs_obj (traktorists, secība), sniegs_call (izsaukumi), sniegs_visit (adrese izsaukumā), sniegs_log. Laikapstākļi — kv 'wx' (wx.js). */
 import { claimsOf, claimApi } from './pretenzijas.js';
+import { onSnowCall as kaisSnow } from './kaisammaterials.js';
 import { sendSms, smsOn } from './darbalaiks.js';
 import { personByPin, companyBy } from './portal.js';
 import { groupsOf } from './master.js';
@@ -50,7 +51,7 @@ export async function snowCheck(db, env) {
     const call = { id: uid(), datums: d, statuss: C.approve ? 'gaida' : 'aktivs' };
     await db.batch([db.prepare('INSERT INTO sniegs_call (id, datums, statuss, cm, avots, izveidots) VALUES (?, ?, ?, ?, ?, ?)').bind(call.id, d, call.statuss, cm, 'prognoze', nowStr()),
       log(db, 'Prognoze ' + cm.toFixed(1) + ' cm ' + lvD(d) + ' → izsaukums ' + (C.approve ? 'gaida apstiprinājumu' : 'aktīvs'))]);
-    if (call.statuss === 'aktivs') await callVisits(db, call);
+    if (call.statuss === 'aktivs') { await callVisits(db, call); if (env) await kaisSnow(env, d); }
     if (env) { try {
       if (call.statuss === 'gaida') await notify(env, await managers(env, KEY), { title: '❄ Sniegs ' + cm.toFixed(1) + ' cm · ' + lvD(d), body: 'Izsaukums gaida apstiprinājumu — atveriet Sniega tīrīšanu', url: '/sh/#sniegs', urgent: true });
       else await pushCrews(env, call, 'Prognoze ' + cm.toFixed(1) + ' cm — jūsu maršruts gatavs');
@@ -143,13 +144,13 @@ export async function api(request, env, X, fetchWx) {
       let c = await db.prepare("SELECT * FROM sniegs_call WHERE datums = ? AND statuss IN ('gaida', 'aktivs')").bind(d).first();
       if (!c) { c = { id: uid(), datums: d }; await db.batch([db.prepare("INSERT INTO sniegs_call (id, datums, statuss, cm, avots, izveidots, apstiprinaja) VALUES (?, ?, 'aktivs', ?, 'vaditajs', ?, ?)").bind(c.id, d, +((((await kv(db, 'wx')) || {})[d] || {}).s || 0), nowStr(), me.name), log(db, me.name + ' izsauca tīrīšanu ' + lvD(d))]); }
       else await db.batch([db.prepare("UPDATE sniegs_call SET statuss = 'aktivs', apstiprinaja = ? WHERE id = ?").bind(me.name, c.id)]);
-      const added = await callVisits(db, c); X.bg && X.bg(pushCrews(env, c, me.name + ' izsauca tīrīšanu — jūsu maršruts gatavs').catch(() => 0));
+      const added = await callVisits(db, c); X.bg && X.bg(kaisSnow(env, d)); X.bg && X.bg(pushCrews(env, c, me.name + ' izsauca tīrīšanu — jūsu maršruts gatavs').catch(() => 0));
       return out({ ok: true, added });
     }
     if (a === 'approve' || a === 'cancel' || a === 'finish') {
       need('vaditajs');
       const c = await db.prepare('SELECT * FROM sniegs_call WHERE id = ?').bind(String(b.id || '')).first(); if (!c) throw new Error('Izsaukums nav atrasts');
-      if (a === 'approve') { await db.batch([db.prepare("UPDATE sniegs_call SET statuss = 'aktivs', apstiprinaja = ? WHERE id = ?").bind(me.name, c.id), log(db, me.name + ' apstiprināja izsaukumu ' + lvD(c.datums))]); const added = await callVisits(db, c); X.bg && X.bg(pushCrews(env, c, 'Apstiprināts — jūsu maršruts gatavs').catch(() => 0)); return out({ ok: true, added }); }
+      if (a === 'approve') { await db.batch([db.prepare("UPDATE sniegs_call SET statuss = 'aktivs', apstiprinaja = ? WHERE id = ?").bind(me.name, c.id), log(db, me.name + ' apstiprināja izsaukumu ' + lvD(c.datums))]); const added = await callVisits(db, c); X.bg && X.bg(kaisSnow(env, c.datums)); X.bg && X.bg(pushCrews(env, c, 'Apstiprināts — jūsu maršruts gatavs').catch(() => 0)); return out({ ok: true, added }); }
       if (a === 'cancel') { await db.batch([db.prepare("UPDATE sniegs_call SET statuss = 'atcelts', beigts = ? WHERE id = ?").bind(nowStr(), c.id), db.prepare("DELETE FROM sniegs_visit WHERE izs = ? AND statuss = 'plan' AND sakums = ''").bind(c.id), log(db, me.name + ' atcēla izsaukumu ' + lvD(c.datums))]); return out({ ok: true }); }
       await db.batch([db.prepare("UPDATE sniegs_call SET statuss = 'beigts', beigts = ? WHERE id = ?").bind(nowStr(), c.id), log(db, me.name + ' pabeidza izsaukumu ' + lvD(c.datums))]);
       return out({ ok: true });
