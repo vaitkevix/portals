@@ -3,6 +3,8 @@
 import * as G from './sheets.js';
 import * as M from './mail.js';
 import { personByPin, people } from './portal.js';
+import { audit } from './audit.js';
+import { notify } from './webpush.js';
 
 const APP_URL = 'https://vaitkevix.cloud/sh/#budz';
 const STATUSES = ['Melnraksts', 'Iesniegts', 'Apstiprināts', 'Noraidīts', 'Arhivēts'];
@@ -204,10 +206,10 @@ async function save(env, u, p) {
     if (!p.statuss) status = m.statuss === 'Noraidīts' ? 'Melnraksts' : m.statuss;
   } else id = await nextId(db);
   const json = JSON.stringify(d);
-  const vals = [o.nosaukums || '', o.adrese || '', o.pasutitajs || '', o.izpilditajs || '', o.sagatavots || '', autors, status, r2(c.bezPVN), r2(c.arPVN), version, created, ts, koment, izsk, json, Number(o.lietderiga) || 0, o.serija || ''];
+  const vals = [o.nosaukums || '', o.adrese || '', o.pasutitajs || '', o.izpilditajs || '', o.sagatavots || '', /^\d{4}-\d{2}-\d{2}$/.test(o.derigs || '') ? o.derigs : '', autors, status, r2(c.bezPVN), r2(c.arPVN), version, created, ts, koment, izsk, json, Number(o.lietderiga) || 0, o.serija || ''];
   await db.batch([
-    exists ? db.prepare('UPDATE budz_budget SET nosaukums=?, adrese=?, pasutitajs=?, izpilditajs=?, sagatavots=?, autors=?, statuss=?, bez_pvn=?, ar_pvn=?, versija=?, izveidots=?, atjaunots=?, komentars=?, izskatija=?, dati=?, plat=?, serija=? WHERE id=?').bind(...vals, id)
-      : db.prepare('INSERT INTO budz_budget (nosaukums, adrese, pasutitajs, izpilditajs, sagatavots, autors, statuss, bez_pvn, ar_pvn, versija, izveidots, atjaunots, komentars, izskatija, dati, plat, serija, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(...vals, id),
+    exists ? db.prepare('UPDATE budz_budget SET nosaukums=?, adrese=?, pasutitajs=?, izpilditajs=?, sagatavots=?, derigs=?, autors=?, statuss=?, bez_pvn=?, ar_pvn=?, versija=?, izveidots=?, atjaunots=?, komentars=?, izskatija=?, dati=?, plat=?, serija=? WHERE id=?').bind(...vals, id)
+      : db.prepare('INSERT INTO budz_budget (nosaukums, adrese, pasutitajs, izpilditajs, sagatavots, derigs, autors, statuss, bez_pvn, ar_pvn, versija, izveidots, atjaunots, komentars, izskatija, dati, plat, serija, id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(...vals, id),
     db.prepare('INSERT INTO budz_ver (id, versija, laiks, lietotajs, statuss, bez_pvn, piezime, dati) VALUES (?,?,?,?,?,?,?,?)').bind(id, version, ts, u.name, status, r2(c.bezPVN), p.piezime || '', json)]);
   await log(db, u.name, exists ? 'Saglabāja' : 'Izveidoja', id, 'v' + version + ' · ' + status);
   let sent = [];
@@ -255,10 +257,90 @@ function mlToKad(adrese, d) {
     telpas: Object.values(telp).map(t => Object.assign(t, { m2: Math.round(t.m2 * 10) / 10 })).sort((a, b) => b.m2 - a.m2) };
 }
 
+/* ---------- Tāme pret faktu: apstiprinātās tāmes €/mēn pret klientam izrakstītajiem rēķiniem (invoice) ---------- */
+const an = (x) => String(x || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+async function fact(db, u, id) {
+  const b = await row(db, id); if (!b) throw new Error('Budžets nav atrasts.');
+  const m = meta(b); if (!canSee(u, m)) throw new Error('Nav piekļuves.');
+  const C = await all(db, 'SELECT id, name FROM clients').catch(() => []);
+  let c = C.find(x => an(x.name) === an(m.pasutitajs)), how = 'pēc pasūtītāja nosaukuma';
+  if (!c && m.adrese) { const o = await db.prepare('SELECT client FROM client_obj WHERE anorm = ?').bind(an(m.adrese)).first().catch(() => null); if (o) { c = C.find(x => x.id === o.client); how = 'pēc objekta piesaistes klientam'; } }
+  if (!c) return { client: null, months: [], plans: m.bezPVN };
+  const inv = await all(db, "SELECT ym, SUM(summa) s, COUNT(*) n FROM invoice WHERE client = ? AND statuss != 'anulēts' GROUP BY ym ORDER BY ym DESC LIMIT 12", c.id).catch(() => []);
+  return { client: { id: c.id, name: c.name, how }, plans: m.bezPVN, months: inv.reverse().map(r => ({ ym: r.ym, fakts: r2(r.s), n: r.n, pct: m.bezPVN ? Math.round(r.s / m.bezPVN * 1000) / 10 : null })) };
+}
+
+/* ---------- Klienta akcepts: nejauša saite → publiska lapa (tikai lasīt) + «Apstiprinu» ar vārdu; laiks un IP auditā ---------- */
+async function acceptLink(env, u, req) {
+  const db = env.DB, b = await row(db, req.id); if (!b) throw new Error('Budžets nav atrasts.');
+  const m = meta(b); if (!canSee(u, m)) throw new Error('Nav piekļuves.');
+  if (!isMgmt(u) && norm(m.autors) !== norm(u.name)) throw new Error('Saiti var izveidot autors vai vadība.');
+  if (m.statuss !== 'Apstiprināts') throw new Error('Klientam sūta tikai vadības apstiprinātu budžetu.');
+  const old = await db.prepare("SELECT k, versija, vards FROM budz_akc WHERE id = ? AND aktivs = 1 ORDER BY izveidots DESC").bind(m.id).first();
+  if (old && old.versija === m.versija && !req.jauna) return { link: APP_URL.replace(/\/sh.*$/, '') + '/sh/api/budz/akc?k=' + old.k, vards: old.vards };
+  const k = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+  let d = {}; try { d = JSON.parse(b.dati || '{}'); } catch (e) {}
+  const html = pdfHtml(d, req.calc || {}, Object.assign({}, m, req.meta || {}));
+  await db.batch([db.prepare('UPDATE budz_akc SET aktivs = 0 WHERE id = ?').bind(m.id),
+    db.prepare('INSERT INTO budz_akc (k, id, versija, html, izveidots, kas) VALUES (?, ?, ?, ?, ?, ?)').bind(k, m.id, m.versija, html, now(), u.name)]);
+  await log(db, u.name, 'Akcepta saite', m.id, 'v' + m.versija);
+  return { link: APP_URL.replace(/\/sh.*$/, '') + '/sh/api/budz/akc?k=' + k, vards: '' };
+}
+async function acceptInfo(db, id) {
+  const r = await db.prepare('SELECT versija, vards, laiks, izveidots FROM budz_akc WHERE id = ? ORDER BY izveidots DESC').bind(id).first().catch(() => null);
+  return r || null;
+}
+const H8 = { 'Content-Type': 'text/html;charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Referrer-Policy': 'no-referrer' };
+export async function acceptPage(request, env, url) {
+  const db = env.DB, k = String(url.searchParams.get('k') || '');
+  const r = /^[a-f0-9]{40}$/.test(k) ? await db.prepare('SELECT * FROM budz_akc WHERE k = ?').bind(k).first() : null;
+  const page = (inner) => new Response(`<!doctype html><html lang="lv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SELECTUM HOME · Tāmes apstiprināšana</title>
+<style>body{margin:0;background:#f3f5f4;color:#17201c;font:15px/1.5 -apple-system,"Segoe UI",Arial,sans-serif}.bar{max-width:760px;margin:0 auto;padding:16px}.box{background:#fff;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+input{font:inherit;padding:12px;border:1px solid #cfd8d4;border-radius:12px;width:100%;box-sizing:border-box}button{font:inherit;font-weight:800;background:#17201c;color:#fff;border:0;border-radius:999px;padding:13px 20px;margin-top:10px;width:100%;cursor:pointer}
+.ok{background:#d6e8e1}.doc{overflow:auto}iframe{width:100%;height:70vh;border:0;border-radius:12px;background:#fff}@media(prefers-color-scheme:dark){body{background:#111614;color:#e8eeeb}.box{background:#1b2320}input{background:#111614;color:#e8eeeb;border-color:#33403b}.ok{background:#21403a}button{background:#d6e8e1;color:#17201c}}</style></head>
+<body><div class="bar">${inner}<p style="color:#6d7672;font-size:12px">SELECTUM HOME · ${copy()}</p></div></body></html>`, { headers: H8 });
+  if (!r || !r.aktivs) return page('<div class="box"><h2>Saite nav derīga</h2><p>Lūdzu, sazinieties ar SELECTUM HOME — iespējams, tāme ir atjaunota.</p></div>');
+  const b = await row(db, r.id);
+  if (request.method === 'POST' && !r.vards) {
+    const f = await request.formData().catch(() => null), vards = String((f && f.get('vards')) || '').trim().slice(0, 100);
+    if (vards.length < 3) return page('<div class="box"><p>Ierakstiet vārdu un uzvārdu.</p><p><a href="?k=' + k + '">Atpakaļ</a></p></div>');
+    const ip = request.headers.get('CF-Connecting-IP') || '', t = now();
+    const u = await db.prepare("UPDATE budz_akc SET vards = ?, laiks = ?, ip = ? WHERE k = ? AND vards = ''").bind(vards, t, ip, k).run();
+    if (u.meta && u.meta.changes) {
+      await log(db, 'Klients: ' + vards, 'Klienta akcepts', r.id, 'v' + r.versija + ' · IP ' + ip);
+      await audit(db, 'Klients: ' + vards, 'Budžets', r.id + (b ? ' · ' + b.nosaukums : ''), [['Klienta akcepts', '', 'Apstiprinu (v' + r.versija + ')'], ['IP', '', ip], ['Laiks', '', t.replace('T', ' ')]]);
+      if (b) { const to = [b.autors].concat((await people(db)).filter(p => { const x = (p.perms || {}).budz; return x === 'vadība' || x === 'admin'; }).map(p => p.name));
+        await notify(env, to, { title: '✓ Klients apstiprināja tāmi', body: (b.nosaukums || b.id) + ' — ' + vards, url: '/sh/#budz' }).catch(() => 0); }
+    }
+    return new Response(null, { status: 303, headers: { Location: '?k=' + k, 'Cache-Control': 'no-store' } });
+  }
+  const doc = '<iframe sandbox srcdoc="' + esc(r.html) + '" title="Tāme"></iframe>';
+  const done = r.vards ? `<div class="box ok"><b>✓ Apstiprināts</b><br>${esc(r.vards)} · ${esc(String(r.laiks).replace('T', ' ').slice(0, 16))}</div>` : '';
+  const stale = b && Number(b.versija) !== Number(r.versija) ? '<div class="box">Šai tāmei ir jaunāka versija — sazinieties ar SELECTUM HOME.</div>' : '';
+  return page(`<h2 style="margin:8px 0">${esc((b && b.nosaukums) || 'Tāme')}</h2><div class="box doc">${doc}</div>${done}${stale}${r.vards || stale ? '' : `<form class="box" method="post"><label for="v"><b>Apstiprinu šo tāmi</b> — vārds, uzvārds:</label><input id="v" name="vards" required minlength="3" maxlength="100" autocomplete="name"><button type="submit">Apstiprinu</button><p style="font-size:12px;color:#6d7672;margin:8px 0 0">Tiks saglabāts vārds, laiks un IP adrese.</p></form>`}`);
+}
+
+/* ---------- Derīguma termiņa atgādinājums: 14 un 3 dienas pirms — push gatavotājam un vadībai ---------- */
+export async function remindCron(env) {
+  if (!await isNative(env)) return;
+  const db = env.DB, p = P(), t = p.year + '-' + p.month + '-' + p.day;
+  const add = (n) => { const x = new Date(t + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+  const L = await all(db, "SELECT id, nosaukums, autors, derigs, statuss FROM budz_budget WHERE derigs IN (?, ?) AND statuss NOT IN ('Dzēsts', 'Arhivēts', 'Noraidīts')", add(14), add(3)).catch(() => []);
+  if (!L.length) return;
+  const mg = (await people(db)).filter(x => { const r = (x.perms || {}).budz; return r === 'vadība' || r === 'admin'; }).map(x => x.name);
+  for (const b of L) {
+    const n = b.derigs === add(3) ? 3 : 14, kk = 'budz:rem:' + b.id + ':' + b.derigs + ':' + n;
+    if (await kvGet(db, kk)) continue;
+    const ak = await db.prepare("SELECT 1 FROM budz_akc WHERE id = ? AND vards != ''").bind(b.id).first().catch(() => null); if (ak) continue;   // klients jau apstiprināja
+    await db.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind(kk, t).run();
+    await notify(env, [b.autors].concat(mg), { title: 'Tāmes derīgums beidzas pēc ' + n + ' d.', body: (b.nosaukums || b.id) + ' · derīga līdz ' + lvDate(b.derigs), url: '/sh/#budz' }).catch(() => 0);
+  }
+}
+
 export async function handle(env, req) {
   const db = env.DB, u = await auth(db, req.pin);
   if (!u || u.none) { await new Promise(r => setTimeout(r, 700)); return { ok: false, error: 'Nepareizs PIN' }; }
-  const a = String(req.action || ''), W = ['save', 'status', 'del', 'tplSave', 'tplDel', 'sendPdf', 'aiKadastrs', 'aiTelpas'];   // AI tērē tokenus — skatītājam nē
+  const a = String(req.action || ''), W = ['save', 'status', 'del', 'tplSave', 'tplDel', 'sendPdf', 'aiKadastrs', 'aiTelpas', 'acceptLink'];   // AI tērē tokenus — skatītājam nē
   if (u.viewer && W.indexOf(a) !== -1) return { ok: false, error: 'Jums ir tikai skatīšanās tiesības' };
   const user = { name: u.name, role: u.role, email: u.email };
   try {
@@ -319,6 +401,8 @@ export async function handle(env, req) {
         if (u.role !== 'admin' && norm(t.autors) !== norm(u.name)) throw new Error('Dzēst var tikai savu veidni (vai admins).');
         await db.prepare('UPDATE budz_tpl SET aktivs = 0 WHERE id = ?').bind(t.id).run(); await log(db, u.name, 'Dzēsa veidni', t.id, t.nosaukums); return { ok: true, done: true };
       }
+      case 'fact': return Object.assign({ ok: true }, await fact(db, u, req.id), { akc: await acceptInfo(db, req.id) });
+      case 'acceptLink': return Object.assign({ ok: true }, await acceptLink(env, u, req));
       case 'aiKadastrs': return { ok: true, ai: await aiKadastrs(env, u, req.text) };
       case 'aiTelpas': return { ok: true, kat: await aiTelpas(env, req.nosaukumi) };
       case 'xlsx': case 'listXlsx': throw new Error('Atjaunojiet lapu — Excel tagad veido lietotne.');
