@@ -12,6 +12,7 @@ import { absMap, absSave, vkey as absKey, ABS_T } from './prombutnes.js';
 import { normas } from './objinfo.js';
 import { audit } from './audit.js';
 import { notStarted } from './noshow.js';
+import * as mlreq from './mlreq.js';
 
 export const KEY = 'dl';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
@@ -70,6 +71,8 @@ const dmD = (s, base) => { const m = /^(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?$/.exec(
   let d = y + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0'); if (!m[3] && d < addDays(base, -60)) d = (y + 1) + d.slice(4); return isD(d) ? d : ''; };
 const hhmm = (s) => { const m = /^(\d{1,2})(?::|\.)?(\d{2})?$/.exec(s || ''); if (!m || +m[1] > 24) return ''; const t = m[1].padStart(2, '0') + ':' + (m[2] || '00'); return okT(t) || t === '24:00' ? t : ''; };
 export function parseCmd(t) {
+  { const b = /^\s*(?:BOJ|BOJĀJUMS|BOJAJUMS|БОЙ|ПОВРЕЖДЕНИЕ)[.:!]?\s+(?:#?((?=[0-9A-Za-z-]*\d)[0-9A-Za-z-]{1,8})\s+)?([\s\S]{3,})$/i.exec(String(t || ''));   // I4: BOJ [kods] teksts
+    if (b) return { cmd: 'boj', kods: (b[1] || '').toUpperCase(), teksts: b[2].trim().slice(0, 500) }; }
   let s0 = String(t || '').trim().toUpperCase(); for (const [re, w] of RU_CMD) s0 = s0.replace(re, w);
   const s = s0.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
   let x;
@@ -209,7 +212,7 @@ async function addMark(db, m) {
     .bind(uid(), m.datums, m.vards || '', m.veids, m.laiks, '', m.avots || 'sms', m.kas || '', nowStr(), m.anorm, m.amats, m.phone || '').run();
 }
 /* Atbilde krieviski, ja darbinieks raksta kirilicā (vai iepriekš rakstīja) */
-const RU_TXT = [['Numurs nav reģistrēts SH Darba laikā.', 'Номер не зарегистрирован в SH.'], ['Zvani darbu vadītājam', 'Позвони руководителю'], ['nav atrasts.', 'не найден.'], ['Kods ', 'Код '],
+const RU_TXT = [['Paldies! Ziņojums par bojājumu nodots vadītājam.', 'Спасибо! Сообщение о повреждении передано руководителю.'], ['Norādi objekta kodu, piem.:', 'Укажи код объекта, напр.:'], ['Numurs nav reģistrēts SH Darba laikā.', 'Номер не зарегистрирован в SH.'], ['Zvani darbu vadītājam', 'Позвони руководителю'], ['nav atrasts.', 'не найден.'], ['Kods ', 'Код '],
   ['Pārbaudi kodu uz uzlīmes un sūti vēlreiz, piem.:', 'Проверь код на наклейке и отправь ещё раз, напр.:'], ['Sūti START un objekta kodu no uzlīmes, piem.:', 'Отправь START и код объекта с наклейки, напр.:'],
   ['Jau esi darbā kopš ', 'Ты уже на работе с '], ['Beigās sūti STOP', 'В конце отправь STOP'], [' darbā no ', ' на работе с '], ['Darbs beigts ', 'Работа окончена '], ['Paldies!', 'Спасибо!'],
   ['Šodien nav atzīmēts darba sākums.', 'Сегодня начало работы не отмечено.'], [' palika bez STOP - sūti: VAKAR un beigu laiku, piem. VAKAR 17:00', ' остался без STOP — отправь: VAKAR и время, напр. VAKAR 17:00'],
@@ -227,7 +230,7 @@ export async function handleSms(db, phone, text) {
   if (isCyr(text)) await kvSet(db, 'dl:lang:' + phone, 'ru').run(); else if (/^[A-Z?]/i.test(String(text || '').trim())) await kvSet(db, 'dl:lang:' + phone, 'lv').run();
   const F = await smsCfg(db), c0 = parseCmd(text);
   if (!F.ru && isCyr(text)) return { reply: '', anorm: '' };
-  if ((c0.cmd === 'stundas' && !F.stundas) || (c0.cmd === 'labot' && !F.labot) || ((c0.cmd === 'slims' || c0.cmd === 'atv') && !F.slims) || ((c0.cmd === 'ja' || c0.cmd === 'ne') && !F.aizv_ja)) c0.off = true;
+  if ((c0.cmd === 'stundas' && !F.stundas) || (c0.cmd === 'labot' && !F.labot) || ((c0.cmd === 'slims' || c0.cmd === 'atv') && !F.slims) || ((c0.cmd === 'ja' || c0.cmd === 'ne') && !F.aizv_ja) || (c0.cmd === 'boj' && !F.boj)) c0.off = true;
   const r = c0.off ? { reply: 'Šī SMS funkcija nav ieslēgta. Jautā vadītājam.', anorm: '' } : await handleSms0(db, phone, text, F);
   if (!F.atbildes && ['sak', 'beidz', 'stat'].indexOf(c0.cmd) !== -1) r.reply = '';
   if (ru && F.ru && r.reply) r.reply = toRu(r.reply);
@@ -301,6 +304,11 @@ async function handleSms0(db, phone, text, F) {
     const p = await addPending(db, { tips: c.cmd, phone, vards: W.vards, anorm: W.anorm, no, lidz });
     return { reply: c.cmd === 'slims' ? 'Slimības ziņa nodota vadītājam. Veseļojies!' : 'Atvaļinājuma pieteikums nodots vadītājam.', anorm: W.anorm, pending: p };
   }
+  if (c.cmd === 'boj') {   // I4: «BOJ <kods> <teksts>» → Mājas lietas pieteikums (hook izveido ar env)
+    const o = c.kods ? O.find(x => String(x.kods).toUpperCase() === c.kods) : O.find(x => x.anorm === W.anorm) || (open[0] && O.find(x => x.anorm === open[0].anorm));
+    if (!o) return { reply: c.kods ? 'Kods ' + c.kods + ' nav atrasts.\nPiem.: BOJ 104 nedeg lampa 2. stāvā' : 'Norādi objekta kodu, piem.:\nBOJ 104 nedeg lampa 2. stāvā', anorm: '' };
+    return { reply: o.adrese + '\nPaldies! Ziņojums par bojājumu nodots vadītājam.', anorm: o.anorm, boj: { anorm: o.anorm, teksts: c.teksts, vards: W.vards } };
+  }
   if (c.cmd === 'stat') {
     if (open.length) return { reply: adr(open[0].anorm) + '\nTu esi darbā kopš ' + open[0].sak + '\nBeigās sūti STOP', anorm: open[0].anorm };
     if (S.length) { const l = S[S.length - 1]; return { reply: 'Šodien: ' + adr(l.anorm) + '\n' + l.sak + '-' + l.beidz + '\nŠobrīd neesi darbā.', anorm: l.anorm }; }
@@ -336,6 +344,8 @@ export async function hook(request, env, X, url) {
   if (!known) { const k = 'dl:unk:' + phone; if ((await kv(db, k)) === today()) r.reply = ''; else await kvSet(db, k, today()).run(); }   // nezināmam — atbilde reizi dienā
   if (r.reply) { const job = sendSms(env, [phone], r.reply, r.anorm); if (X && X.bg) X.bg(job); else await job; }
   if (r.nevar) { const n = r.nevar, job = (async () => notify(env, [...new Set((n.vaditaji || []).concat(await managers(env, 'aizv')))], { title: 'Aizvietošana: ' + n.vards + ' nevar ' + n.datums.slice(8) + '.' + n.datums.slice(5, 7) + '.', body: (n.brig ? n.brig + ' · ' : '') + 'atbildēja NĒ uz plāna SMS', url: '/sh/#aizv' }))().catch(e => console.error('aizv ne push', e));
+    if (X && X.bg) X.bg(job); else await job; }
+  if (r.boj) { const job = mlreq.create(env, { anorm: r.boj.anorm, avots: 'darbinieks', kategorija: 'Bojājums', teksts: r.boj.teksts, kas: r.boj.vards + ' (SMS)', app: 'dl' }, X && X.bg ? (p) => X.bg(p) : null).catch(e => console.error('boj sms', e));
     if (X && X.bg) X.bg(job); else await job; }
   if (r.pending) { const p = r.pending, mg = await mgrOf(db, p.anorm).catch(() => null);
     const txt = p.tips === 'labot' ? p.vards + ': ' + (p.sak ? p.sak + '–' : 'beidza ') + p.beidz + ' (' + p.datums.slice(8) + '.' + p.datums.slice(5, 7) + '.)' : p.tips === 'slims' ? p.vards + ' slimo' + (p.lidz ? ' līdz ' + p.lidz.slice(8) + '.' + p.lidz.slice(5, 7) + '.' : '') : p.vards + ' atvaļinājums ' + p.no.slice(8) + '.' + p.no.slice(5, 7) + '.–' + p.lidz.slice(8) + '.' + p.lidz.slice(5, 7) + '.';

@@ -19,7 +19,7 @@ async function sha(s) { const b = await crypto.subtle.digest('SHA-256', new Text
 const tok = () => [...crypto.getRandomValues(new Uint8Array(10))].map(x => x.toString(16).padStart(2, '0')).join('');
 
 /** Dienas skaitītājs kv mreq:<datums>:<k> (atomārs +1); true, ja limits pārsniegts */
-async function over(db, k, max) {
+export async function over(db, k, max) {
   const key = 'mreq:' + today() + ':' + k;
   await db.prepare("INSERT INTO kv (k, v) VALUES (?, '1') ON CONFLICT(k) DO UPDATE SET v = CAST(CAST(v AS INTEGER) + 1 AS TEXT)").bind(key).run();
   const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(key).first(); return +(r && r.v || 0) > max;
@@ -32,8 +32,8 @@ export async function create(env, p, bg) {
   if (!o) throw new Error('Objekts nav atrasts');
   const tx = str(p.teksts, 1000); if (tx.length < 5) throw new Error('Aprakstiet problēmu (vismaz dažus vārdus)');
   const kat = KAT.indexOf(p.kategorija) !== -1 ? p.kategorija : '';
-  let foto = '';
-  if (p.foto) {
+  let foto = p.fotoId ? String(p.fotoId).slice(0, 80) : '';   // jau saglabāta bilde (Aizvietošanas problēma)
+  if (!foto && p.foto) {
     if (String(p.foto).length > MAX_IMG) throw new Error('Bilde par lielu (līdz 2 MB)');
     foto = await fotoPut(env, p.foto, { avots: 'ml_req', adrese: o.adrese }).catch(() => '');
   }
@@ -43,6 +43,7 @@ export async function create(env, p, bg) {
     .bind(id, atslega, o.anorm, o.adrese, p.avots === 'darbinieks' ? 'darbinieks' : 'iedzivotajs', kat, tx, foto, kontakts, kontakts ? 1 : 0, str(p.kas, 80), nowStr(), nowStr(), str(p.app, 10), str(p.visit, 40)).run();
   const job = (async () => {
     const ai = await classify(env, { id, teksts: tx, kategorija: kat, foto: p.avots === 'darbinieks' ? p.foto : '' }).catch(() => null);
+    if (p.silent) return;   // push jau nosūtīts (Aizvietošanas problēma)
     const to = o.vaditajs ? [o.vaditajs] : await managers(env, 'ml');
     const steidz = ai && ai.steidz === 'augsta';
     await notify(env, to, { title: (steidz ? '⚡ ' : '') + (p.avots === 'darbinieks' ? 'Bojājums' : 'Iedzīvotāja pieteikums') + ' · ' + o.adrese,

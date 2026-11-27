@@ -11,6 +11,7 @@ import { backupD1 } from './backup.js';
 import { thumbR2 } from './thumb.js';
 import { viewApi } from './view.js';
 import { majaApi } from './maja.js';
+import { companyBy } from './portal.js';
 import { portal, people, personByPin, seedFrom, peopleStmts, usersStmts, session, cleanSessions } from './portal.js';
 import { plausana, plCron } from './plausana.js';
 import * as logi from './logi.js';
@@ -132,10 +133,10 @@ async function handleFetch(request, env, ctx) {
     if (url.pathname === '/pers' || url.pathname.endsWith('/pers')) return pers(request, env, ctx);
     if (url.pathname.endsWith('/budz/akc')) return budzN.acceptPage(request, env, url);   // klienta akcepts (publiska saite ar atslēgu)
     if (url.pathname === '/budz' || url.pathname.endsWith('/budz')) return budz(request, env, ctx);
-    if (url.pathname === '/pl' || url.pathname.endsWith('/pl')) return guestSafe(request, () => plausana(request, env, new Ctx(env, ctx)));
+    if (url.pathname === '/pl' || url.pathname.endsWith('/pl')) { const bj = await bojApi(request, env, ctx, 'pl'); if (bj) return bj; return guestSafe(request, () => plausana(request, env, new Ctx(env, ctx))); }
     if (url.pathname === '/dl/sms' || url.pathname.endsWith('/dl/sms')) return darbalaiks.hook(request, env, new Ctx(env, ctx), url);   // SMS vārtejas webhook
     if (url.pathname.endsWith('/apv.js')) return majaslieta.apvScript(env, ctx);   // apvienotie objekti visām lietotnēm
-    { const sk = url.pathname.replace(/^.*\//, ''); if (GRAF[sk] && !url.pathname.startsWith('/sh')) { const X = new Ctx(env, ctx); X.adm = (act, b, me) => masterAdmin(X, act, b, me); X.adm.renameObject = async (old, adrese, me) => { const r = await masterAdmin(X, 'renameObject', { old, adrese }, me); if (!r || !r.ok) throw new Error((r && r.error) || 'Neizdevās pārdēvēt'); return r; }; return guestSafe(request, () => GRAF[sk].api(request, env, X, fetchWx)); } }   // X.adm — Mājas lietai (objekti caur to pašu administrēšanas loģiku)
+    { const sk = url.pathname.replace(/^.*\//, ''); if (GRAF[sk] && !url.pathname.startsWith('/sh')) { const bj = await bojApi(request, env, ctx, sk); if (bj) return bj; const X = new Ctx(env, ctx); X.adm = (act, b, me) => masterAdmin(X, act, b, me); X.adm.renameObject = async (old, adrese, me) => { const r = await masterAdmin(X, 'renameObject', { old, adrese }, me); if (!r || !r.ok) throw new Error((r && r.error) || 'Neizdevās pārdēvēt'); return r; }; return guestSafe(request, () => GRAF[sk].api(request, env, X, fetchWx)); } }   // X.adm — Mājas lietai (objekti caur to pašu administrēšanas loģiku)
     if (url.pathname === '/who' || url.pathname.endsWith('/who')) return who(request, env);
     if (url.pathname === '/portal' || url.pathname.endsWith('/portal')) { const X = new Ctx(env, ctx); return portal(request, env, ctx, { saved: (list) => peopleSaved(X, list), admin: (a, b, me) => masterAdmin(X, a, b, me), lists: async () => publicLists(await master(env.DB)) }); }
     if (url.pathname === '/img' || url.pathname.endsWith('/img')) return img(url, ctx, env);
@@ -175,6 +176,12 @@ async function handleFetch(request, env, ctx) {
         if (!(await teamOk(X, req))) return json({ ok: false, error: 'Lai komentētu, vajag brigādes saiti no vadītāja vai PIN', code: 'teamkey' });
         const j = await X.job(req.id); if (!j || !j.brigade) return json({ ok: false, error: 'Darbs nav atrasts' });
         return json(Object.assign({ ok: true }, await threadApi(env, X, 'aizv', 'Aizvietošana', { id: j.id, adrese: j.adrese, datums: j.datums, brigade: '', izpilditajs: j.brigade }, { name: j.brigade, who: String(req.who || '').trim().slice(0, 40) || j.brigade }, 1, Object.assign({}, req, { action: req.action === 'teamThreadAdd' ? 'threadAdd' : 'thread' })))); }
+      if (req.action === 'teamBoj') {   // I4 brigādes saite
+        if (!(await teamOk(X, req))) return json({ ok: false, error: 'Lai ziņotu, vajag brigādes saiti no vadītāja vai PIN', code: 'teamkey' });
+        const who = String(req.who || '').trim().slice(0, 60) || 'Brigāde';
+        if (await mlreq.over(X.db, 'w:' + who, 40)) return json({ ok: false, error: 'Šodien jau nosūtīts daudz ziņojumu' });
+        const x = await mlreq.create(env, { anorm: norm(req.adrese), avots: 'darbinieks', kategorija: req.kategorija, teksts: req.teksts, foto: req.foto, kas: who, app: 'aizv', visit: String(req.id || '') }, (p) => X.bg(p));
+        return json({ ok: true, id: x.id }); }
       if (req.action === 'teamDone') return json(Object.assign({ ok: true }, await teamDone(X, req)));
       if (req.action === 'teamCant') return json(Object.assign({ ok: true }, await teamCant(X, req)));
       if (req.action === 'teamProblem') return json(Object.assign({ ok: true }, await teamProblem(X, req)));
@@ -689,6 +696,19 @@ async function withMgrPhones(res) {
   j.objects.forEach(o => { const t = pick(o.vaditajs); if (t) o.vaditajs_tel = t; });
   return new Response(JSON.stringify(j), { status: res.status, headers: res.headers });
 }
+/* I4 «Pamanīju bojājumu» no grafika lietotnēm: { action:'boj', pin, adrese, id, kategorija, teksts, foto } → ml_req (avots darbinieks). null — nav boj */
+async function bojApi(request, env, ctx, app) {
+  if (request.method !== 'POST') return null;
+  let b = {}; try { b = await request.clone().json(); } catch (e) { return null; }
+  if (!b || b.action !== 'boj') return null;
+  const me = await personByPin(env.DB, b.pin) || await companyBy(env.DB, 'pass', b.pin);
+  if (!me) { await new Promise(r => setTimeout(r, 700)); return json({ ok: false, error: 'Nepareizs PIN', code: 'auth' }); }
+  try {
+    if (await mlreq.over(env.DB, 'w:' + (me.who || me.name), 40)) throw new Error('Šodien jau nosūtīts daudz ziņojumu — zvaniet vadītājam');
+    const r = await mlreq.create(env, { anorm: norm(b.adrese), avots: 'darbinieks', kategorija: b.kategorija, teksts: b.teksts, foto: b.foto, kas: me.who || me.name, app, visit: String(b.id || '') }, (p) => ctx.waitUntil(p));
+    return json({ ok: true, id: r.id });
+  } catch (e) { return json({ ok: false, error: String(e.message || e) }); }
+}
 async function guestSafe(request, run) {
   let b = {}; try { b = await request.clone().json(); } catch (e) {}
   const res = await run();
@@ -949,6 +969,12 @@ async function canMark(u, job) {
 /* ---------------- Darbības ar PIN ---------------- */
 
 const ACTIONS = {
+  /* I4 «Pamanīju bojājumu» (Aizvietošana) → Mājas lietas pieteikums */
+  boj: async (X, u, r) => {
+    if (await mlreq.over(X.db, 'w:' + u.name, 40)) throw new Error('Šodien jau nosūtīts daudz ziņojumu — zvaniet vadītājam');
+    const x = await mlreq.create(X.env, { anorm: norm(r.adrese), avots: 'darbinieks', kategorija: r.kategorija, teksts: r.teksts, foto: r.foto, kas: u.name, app: 'aizv', visit: String(r.id || '') }, (p) => X.bg(p));
+    return { id: x.id };
+  },
   /* G1 kontrolsaraksts un G2 komentāri pie darba */
   chkGet: async (X) => ({ checklist: await chkList(X.db, 'aizv') }),
   chkSave: async (X, u, r) => { requireAdmin(u); return { checklist: await chkSave(X.db, 'aizv', 'Aizvietošana', u.name, r.list) }; },
@@ -1417,6 +1443,8 @@ async function teamProblem(X, r) {
   await X.run('INSERT INTO problems (id, laiks, adrese, anorm, vaditajs, vieniba, apraksts, foto, statuss, atrisinats, seq) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
     uid(), now(), adrese, norm(adrese), mgr, String(r.vieniba || '').slice(0, 120), teksts.slice(0, 2000), ids.join(','), 'jauns', '', seq());
   X.notify((await X.names('admin')).concat(mgr ? [mgr] : []), '⚠ Problēma · ' + adrese, teksts.slice(0, 140));
+  if (await X.first('SELECT 1 FROM objects WHERE anorm = ?', norm(adrese)))   // I4: arī Mājas lietas pieteikumos (avots darbinieks)
+    await mlreq.create(X.env, { anorm: norm(adrese), avots: 'darbinieks', kategorija: String(r.kategorija || 'Bojājums'), teksts, fotoId: ids[0] || '', kas: String(r.vieniba || r.who || 'Brigāde').slice(0, 80), app: 'aizv', silent: true }, (p) => X.bg(p)).catch(e => console.error('problem → ml_req', e));
   return { saved: true };
 }
 
