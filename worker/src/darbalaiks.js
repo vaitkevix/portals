@@ -8,6 +8,9 @@ import { lvHolidays } from './personals.js';
 import { dlInherit, dlSync } from './majaslieta.js';
 import { today, addDays, dow, nowStr, uid, kv, kvSet, CORS, out, assertOpen } from './util.js';
 import { notify, managers } from './webpush.js';
+import { absMap, absSave, vkey as absKey, ABS_T } from './prombutnes.js';
+import { normas } from './objinfo.js';
+import { audit } from './audit.js';
 
 export const KEY = 'dl';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
@@ -52,12 +55,13 @@ export const SMS_F = [
   ['sveiciens', 'Sveiciena SMS jaunam darbiniekam', 'Instrukcija un objektu kodi, pievienojot darbinieku.', true],
   ['objekti', 'SMS par objektu maiņu', 'Mainot darbinieka objektus — jaunās adreses un kodi.', true],
   ['aizv', 'Aizvietošanas plāns brigādei', 'Publicējot plānu — SMS brigādes cilvēkiem ar adresēm un START kodiem.', true],
+  ['aizv_ja', 'Atbilde JĀ / NĒ uz aizvietošanas plānu', 'Brigādes cilvēks atbild JA (apstiprina) vai NE — vadītājs saņem push «X nevar».', true],
   ['sniegs', 'Sniega izsaukums ārējiem traktoristiem (SIA)', 'SMS uz uzņēmuma tālruni, kad izsaukts sniegs.', true],
   ['sia_darbs', 'Jauns darbs izvedējam / kurjeram (SIA)', 'Jauns izvešanas vai kaisāmmateriāla pieteikums — SMS uz uzņēmuma tālruni (Uzņēmumi → Tālrunis).', true]];
 export async function smsCfg(db) { const c = (await kv(db, 'sms:cfg')) || {}; const o = {}; SMS_F.forEach(([k, , , d]) => o[k] = typeof c[k] === 'boolean' ? c[k] : d); return o; }
 export async function smsOn(db, k) { return (await smsCfg(db))[k] !== false; }
 /* SMS teksts → komanda */
-const RU_CMD = [[/^(СТАРТ|НАЧАЛ[А-Я]*|НАЧИНАЮ)/, 'START'], [/^(СТОП|КОНЕЦ|ЗАКОНЧИЛ[А-Я]*)/, 'STOP'], [/^(ЧАСЫ|ЧАС)/, 'STUNDAS'], [/^(БОЛЕН|БОЛЬНА|БОЛЬНИЧНЫЙ|БОЛЬН[А-Я]*)/, 'SLIMS'], [/^ОТПУСК/, 'ATV'], [/^ВЧЕРА/, 'VAKAR'], [/^(СТАТУС|ИНФО)/, '?']];
+const RU_CMD = [[/^(СТАРТ|НАЧАЛ[А-Я]*|НАЧИНАЮ)/, 'START'], [/^(СТОП|КОНЕЦ|ЗАКОНЧИЛ[А-Я]*)/, 'STOP'], [/^(ЧАСЫ|ЧАС)/, 'STUNDAS'], [/^(БОЛЕН|БОЛЬНА|БОЛЬНИЧНЫЙ|БОЛЬН[А-Я]*)/, 'SLIMS'], [/^ОТПУСК/, 'ATV'], [/^ВЧЕРА/, 'VAKAR'], [/^(СТАТУС|ИНФО)/, '?'], [/^ДА(?=[\s.!]*$)/, 'JA'], [/^НЕТ(?=[\s.!]*$)/, 'NE']];
 export const isCyr = (t) => /[А-Яа-яЁё]/.test(String(t || ''));
 const dmD = (s, base) => { const m = /^(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?$/.exec(s || ''); if (!m) return ''; let y = m[3] ? +(m[3].length === 2 ? '20' + m[3] : m[3]) : +base.slice(0, 4);
   let d = y + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0'); if (!m[3] && d < addDays(base, -60)) d = (y + 1) + d.slice(4); return isD(d) ? d : ''; };
@@ -66,6 +70,8 @@ export function parseCmd(t) {
   let s0 = String(t || '').trim().toUpperCase(); for (const [re, w] of RU_CMD) s0 = s0.replace(re, w);
   const s = s0.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
   let x;
+  if (/^(JA|YES|OK|LABI)[.! ]*$/.test(s)) return { cmd: 'ja' };
+  if (/^(NE|NEE|NO|NEVARU)[.! ]*$/.test(s)) return { cmd: 'ne' };
   if (/^(STUNDAS|STUNDA|H)$/.test(s)) return { cmd: 'stundas' };
   if ((x = /^(SLIMS|SLIMA|SLIMI)(?:\s+(\S+?)(?:\s*-\s*(\S+))?)?$/.exec(s))) return { cmd: 'slims', no: x[2] || '', lidz: x[3] || '' };
   if ((x = /^(ATV|ATVALINAJUMS)\s+(\S+?)\s*-\s*(\S+)$/.exec(s))) return { cmd: 'atv', no: x[2], lidz: x[3] };
@@ -218,7 +224,7 @@ export async function handleSms(db, phone, text) {
   if (isCyr(text)) await kvSet(db, 'dl:lang:' + phone, 'ru').run(); else if (/^[A-Z?]/i.test(String(text || '').trim())) await kvSet(db, 'dl:lang:' + phone, 'lv').run();
   const F = await smsCfg(db), c0 = parseCmd(text);
   if (!F.ru && isCyr(text)) return { reply: '', anorm: '' };
-  if ((c0.cmd === 'stundas' && !F.stundas) || (c0.cmd === 'labot' && !F.labot) || ((c0.cmd === 'slims' || c0.cmd === 'atv') && !F.slims)) c0.off = true;
+  if ((c0.cmd === 'stundas' && !F.stundas) || (c0.cmd === 'labot' && !F.labot) || ((c0.cmd === 'slims' || c0.cmd === 'atv') && !F.slims) || ((c0.cmd === 'ja' || c0.cmd === 'ne') && !F.aizv_ja)) c0.off = true;
   const r = c0.off ? { reply: 'Šī SMS funkcija nav ieslēgta. Jautā vadītājam.', anorm: '' } : await handleSms0(db, phone, text, F);
   if (!F.atbildes && ['sak', 'beidz', 'stat'].indexOf(c0.cmd) !== -1) r.reply = '';
   if (ru && F.ru && r.reply) r.reply = toRu(r.reply);
@@ -264,6 +270,14 @@ async function handleSms0(db, phone, text, F) {
     await addMark(db, { datums: d, vards: W.vards, veids: 'beidz', laiks: tt, anorm: s.anorm, amats: s.amats, phone, kas: phone, avots: tt !== t ? 'sms-laiks' : 'sms' });
     const m = Math.max(0, mins(tt) - mins(s.sak));
     return { reply: adr(s.anorm) + '\nDarbs beigts ' + tt + ' (' + dur(m) + ')\nPaldies!', anorm: s.anorm };
+  }
+  if (c.cmd === 'ja' || c.cmd === 'ne') {   // B4: atbilde uz aizvietošanas plāna SMS
+    const ask = await kv(db, 'aizv:ask:' + phone);
+    if (!ask || !ask.datums || ask.datums < d) return { reply: 'Nav aktīva aizvietošanas plāna, uz ko atbildēt.', anorm: '' };
+    const ck = 'aizv:conf:' + ask.datums, C = (await kv(db, ck)) || {}, ok = c.cmd === 'ja';
+    C[phone] = { vards: W.vards, brig: ask.brig || '', ok, laiks: nowStr() }; await kvSet(db, ck, C).run();
+    const dd = ask.datums.slice(8) + '.' + ask.datums.slice(5, 7) + '.';
+    return ok ? { reply: 'Paldies! Apstiprināts: ' + dd, anorm: '' } : { reply: 'Sapratu - vadītājs informēts, ka nevari ' + dd, anorm: '', nevar: { vards: W.vards, datums: ask.datums, vaditaji: ask.vaditaji || [], brig: ask.brig || '' } };
   }
   if (c.cmd === 'stundas') {
     const m0 = d.slice(0, 8) + '01', p0 = addDays(m0, -1).slice(0, 8) + '01', p1 = addDays(m0, -1);
@@ -318,6 +332,8 @@ export async function hook(request, env, X, url) {
   await db.prepare('UPDATE dl_sms SET anorm = ?, statuss = ? WHERE id = ?').bind(r.anorm || '', known ? 'ok' : 'nezināms numurs', lid).run();
   if (!known) { const k = 'dl:unk:' + phone; if ((await kv(db, k)) === today()) r.reply = ''; else await kvSet(db, k, today()).run(); }   // nezināmam — atbilde reizi dienā
   if (r.reply) { const job = sendSms(env, [phone], r.reply, r.anorm); if (X && X.bg) X.bg(job); else await job; }
+  if (r.nevar) { const n = r.nevar, job = (async () => notify(env, [...new Set((n.vaditaji || []).concat(await managers(env, 'aizv')))], { title: 'Aizvietošana: ' + n.vards + ' nevar ' + n.datums.slice(8) + '.' + n.datums.slice(5, 7) + '.', body: (n.brig ? n.brig + ' · ' : '') + 'atbildēja NĒ uz plāna SMS', url: '/sh/#aizv' }))().catch(e => console.error('aizv ne push', e));
+    if (X && X.bg) X.bg(job); else await job; }
   if (r.pending) { const p = r.pending, mg = await mgrOf(db, p.anorm).catch(() => null);
     const txt = p.tips === 'labot' ? p.vards + ': ' + (p.sak ? p.sak + '–' : 'beidza ') + p.beidz + ' (' + p.datums.slice(8) + '.' + p.datums.slice(5, 7) + '.)' : p.tips === 'slims' ? p.vards + ' slimo' + (p.lidz ? ' līdz ' + p.lidz.slice(8) + '.' + p.lidz.slice(5, 7) + '.' : '') : p.vards + ' atvaļinājums ' + p.no.slice(8) + '.' + p.no.slice(5, 7) + '.–' + p.lidz.slice(8) + '.' + p.lidz.slice(5, 7) + '.';
     const job = (async () => notify(env, [...new Set((mg ? [mg.name] : []).concat(await managers(env, 'dl')))], { title: p.tips === 'labot' ? 'Darba laiks: labojums jāapstiprina' : p.tips === 'slims' ? 'Darbinieks slimo' : 'Atvaļinājuma pieteikums', body: txt, url: '/sh/#dl' }))().catch(e => console.error('dl push', e));
@@ -387,21 +403,68 @@ async function objekts(db, anorm, d, role) {
     const keys = [...new Set(W.filter(w => w.aktivs && fits(w.amats, k)).map(w => w.phone).concat(mine.map(s => s.phone || s.vards)))];
     return keys.map(p => { const w = W.find(x => x.phone === p), x = mine.filter(s => (s.phone || s.vards) === p);
       return { vards: role >= 2 ? ((w && w.vards) || (x[0] && x[0].vards) || '') : '', statuss: !x.length ? 'nav' : x.some(s => !s.beidz) ? 'darba' : 'beidza', posmi: x.map(s => ({ sak: s.sak, beidz: s.beidz, min: s.min })) }; }); };
-  return { objekts: objState(o, day), datums: d, ppl: { uzk: roleP('uzk'), set: roleP('set') }, posmi: day.filter(s => s.anorm === anorm).map(s => ({ amats: s.amats, vards: role >= 2 ? s.vards : '', sak: s.sak, beidz: s.beidz, min: s.min, ids: role >= 3 ? s.ids : [] })),
+  const norma = await normaOf(db, anorm, d).catch(() => null);
+  return { norma, objekts: objState(o, day), datums: d, ppl: { uzk: roleP('uzk'), set: roleP('set') }, posmi: day.filter(s => s.anorm === anorm).map(s => ({ amats: s.amats, vards: role >= 2 ? s.vards : '', sak: s.sak, beidz: s.beidz, min: s.min, ids: role >= 3 ? s.ids : [] })),
     nedela: week, menesis: { uzk: MS.filter(s => s.amats === 'uzk').reduce((n, s) => n + s.min, 0), set: MS.filter(s => s.amats === 'set').reduce((n, s) => n + s.min, 0), abi: MS.filter(s => s.amats === 'abi').reduce((n, s) => n + s.min, 0) },
     darbinieki: W.map(w => ({ vards: role >= 2 ? w.vards : '', amats: w.amats, phone: role >= 2 ? w.phone : hidePh(w.phone), aktivs: !!w.aktivs })), sms: sms.map(x => smsRow(x, Oall, Wall, role)) };
 }
 async function tabele(db, no, lidz, role) {
   if (!isD(no) || !isD(lidz) || lidz < no) throw new Error('Nepareizs periods'); if (addDays(no, 92) < lidz) throw new Error('Periods līdz 3 mēnešiem');
-  const O = await objs(db), S = sessions(await marksOn(db, no, lidz)), td = today(), days = [];
+  const O = await objs(db), S = sessions(await marksOn(db, no, lidz)), td = today(), days = [], hol = holSet(no, lidz);
   for (let d = no; d <= lidz && d <= td; d = addDays(d, 1)) days.push(d);
+  const AB = await absMap(db, no, lidz).catch(() => ({})), AS = await allAssign(db), WN = {}; (await all(db, 'SELECT phone, vards FROM dl_worker')).forEach(w => WN[w.phone] = absKey(w.vards));
+  const absent = (an, am, d) => AS.some(w => w.anorm === an && fits(w.amats, am) && (AB[WN[w.phone]] || {})[d]);   // darbinieks atvaļinājumā / slimo — nav «trūkst»
   const rows = O.filter(o => o.aktivs || S.some(s => s.anorm === o.anorm)).map(o => {
-    const x = S.filter(s => s.anorm === o.anorm), miss = days.filter(d => dow(d) <= 5 && ((o.vajag_uzk && !x.some(s => s.datums === d && (s.amats === 'uzk' || s.amats === 'abi'))) || (o.vajag_set && !x.some(s => s.datums === d && (s.amats === 'set' || s.amats === 'abi')))));
-    return { anorm: o.anorm, adrese: o.adrese, kods: o.kods, navBeigu: x.filter(s => !s.beidz && s.datums < td).length, uzk: x.filter(s => s.amats === 'uzk').reduce((n, s) => n + s.min, 0), set: x.filter(s => s.amats === 'set').reduce((n, s) => n + s.min, 0), abi: x.filter(s => s.amats === 'abi').reduce((n, s) => n + s.min, 0), trukaDienas: miss };
+    const x = S.filter(s => s.anorm === o.anorm), promb = [];
+    const gap = (d, am) => !x.some(s => s.datums === d && (s.amats === am || s.amats === 'abi'));
+    const miss = days.filter(d => { if (dow(d) > 5 || hol.has(d)) return false; const g = ['uzk', 'set'].filter(am => (am === 'uzk' ? o.vajag_uzk : o.vajag_set) && gap(d, am)); if (!g.length) return false;
+      if (g.every(am => absent(o.anorm, am, d))) { promb.push(d); return false; } return true; });
+    return { anorm: o.anorm, adrese: o.adrese, kods: o.kods, navBeigu: x.filter(s => !s.beidz && s.datums < td).length, uzk: x.filter(s => s.amats === 'uzk').reduce((n, s) => n + s.min, 0), set: x.filter(s => s.amats === 'set').reduce((n, s) => n + s.min, 0), abi: x.filter(s => s.amats === 'abi').reduce((n, s) => n + s.min, 0), trukaDienas: miss, prombDienas: promb };
   });
   const det = S.map(s => ({ datums: s.datums, adrese: (O.find(o => o.anorm === s.anorm) || {}).adrese || s.anorm, amats: s.amats, vards: role >= 2 ? s.vards : '', sak: s.sak, beidz: s.beidz, min: s.min,
     navBeigu: !s.beidz && s.datums < td }));   // aizmirsts STOP — 0 h, jālabo
   return { no, lidz, rindas: rows, kopa: { uzk: rows.reduce((n, r) => n + r.uzk, 0), set: rows.reduce((n, r) => n + r.set, 0), abi: rows.reduce((n, r) => n + r.abi, 0) }, detalas: det };
+}
+function holSet(no, lidz) { const h = new Set(); for (let y = +no.slice(0, 4); y <= +lidz.slice(0, 4); y++) lvHolidays(y).forEach(d => h.add(d)); return h; }
+/** C1: tabele pa darbiniekiem — dienas × stundas; kodi A (atvaļinājums), B/S (slimība), AB, M, C; «sv» svētki; «X» trūkst (darba diena bez atzīmes un bez prombūtnes) */
+async function tabeleDarb(db, no, lidz, role, me) {
+  if (!isD(no) || !isD(lidz) || lidz < no) throw new Error('Nepareizs periods'); if (addDays(no, 62) < lidz) throw new Error('Periods līdz 2 mēnešiem');
+  const S = sessions(await marksOn(db, no, lidz)), td = today(), hol = holSet(no, lidz), AB = await absMap(db, no, lidz).catch(() => ({}));
+  const days = []; for (let d = no; d <= lidz; d = addDays(d, 1)) days.push({ d, w: dow(d), sv: hol.has(d) });
+  let W = await all(db, 'SELECT phone, vards, amats, anorm, aktivs FROM dl_worker ORDER BY vards');
+  if (role < 3) { const m = await myPhones(db, me); W = W.filter(w => m.phones.indexOf(w.phone) !== -1); }
+  const O = await objs(db), AS = await all(db, 'SELECT phone, anorm FROM dl_assign'), adr = (a) => (O.find(o => o.anorm === a) || {}).adrese || a;
+  const rows = W.map(w => {
+    const my = S.filter(s => s.phone === w.phone), k = absKey(w.vards), ab = AB[k] || {}, h = {}, kods = {};
+    my.forEach(s => h[s.datums] = (h[s.datums] || 0) + (s.min || 0));
+    const cnt = { A: 0, B: 0, X: 0 };
+    days.forEach(({ d, w: wd, sv }) => {
+      if (ab[d]) { kods[d] = ab[d]; const c = ab[d] === 'S' ? 'B' : ab[d]; if ((c === 'A' || c === 'B') && wd <= 5 && !sv) cnt[c]++; return; }
+      if (h[d] || my.some(s => s.datums === d)) return;
+      if (sv) kods[d] = 'sv'; else if (wd <= 5 && d <= td && w.aktivs) { kods[d] = 'X'; cnt.X++; }
+    });
+    const ob = [...new Set(AS.filter(a => a.phone === w.phone).map(a => a.anorm).concat(w.anorm ? [w.anorm] : []))].map(adr);
+    return { vards: role >= 2 ? w.vards : '', phone: role >= 2 ? w.phone : hidePh(w.phone), amats: w.amats, aktivs: !!w.aktivs, objekti: ob.slice(0, 4), h, kods, min: Object.values(h).reduce((a, b) => a + b, 0),
+      dienas: Object.keys(h).filter(d => h[d] > 0).length, navBeigu: my.filter(s => !s.beidz && s.datums < td).length, A: cnt.A, B: cnt.B, X: cnt.X };
+  }).filter(r => r.aktivs || r.min || Object.keys(r.kods).some(d => /^(A|B|S|AB|M|C)$/.test(r.kods[d])));
+  return { no, lidz, today: td, days, rows, kodi: Object.assign({ sv: 'Svētku diena', X: 'Trūkst (nav atzīmes)', A: 'Atvaļinājums' }, ABS_T) };
+}
+/* C6: objekta norma (Mājas lieta → algas → slodze) pret faktu */
+async function normaOf(db, anorm, d) {
+  const N = (await normas(db).catch(() => ({})))[anorm]; if (!N) return null;
+  const m0 = monday(d), p0 = addDays(m0, -7), hol = holSet(p0, addDays(m0, 6));
+  const f = async (a, b) => sessions(await marksOn(db, a, b)).filter(s => s.anorm === anorm).reduce((n, s) => n + (s.min || 0), 0);
+  const wdays = (a) => [0, 1, 2, 3, 4].filter(i => !hol.has(addDays(a, i))).length;
+  return { ned: N, sis: Math.round(await f(m0, addDays(m0, 6)) / 6) / 10, pag: Math.round(await f(p0, addDays(p0, 6)) / 6) / 10, pagNorma: Math.round(N * wdays(p0) / 5 * 10) / 10 };
+}
+/** Panelim: objekti, kuros pagājušajā nedēļā fakts < 85 % normas */
+export async function normaWarn(db, d) {
+  const N = await normas(db).catch(() => ({})), keys = Object.keys(N); if (!keys.length) return [];
+  const p0 = addDays(monday(d || today()), -7), p6 = addDays(p0, 6), hol = holSet(p0, p6), wd = [0, 1, 2, 3, 4].filter(i => !hol.has(addDays(p0, i))).length;
+  const F = {}; sessions(await marksOn(db, p0, p6)).forEach(s => F[s.anorm] = (F[s.anorm] || 0) + (s.min || 0));
+  const A = {}; (await all(db, 'SELECT anorm, adrese FROM objects')).forEach(o => A[o.anorm] = o.adrese);
+  return keys.map(k => { const n = Math.round(N[k] * wd / 5 * 10) / 10, f = Math.round((F[k] || 0) / 6) / 10; return { anorm: k, adrese: A[k] || k, norma: n, fakts: f, pct: n ? Math.round(f / n * 100) : 100 }; })
+    .filter(x => x.norma > 0 && x.fakts < x.norma * 0.85 && A[x.anorm]).sort((a, b) => a.pct - b.pct);
 }
 /** Nostrādātais pa darbiniekiem (Personāla algām): { phone: { vards, min, dienas } } periodā no..lidz (YYYY-MM-DD) */
 export async function workerHours(db, no, lidz) {
@@ -450,6 +513,13 @@ export async function api(request, env, X) {
     if (a === 'boot') { const r = await boot(db, d, W); r.varteja.iestatita = !!(env.SMS_USER && env.SMS_PASS); return out(Object.assign({ ok: true, me: { name: me.name, role }, today: today() }, r)); }
     if (a === 'objekts') return out(Object.assign({ ok: true }, await objekts(db, String(b.anorm || ''), d, W)));
     if (a === 'tabele') return out(Object.assign({ ok: true }, await tabele(db, b.no, b.lidz, W)));
+    if (a === 'tabeleDarb') { need(2); return out(Object.assign({ ok: true }, await tabeleDarb(db, b.no, b.lidz, W, me.name))); }
+    if (a === 'slimsPromb') { need(2); const L = (await kv(db, 'dl:pending')) || [], p = L.find(x => x.id === b.id); if (!p || p.tips !== 'slims') throw new Error('Jau apstrādāts');   // C3: SMS «SLIMS» → prombūtņu reģistrs
+      if (W < 3) { const m = await myPhones(db, me.name); if (m.phones.indexOf(p.phone) === -1 && m.objekti.indexOf(p.anorm) === -1) throw new Error('Šis darbinieks ir cita vadītāja'); }
+      const lidz = isD(b.lidz) ? b.lidz : (p.lidz || '');
+      await absSave(env, { name: me.name, role: W >= 3 ? 'admin' : 'vaditajs' }, { vards: p.vards, tips: 'B', no: p.no || today(), lidz, piezime: 'SMS ' + (p.laiks || ''), avots: 'sms', phone: p.phone });
+      await kvSet(db, 'dl:pending', L.filter(x => x.id !== p.id)).run();
+      return out({ ok: true }); }
     if (a === 'smsZurnals') { need(2); const O = await objs(db), Wk = await all(db, 'SELECT phone, vards, amats FROM dl_worker');
       return out({ ok: true, sms: (await all(db, 'SELECT laiks, virziens, phone, anorm, teksts, statuss FROM dl_sms WHERE laiks >= ? ORDER BY laiks DESC LIMIT 300', addDays(d, -2))).map(x => smsRow(x, O, Wk, W)) }); }
     if (a === 'sms') { need(2); const t = String(b.teksts || '').trim(); if (!t) throw new Error('Ieraksti tekstu'); if (t.length > 640) throw new Error('Teksts par garu (līdz 640 zīmēm)');

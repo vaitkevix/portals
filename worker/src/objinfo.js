@@ -103,3 +103,16 @@ export async function bulkParv(db, parv, list) {
   for (let i = 0; i < st.length; i += 90) await db.batch(st.slice(i, i + 90)); n = ks.length;
   return n;
 }
+
+/* C6: plānotās stundas nedēļā no algām pa amatiem (slodze): pilna 40 h, nepilna / 0,5 — 20 h, 0,25 — 10 h; «NN h» — tieši. Bez slodzes — nav normas. */
+export function normaNed(algas) {
+  let h = 0;
+  for (const a of algas || []) { const s = String(a.slodze || '').toLowerCase().replace(',', '.'); let x = 0;
+    if (/(\d+(?:\.\d+)?)\s*h/.test(s)) x = +RegExp.$1; else if (/^0?\.\d+|^1(\.0+)?\b/.test(s)) x = 40 * parseFloat(s); else if (/nepiln/.test(s)) x = 20; else if (/piln/.test(s)) x = 40;
+    h += x > 0 && x <= 80 ? x : 0; }
+  return Math.round(h * 10) / 10;
+}
+/** { anorm: stundas nedēļā } objektiem, kam norādīta slodze */
+export async function normas(db) {
+  const o = {}, A = await allAlgas(db); for (const k in A) { const n = normaNed(A[k]); if (n > 0) o[k] = n; } return o;
+}
