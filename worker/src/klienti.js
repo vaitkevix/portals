@@ -19,6 +19,10 @@ export const UNITS = {
   izv: { name: 'Izvešana', unit: 'm³' },
   kais: { name: 'Kaisāmmateriāls', unit: 'maisi' },
 };
+/* Fiksētā līgumcena (client_sub) — atskaitē app 'ligums', cenu laukos nerādās */
+export const LIG = { name: 'Līgumcena', unit: 'mēn.' };
+export const ALL_UNITS = Object.assign({}, UNITS, { ligums: LIG });
+const isoD = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '';
 const dmyIso = (s) => { const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(String(s || '').trim()); return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : ''; };
 const num = (v) => parseFloat(String(v == null ? '' : v).replace(',', '.')) || 0;
 async function all(db, sql, ...a) { try { return (await db.prepare(sql).bind(...a).all()).results || []; } catch (e) { return []; } }
@@ -26,8 +30,9 @@ async function all(db, sql, ...a) { try { return (await db.prepare(sql).bind(...
 export async function clientsData(db) {
   const clients = (await all(db, 'SELECT * FROM clients ORDER BY ord, name')).map(c => Object.assign({}, c, { cenas: J(c.cenas), aktivs: !!c.aktivs }));
   const links = await all(db, 'SELECT o.adrese, c.client FROM client_obj c JOIN objects o ON o.anorm = c.anorm');
-  clients.forEach(c => c.objekti = links.filter(l => l.client === c.id).map(l => l.adrese));
-  return { clients, units: UNITS };
+  const subs = await all(db, 'SELECT * FROM client_sub ORDER BY ord, no');
+  clients.forEach(c => { c.objekti = links.filter(l => l.client === c.id).map(l => l.adrese); c.lig = subs.filter(x => x.client === c.id).map(x => ({ id: x.id, adrese: x.adrese, apraksts: x.apraksts, summa: x.summa, no: x.no, lidz: x.lidz, avots: x.avots })); });
+  return { clients, units: UNITS, allUnits: ALL_UNITS };
 }
 const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const CL_F = ['name', 'regnr', 'adrese', 'epasts', 'kontakts', 'liguma_nr', 'aktivs'];
@@ -39,18 +44,27 @@ export async function saveClient(db, c, who) {
   const cen = {}; Object.keys(UNITS).forEach(k => { const v = +String((c.cenas || {})[k] || '').replace(',', '.'); if (v > 0) cen[k] = r2(v); });
   const st = [db.prepare('INSERT INTO clients (id, name, regnr, adrese, epasts, kontakts, liguma_nr, cenas, aktivs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, regnr = excluded.regnr, adrese = excluded.adrese, epasts = excluded.epasts, kontakts = excluded.kontakts, liguma_nr = excluded.liguma_nr, cenas = excluded.cenas, aktivs = excluded.aktivs')
     .bind(id, name, String(c.regnr || '').slice(0, 30), String(c.adrese || '').slice(0, 200), String(c.epasts || '').slice(0, 120), String(c.kontakts || '').slice(0, 120), String(c.liguma_nr || '').slice(0, 60), JSON.stringify(cen), c.aktivs === false ? 0 : 1)];
+  let ligCh = null;
+  if (Array.isArray(c.lig)) {   // līgumcenas rindas — aizvieto ar formā redzamajām
+    const was = await all(db, 'SELECT adrese, apraksts, summa, no, lidz FROM client_sub WHERE client = ? ORDER BY ord, no', id), fmt = (L) => L.map(x => (x.adrese || 'visi') + ' · ' + (x.apraksts || '') + ' · ' + r2(x.summa) + ' €' + (x.no ? ' no ' + x.no : '') + (x.lidz ? ' līdz ' + x.lidz : '')).join('; ');
+    const L = c.lig.slice(0, 100).map((x, i) => ({ id: String(x.id || uid()).slice(0, 20), adrese: String(x.adrese || '').trim().slice(0, 200), apraksts: String(x.apraksts || '').trim().slice(0, 200), summa: r2(num(x.summa)), no: isoD(x.no), lidz: isoD(x.lidz), avots: String(x.avots || '').slice(0, 60), ord: i })).filter(x => x.summa > 0);
+    L.forEach(x => { if (x.lidz && x.no && x.lidz < x.no) throw new Error('Līgumcenai «' + (x.apraksts || x.adrese || 'visi') + '» beigas ir pirms sākuma'); });
+    st.push(db.prepare('DELETE FROM client_sub WHERE client = ?').bind(id));
+    L.forEach(x => st.push(db.prepare('INSERT INTO client_sub (id, client, anorm, adrese, apraksts, summa, no, lidz, avots, ord) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(x.id, id, x.adrese ? norm(x.adrese) : '', x.adrese, x.apraksts, x.summa, x.no, x.lidz, x.avots, x.ord)));
+    if (fmt(was) !== fmt(L)) ligCh = ['Līgumcena', fmt(was), fmt(L)];
+  }
   if (Array.isArray(c.objekti)) {
     st.push(db.prepare('DELETE FROM client_obj WHERE client = ?').bind(id));
     for (const a of c.objekti.slice(0, 2000)) st.push(db.prepare('INSERT OR REPLACE INTO client_obj (anorm, client) VALUES (?, ?)').bind(norm(a), id));   // objekts — vienam klientam
   }
   for (let i = 0; i < st.length; i += 90) await db.batch(st.slice(i, i + 90));
   if (who) { const now = Object.assign({}, c, { name, cenas: cen }), n = Array.isArray(c.objekti) ? c.objekti.length : prevN;
-    await audit(db, who, 'Klienti', name, prev ? diff(clFlat(prev, prevN), clFlat(now, n), Object.keys(clFlat(now, n))) : [['izveidots', '', name]]); }
+    await audit(db, who, 'Klienti', name, (prev ? diff(clFlat(prev, prevN), clFlat(now, n), Object.keys(clFlat(now, n))) : [['izveidots', '', name]]).concat(ligCh ? [ligCh] : [])); }
   return id;
 }
 export async function delClient(db, id, who) {
   const c = await db.prepare('SELECT name FROM clients WHERE id = ?').bind(id).first();
-  await db.batch([db.prepare('DELETE FROM client_obj WHERE client = ?').bind(id), db.prepare('DELETE FROM clients WHERE id = ?').bind(id)]);
+  await db.batch([db.prepare('DELETE FROM client_obj WHERE client = ?').bind(id), db.prepare('DELETE FROM clients WHERE id = ?').bind(id)]);   // client_sub paliek (vēsture)
   if (who && c) await audit(db, who, 'Klienti', c.name, ['dzēsts', c.name, '']);
 }
 
@@ -76,7 +90,7 @@ export async function report(db, clientId, ym) {
       const o = byK[k]; return o ? o.every(x => anorms.has(x)) : parts.has(k);
     };
   }
-  const rows = [], d0 = ym + '-01', d1 = ym + '-31';
+  const rows = [], d0 = ym + '-01', d1 = ym + '-31', dEnd = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5), 0)).toISOString().slice(0, 10);
   // Aizvietošana — izpildītie darbi
   for (const j of await all(db, "SELECT datums, adrese, anorm, tips, brigade, foto, komentars FROM jobs WHERE statuss = 'izpildīts' AND datums >= ? AND datums <= ?", d0, d1))
     if (inC(j.anorm || norm(j.adrese), j.adrese)) rows.push({ pub: j.tips, app: 'aizv', datums: j.datums, adrese: j.adrese, daudz: 1, kas: j.brigade, piez: j.tips + (j.komentars ? ' — ' + j.komentars : ''), foto: j.foto });
@@ -108,7 +122,12 @@ export async function report(db, clientId, ym) {
   rows.forEach(r => { if (r.pub == null) r.pub = r.piez || ''; });   // darz/stav/sniegs piezīme ir tikai strukturēti dati
   rows.sort((a, b) => a.datums.localeCompare(b.datums) || a.adrese.localeCompare(b.adrese));
   rows.forEach(r => { r.cena = cen[r.app] || 0; r.summa = r.cena ? r2(r.daudz * r.cena) : 0; });
-  const sum = {}; rows.forEach(r => { const s = sum[r.app] = sum[r.app] || { app: r.app, name: UNITS[r.app].name, unit: UNITS[r.app].unit, reizes: 0, daudz: 0, cena: r.cena, summa: 0 }; s.reizes++; s.daudz = r2(s.daudz + r.daudz); s.summa = r2(s.summa + r.summa); });
+  // Fiksētā līgumcena: rindas, kas spēkā šajā mēnesī (pilns mēnesis) — pēc darbiem, katra sava rinda kopsavilkumā
+  if (c) for (const x of await all(db, "SELECT * FROM client_sub WHERE client = ? AND summa > 0 AND (no = '' OR no <= ?) AND (lidz = '' OR lidz >= ?) ORDER BY ord, no", c.id, dEnd, d0))
+    rows.push({ app: 'ligums', sid: x.id, datums: x.no > d0 ? x.no : d0, adrese: x.adrese || 'Visi objekti', daudz: 1, cena: r2(x.summa), summa: r2(x.summa), kas: '', piez: x.apraksts, pub: x.apraksts, foto: '' });
+  const sum = {}; rows.forEach(r => { const k = r.app === 'ligums' ? 'ligums:' + r.sid : r.app, u = ALL_UNITS[r.app];
+    const s = sum[k] = sum[k] || { app: r.app, name: r.app === 'ligums' ? LIG.name + (r.pub ? ': ' + r.pub : '') + (r.adrese !== 'Visi objekti' ? ' · ' + r.adrese : '') : u.name, unit: u.unit, reizes: 0, daudz: 0, cena: r.cena, summa: 0 };
+    s.reizes++; s.daudz = r2(s.daudz + r.daudz); s.summa = r2(s.summa + r.summa); });
   const total = r2(Object.values(sum).reduce((a, s) => a + s.summa, 0));
   return { client: c ? Object.assign({}, c, { cenas: cen }) : null, ym, rows, sum: Object.values(sum), total, pvn: r2(total * 0.21), arPvn: r2(total * 1.21) };
 }

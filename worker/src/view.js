@@ -32,8 +32,8 @@ export async function viewApi(request, env, url) {
   const objOf = (adr) => byA[anorm(adr)] || byK[akey(adr)] || adr;
   const res = out({
     ok: true, client: c.name, ym, min, max: cur, objekti,
-    rows: R.rows.map(r => ({ app: r.app, name: UNITS[r.app].name, unit: UNITS[r.app].unit, datums: r.datums, adrese: r.adrese, obj: objOf(r.adrese), daudz: r.daudz, piez: r.pub || '', foto: ids(r.foto) })),
-    sum: R.sum.map(s => ({ app: s.app, name: s.name, unit: s.unit, reizes: s.reizes, daudz: s.daudz })),
+    rows: R.rows.filter(r => r.app !== 'ligums').map(r => ({ app: r.app, name: UNITS[r.app].name, unit: UNITS[r.app].unit, datums: r.datums, adrese: r.adrese, obj: objOf(r.adrese), daudz: r.daudz, piez: r.pub || '', foto: ids(r.foto) })),
+    sum: R.sum.filter(s => s.app !== 'ligums').map(s => ({ app: s.app, name: s.name, unit: s.unit, reizes: s.reizes, daudz: s.daudz })),
   });
   const cr = res.clone(), h = new Headers(cr.headers); h.set('Cache-Control', 'max-age=300');
   if (cache) await cache.put(ck, new Response(cr.body, { status: 200, headers: h }));

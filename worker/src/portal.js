@@ -219,6 +219,7 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'clients') return pj(Object.assign({ ok: true }, await clientsData(env.DB)));
     if (a === 'saveClient') { await saveClient(env.DB, b.client || {}, me.name); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
     if (a === 'delClient') { await delClient(env.DB, String(b.id || ''), me.name); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
+    if (a === 'budzApproved') return pj({ ok: true, list: ((await env.DB.prepare("SELECT id, nosaukums, adrese, pasutitajs, bez_pvn, atjaunots FROM budz_budget WHERE statuss = 'Apstiprināts' AND bez_pvn > 0 ORDER BY atjaunots DESC LIMIT 200").all().catch(() => ({ results: [] }))).results || []) });
     if (a === 'firma') return pj(Object.assign({ ok: true }, { firma: await firma(env.DB) }));
     if (a === 'firmaSave') return pj({ ok: true, firma: await saveFirma(env.DB, b.firma, me.name) });
     if (a === 'invoiceNo') return pj(Object.assign({ ok: true }, await invoiceNo(env.DB, String(b.client || ''), String(b.ym || ''))));

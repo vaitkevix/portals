@@ -16,7 +16,8 @@ export async function closeCheck(db, ym) {
   const aj = await db.prepare("SELECT COUNT(*) n FROM jobs WHERE statuss IN ('jauns', 'piešķirts') AND datums >= ? AND datums <= ?").bind(d0, d1).first().catch(() => null);
   checks.push({ k: 'open', n: 'Neizpildīti darbi šajā mēnesī (grafiki + aizvietošana)', v: open + ((aj && aj.n) || 0), d: '', app: '' });
   const cl = await all(db, 'SELECT id, name, cenas FROM clients WHERE aktivs = 1').catch(() => []);
-  const noP = cl.filter(c => { try { return !Object.values(JSON.parse(c.cenas || '{}')).some(v => +String(v).replace(',', '.') > 0); } catch (e) { return true; } });
+  const subC = new Set((await all(db, 'SELECT DISTINCT client FROM client_sub WHERE summa > 0').catch(() => [])).map(r => r.client));   // ar līgumcenu — nav «bez cenām»
+  const noP = cl.filter(c => { if (subC.has(c.id)) return false; try { return !Object.values(JSON.parse(c.cenas || '{}')).some(v => +String(v).replace(',', '.') > 0); } catch (e) { return true; } });
   checks.push({ k: 'cenas', n: 'Klienti bez cenām', v: noP.length, d: noP.slice(0, 6).map(c => c.name).join(', '), app: '' });
   const inv = await all(db, 'SELECT client FROM invoice WHERE ym = ?', ym).catch(() => []), have = new Set(inv.map(r => r.client));
   const noInv = cl.filter(c => !have.has(c.id));
