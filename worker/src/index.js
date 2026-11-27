@@ -27,6 +27,8 @@ import * as ai from './ai.js';
 import * as foto from './foto.js';
 import * as mail from './mail.js';
 import * as parvmail from './parvmail.js';
+import { chkList, chkSave, chkTake } from './checklist.js';
+import { threadCounts, threadApi } from './thread.js';
 import * as sezona from './sezona.js';
 import * as objinfo from './objinfo.js';
 import * as kais from './kaisammaterials.js';
@@ -163,6 +165,10 @@ async function handleFetch(request, env, ctx) {
       if (req.action === 'teamView') return json(Object.assign({ ok: true }, await teamView(X, req, await teamOk(X, req))));
       if (/^team(Done|Cant|Problem|Start)$/.test(req.action) && !(await teamOk(X, req))) return json({ ok: false, error: 'Lai atzīmētu, vajag brigādes saiti no vadītāja vai PIN', code: 'teamkey' });
       if (req.action === 'teamStart') return json(Object.assign({ ok: true }, await startJob(X, null, req)));
+      if (req.action === 'teamThread' || req.action === 'teamThreadAdd') {   // G2 komentāri — brigādes saite (lasīt var arī bez atslēgas tikai, ja ir atslēga)
+        if (!(await teamOk(X, req))) return json({ ok: false, error: 'Lai komentētu, vajag brigādes saiti no vadītāja vai PIN', code: 'teamkey' });
+        const j = await X.job(req.id); if (!j || !j.brigade) return json({ ok: false, error: 'Darbs nav atrasts' });
+        return json(Object.assign({ ok: true }, await threadApi(env, X, 'aizv', 'Aizvietošana', { id: j.id, adrese: j.adrese, datums: j.datums, brigade: '', izpilditajs: j.brigade }, { name: j.brigade, who: String(req.who || '').trim().slice(0, 40) || j.brigade }, 1, Object.assign({}, req, { action: req.action === 'teamThreadAdd' ? 'threadAdd' : 'thread' })))); }
       if (req.action === 'teamDone') return json(Object.assign({ ok: true }, await teamDone(X, req)));
       if (req.action === 'teamCant') return json(Object.assign({ ok: true }, await teamCant(X, req)));
       if (req.action === 'teamProblem') return json(Object.assign({ ok: true }, await teamProblem(X, req)));
@@ -937,6 +943,12 @@ async function canMark(u, job) {
 /* ---------------- Darbības ar PIN ---------------- */
 
 const ACTIONS = {
+  /* G1 kontrolsaraksts un G2 komentāri pie darba */
+  chkGet: async (X) => ({ checklist: await chkList(X.db, 'aizv') }),
+  chkSave: async (X, u, r) => { requireAdmin(u); return { checklist: await chkSave(X.db, 'aizv', 'Aizvietošana', u.name, r.list) }; },
+  threadN: async (X, u, r) => ({ threadN: await threadCounts(X.db, 'aizv', (Array.isArray(r.ids) ? r.ids : []).map(String).slice(0, 500)) }),
+  thread: async (X, u, r) => { const j = await X.job(r.id); if (!j) throw new Error('Darbs nav atrasts'); return threadApi(X.env, X, 'aizv', 'Aizvietošana', { id: j.id, adrese: j.adrese, datums: j.datums, brigade: '', izpilditajs: j.brigade }, { name: u.name }, u.role === 'admin' || u.role === 'vaditajs' ? 2 : 1, Object.assign({}, r, { action: 'thread' })); },
+  threadAdd: async (X, u, r) => { const j = await X.job(r.id); if (!j) throw new Error('Darbs nav atrasts'); return threadApi(X.env, X, 'aizv', 'Aizvietošana', { id: j.id, adrese: j.adrese, datums: j.datums, brigade: '', izpilditajs: j.brigade }, { name: u.name }, u.role === 'admin' || u.role === 'vaditajs' ? 2 : 1, Object.assign({}, r, { action: 'threadAdd' })); },
   login: async (X, u) => ({ user: pubUser(u), meta: { managers: (await X.users()).filter(x => x.role === 'vaditajs').map(x => ({ name: x.name, color: x.color })), colors: await peopleColors(X), objects: await X.objects(), groups: await groupsOf(X.db).catch(() => []), jobTypes: await X.types() } }),
 
   jobs: async (X, u, r) => {
@@ -1137,6 +1149,7 @@ const ACTIONS = {
     const list = Array.isArray(r.brigades) ? r.brigades : (r.brigade ? [r.brigade] : []);
     const val = list.map(x => String(x).trim()).filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(' | ');
     if (job.brigade !== val) {
+      await audit(X.db, u.name, 'Aizvietošana', job.adrese, ['Vienība (' + job.datums + ')', job.brigade, val]);   // G3 kas ko mainīja
       job.brigade = val;
       if (job.statuss !== 'izpildīts') job.statuss = job.brigade ? 'piešķirts' : 'jauns';
       await X.run('UPDATE jobs SET brigade = ?, statuss = ? WHERE id = ?', job.brigade, job.statuss, job.id);
@@ -1180,12 +1193,13 @@ const ACTIONS = {
     if (!job) throw new Error('Darbs nav atrasts');
     await assertOpen(X.db, job.datums);
     await canMark(u, job);
+    const ck = r.done ? await chkTake(X.db, 'aizv', job.id, u.name, r.checks, [job.tips]) : null;   // G1 kontrolsaraksts
     const ids = r.done ? await X.savePhotos(job, r.photos) : [];
     if (r.done) {
       doneToday(job); job.statuss = 'izpildīts'; job.izpildits = now(); job.komentars = String(r.komentars || '').trim();
       job.foto = split(job.foto).concat(ids).join(','); job.iemesls = ''; job.parbaude = '';
     } else { job.statuss = job.brigade ? 'piešķirts' : 'jauns'; job.izpildits = ''; job.iemesls = ''; }
-    await updJob(X, job).run();
+    await updJob(X, job).run(); if (ck) await ck.run();
     if (r.done && job.vaditajs && job.vaditajs !== u.name) X.notify([job.vaditajs], '✓ Izpildīts · ' + job.brigade, job.adrese + (job.komentars ? ' — ' + job.komentars : '') + (ids.length ? ' 📷' + ids.length : ''));
     return { job };
   },
@@ -1339,7 +1353,7 @@ async function teamView(X, r, full) {
     brigade: j.brigade, statuss: j.statuss, lidz: j.lidz, prombutne: j.prombutne, foto: j.foto, komentars: j.komentars, iemesls: j.iemesls, izpildits: j.izpildits,
     steidzami: j.steidzami, laiks: j.laiks, parbaude: j.parbaude, parbKom: j.parbKom, sakts: j.sakts }));
   const addrs = new Set(jobs.map(j => norm(j.adrese)));
-  return { date, units, jobs, canEdit: !!full, meta: { objects: objs.filter(o => addrs.has(norm(o.adrese))).map(o => full ? o : Object.assign({}, o, { piekluve: '' })), managers: users.filter(x => x.role === 'vaditajs').map(x => ({ name: x.name, color: x.color })), colors: await peopleColors(X), jobTypes: types } };
+  return { checklist: await chkList(X.db, 'aizv'), threadN: await threadCounts(X.db, 'aizv', jobs.map(j => j.id)), date, units, jobs, canEdit: !!full, meta: { objects: objs.filter(o => addrs.has(norm(o.adrese))).map(o => full ? o : Object.assign({}, o, { piekluve: '' })), managers: users.filter(x => x.role === 'vaditajs').map(x => ({ name: x.name, color: x.color })), colors: await peopleColors(X), jobTypes: types } };
 }
 
 /* «Sākt»: izpildītājs sāk darbu → laiks sakts (plānotais pret faktisko). u = null — brigādes saite (teamOk jau pārbaudīts) */
@@ -1367,10 +1381,11 @@ function doneToday(job) { if (/^↻ no /.test(job.apraksts || '') && job.datums 
 async function teamDone(X, r) {
   const job = await X.job(r.id);
   if (!job || !job.brigade) throw new Error('Darbs nav atrasts vai nav piešķirts vienībai');
+  const ck = r.done ? await chkTake(X.db, 'aizv', job.id, job.brigade, r.checks, [job.tips]) : null;   // G1 kontrolsaraksts
   const ids = r.done ? await X.savePhotos(job, r.photos) : [];
   if (r.done) { doneToday(job); job.statuss = 'izpildīts'; job.izpildits = now(); job.iemesls = ''; job.parbaude = ''; job.komentars = String(r.komentars || '').trim(); job.foto = split(job.foto).concat(ids).join(','); }
   else { job.statuss = 'piešķirts'; job.izpildits = ''; job.iemesls = ''; }
-  await updJob(X, job).run();
+  await updJob(X, job).run(); if (ck) await ck.run();
   if (r.done) X.notify((await X.names('admin')).concat(job.vaditajs ? [job.vaditajs] : []), '✓ Izpildīts · ' + job.brigade,
     job.adrese + (job.komentars ? ' — ' + job.komentars : '') + (ids.length ? ' 📷' + ids.length : ''));
   return { job };
