@@ -1,6 +1,7 @@
 /* SH | Vadības panelis: viens skats pār visām lietotnēm — izpildīts šonedēļ/mēnesī, plānots, nokavēts, 8 nedēļu tendence,
  * vecākie nokavētie darbi, atvērtie izvešanas/kaisāmmateriāla pieteikumi, Darba laiks šodien, rezerves kopija. Tikai portāla adminam. © VAITKEVIX, SIA */
 import { today } from './util.js';
+import { persTerms } from './perscard.js';
 
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const addDays = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
@@ -58,5 +59,6 @@ export async function dashboard(db) {
     ligumi.push({ id: c.id, name: c.name, lidz: c.lig_lidz, dienas: d, auto: !!c.lig_auto, uzteikt: c.lig_uzt ? addDays(c.lig_lidz, -c.lig_uzt) : '' });
   }
   ligumi.sort((a, b) => a.dienas - b.dienas);
-  return { t, wk, m0, apps, ligumi, trend, late: late.slice(0, 25), lateN: late.length, open, dlToday: dl ? dl.n : 0, backup: parse(bk && bk.v), backupHealth: parse(bh && bh.v) };
+  const persT = await persTerms(db, t).catch(() => []);
+  return { t, wk, m0, apps, ligumi, persT, trend, late: late.slice(0, 25), lateN: late.length, open, dlToday: dl ? dl.n : 0, backup: parse(bk && bk.v), backupHealth: parse(bh && bh.v) };
 }

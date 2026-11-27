@@ -8,6 +8,7 @@ import { master, publicLists } from './master.js';
 import { anorm } from './util.js';
 import { normPhone as dlPhone, workerHours } from './darbalaiks.js';
 import { allAlgas } from './objinfo.js';
+import * as PC from './perscard.js';
 
 const TAB = { hire: 'Personāls · Pieņemšana', vac: 'Personāls · Atvaļinājumi', users: '⚙ Personāls Lietotāji', lists: '⚙ Personāls Saraksti', set: '⚙ Personāls Iestatījumi' };
 const HIRE_HEADERS = ['ID', 'Iesniegts', 'Iesniedza', 'Vārds, Uzvārds', 'Personas kods', 'Deklarētā adrese', 'Telefons', 'E-pasts', 'Invaliditāte', 'Pensionārs', 'Veselības pārbaude',
@@ -32,7 +33,7 @@ const BEGIN_TIME = ['Kodu kalkulators', 'Aplikācija viedtālrunī'];
 const STATUSES = ['Jauns', 'Apstrādē', 'Apstiprināts', 'Noraidīts'];
 const INVAL = ['NĒ', '1. grupa', '2. grupa', '3. grupa'];
 const OBJ_SEP = '; ', AM_SEP = ' — ';
-const READS = ['login', 'records', 'calendar', 'days', 'pay', 'employee', 'mailSet'], WRITES = ['hire', 'vacation', 'change', 'bonus', 'status', 'delete', 'saveMailSet', 'resend'];
+const READS = ['login', 'records', 'calendar', 'days', 'pay', 'employee', 'mailSet', 'docGet', 'gdprExport'], WRITES = ['hire', 'vacation', 'change', 'bonus', 'status', 'delete', 'saveMailSet', 'resend', 'checkSet', 'docUpload', 'docSet', 'gdprAnon'];
 
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? r.v : null; };
@@ -401,7 +402,8 @@ async function employee(db, user, vards) {
   const key = (s) => { const m = /^(\d{2})\.(\d{2})\.(\d{4})(?: (\d{2}):(\d{2}))?/.exec(String(s || '')); return m ? m[3] + m[2] + m[1] + (m[4] || '00') + (m[5] || '00') : ''; };
   ev.sort((a, b) => key(b.d).localeCompare(key(a.d)));
   const vacDays = V.filter(r => r.statuss === 'Apstiprināts' && String(r.no).slice(-4) === todayIso().slice(0, 4)).reduce((n, r) => n + (Number(r.darba_dienas) || 0), 0);
-  return { vards: name, cur, dl, vacDays, piemaksas: user.viewer ? 0 : B.filter(r => r.statuss === 'Apstiprināts').reduce((n, r) => n + (Number(r.summa) || 0), 0), vesture: ev };
+  const kart = await PC.card(db, name).catch(() => null);
+  return { vards: name, cur, dl, vacDays, kart, gdpr: user.role === 'admin' && !user.viewer && user.label === 'Administrators', labot: user.role === 'admin' && !user.viewer, piemaksas: user.viewer ? 0 : B.filter(r => r.statuss === 'Apstiprināts').reduce((n, r) => n + (Number(r.summa) || 0), 0), vesture: ev };
 }
 
 /* ---------- ALGAS UN PIEMAKSAS ---------- */
@@ -709,6 +711,12 @@ export async function api(env, req) {
     else if (action === 'bonus') out = await submitBonus(env, user, req.form || {});
     else if (action === 'pay') out = await payMonth(db, user, req.menesis);
     else if (action === 'employee') out = await employee(db, user, req.vards);
+    else if (action === 'checkSet') out = { kart: await PC.checkSet(db, user, req) };
+    else if (action === 'docUpload') out = { kart: await PC.docUpload(env, user, req) };
+    else if (action === 'docSet') out = { kart: await PC.docSet(db, user, req) };
+    else if (action === 'docGet') out = await PC.docGet(env, user, req.id);
+    else if (action === 'gdprExport') out = await PC.gdprExport(db, user, req);
+    else if (action === 'gdprAnon') out = await PC.gdprAnon(db, user, req);
     else if (action === 'days') out = { days: previewDays(req.no, req.lidz) };
     else if (action === 'records') out = { hire: await getRecords(db, user, 'hire'), vac: await getRecords(db, user, 'vac'), chg: await getRecords(db, user, 'chg'), bonus: await getRecords(db, user, 'bonus') };
     else if (action === 'mailSet') out = await mailSet(db, user);
