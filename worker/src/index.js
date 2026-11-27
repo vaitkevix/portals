@@ -6,6 +6,7 @@
  */
 
 import { assertOpen } from './util.js';
+import { audit } from './audit.js';
 import { backupD1 } from './backup.js';
 import { thumbR2 } from './thumb.js';
 import { viewApi } from './view.js';
@@ -814,8 +815,8 @@ async function readStanding(X) {
 function allowedStand(u, st) { return u.role === 'admin' || st.vaditajs === u.name; }
 async function standingFor(X, u) {
   const t = today();
-  return (await readStanding(X)).filter(s => (!s.beigas || s.beigas >= t) && allowedStand(u, s))
-    .map(s => ({ id: s.id, adrese: s.adrese, tips: s.tips, prombutne: s.prombutne, vaditajs: s.vaditajs, no: s.no, beigas: s.beigas }));
+  return (await readStanding(X)).filter(s => (!s.beigas || s.beigas >= t) && s.melnraksts !== 'noraidīts' && allowedStand(u, s))
+    .map(s => ({ id: s.id, adrese: s.adrese, tips: s.tips, prombutne: s.prombutne, vaditajs: s.vaditajs, no: s.no, beigas: s.beigas, apraksts: s.apraksts, melnraksts: s.melnraksts === '1', brigade: s.brigade || '' }));
 }
 /* Neatzīmēti papilddarbi (jauns / piešķirts) no pagājušām dienām → uz šodienu. Reizi dienā pēc 05:00.
  * NEPĀRCEĻ: aizvietošanas (prombūtne konkrētā dienā — nākamajā dienā vairs nav jēgas), sērijas (katrai dienai savs darbs),
@@ -854,10 +855,12 @@ async function carryOver(X) {
   return moved.length;
 }
 
+/** Aizvietotāju saraksts: vienības (brigādes) pēdējās 60 dienās un nākotnē */
+async function brigadeNames(X) { return (await X.all('SELECT DISTINCT name FROM crew WHERE datums >= ? ORDER BY name', addDays(today(), -60))).map(r => r.name).filter(Boolean); }
 async function ensureStanding(X, date) {
   if (!isDate(date) || date < today() || date > addDays(today(), 62)) return;
   const w = wday(date);
-  const due = (await readStanding(X)).filter(s => s.no <= date && (!s.beigas || date <= s.beigas) && s.izlaistas.indexOf(date) === -1 && (s.brivdienas || (w !== 0 && w !== 6)));
+  const due = (await readStanding(X)).filter(s => !s.melnraksts && s.no <= date && (!s.beigas || date <= s.beigas) && s.izlaistas.indexOf(date) === -1 && (s.brivdienas || (w !== 0 && w !== 6)));
   if (!due.length) return;
   const have = new Set((await X.all("SELECT serija FROM jobs WHERE datums = ? AND serija != ''", date)).map(r => r.serija));
   const list = due.filter(s => !have.has(s.id));
@@ -866,8 +869,8 @@ async function ensureStanding(X, date) {
   const stmts = [];
   for (const s of list) {
     const prev = await X.first('SELECT brigade FROM jobs WHERE serija = ? AND datums < ? ORDER BY datums DESC LIMIT 1', s.id, date);
-    const br = prev ? brigs(prev.brigade).filter(b => unitNames.indexOf(b) !== -1).join(' | ') : '';
-    stmts.push(insJob(X, { id: uid(), datums: date, adrese: s.adrese, tips: s.tips, apraksts: s.apraksts, vaditajs: s.vaditajs, brigade: br, statuss: br ? 'piešķirts' : 'jauns',
+    const br = s.brigade && unitNames.indexOf(s.brigade) !== -1 ? s.brigade : prev ? brigs(prev.brigade).filter(b => unitNames.indexOf(b) !== -1).join(' | ') : '';   // C4: izvēlētais aizvietotājs
+    stmts.push(insJob(X, { id: uid(), datums: date, adrese: s.adrese, tips: s.tips, apraksts: s.brigade && br !== s.brigade ? (s.apraksts ? s.apraksts + ' · ' : '') + 'aizvietotājs: ' + s.brigade : s.apraksts, vaditajs: s.vaditajs, brigade: br, statuss: br ? 'piešķirts' : 'jauns',
       izveidots: now(), serija: s.id, foto: s.foto, prombutne: s.prombutne, steidzami: s.steidzami, laiks: s.laiks }, true));
   }
   // vēlreiz pārbauda tieši pirms ieraksta (vienlaicīgi pieprasījumi)
@@ -931,7 +934,8 @@ const ACTIONS = {
     await ensureStanding(X, r.date);
     const [jobs, units, staff, probs, stand] = await Promise.all([visibleJobs(X, u, r.date), X.units(r.date), X.staff(), problems(X, u), standingFor(X, u)]);
     const crews = {}; units.forEach(x => crews[x.name] = x.persons);
-    return { jobs, units, crews, staff, teamLink: u.role === 'admin' && X.env.APP_URL ? X.env.APP_URL + '?k=' + await teamKey(X) : '', problems: probs, standing: stand };
+    const apst = await kvGet(X.db, 'aizv:conf:' + r.date).then(v => { try { return Object.values(JSON.parse(v || '{}')); } catch (e) { return []; } }).catch(() => []);   // B4: JĀ / NĒ no SMS
+    return { jobs, units, crews, staff, teamLink: u.role === 'admin' && X.env.APP_URL ? X.env.APP_URL + '?k=' + await teamKey(X) : '', problems: probs, standing: stand, brigades: stand.some(x => x.melnraksts) ? await brigadeNames(X) : [], apst };
   },
 
   setUnit: async (X, u, r) => {
@@ -1150,7 +1154,10 @@ const ACTIONS = {
       for (const b of Object.keys(byBrig)) {
         const ph = [...new Set((crews[b] || []).map(n => (W.find(w => nm(w.vards) === nm(n)) || {}).phone).filter(Boolean))]; if (!ph.length) continue;
         const L = byBrig[b].map(j => '- ' + j.adrese + (j.tips ? ' (' + j.tips + ')' : '') + (K[j.anorm] ? ' START ' + K[j.anorm] : ''));
-        await darbalaiks.sendSms(X.env, ph, 'SH Aizvietošana ' + lvDate(r.date) + ':\n' + L.join('\n') + '\nPiekļuves kodi — brigādes saitē vai pie vadītāja.', byBrig[b][0].anorm).catch(e => console.error('aizv sms', e));
+        const ask = await darbalaiks.smsOn(X.db, 'aizv_ja');   // B4: atbilde JĀ / NĒ
+        await darbalaiks.sendSms(X.env, ph, 'SH Aizvietošana ' + lvDate(r.date) + ':\n' + L.join('\n') + '\nPiekļuves kodi — brigādes saitē vai pie vadītāja.' + (ask ? '\nAtbildi: JA vai NE' : ''), byBrig[b][0].anorm).catch(e => console.error('aizv sms', e));
+        if (ask) { const v = { datums: r.date, brig: b, vaditaji: [...new Set(byBrig[b].map(j => j.vaditajs).filter(Boolean))], t: now() };
+          await X.db.batch(ph.map(p => X.st('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)', 'aizv:ask:' + darbalaiks.normPhone(p), JSON.stringify(v)))).catch(e => console.error('aizv ask', e)); }
       }
     })());
     return { published: jobs.length, sent: 0, whatsapp: await whatsapp(X, r.date) };
@@ -1231,6 +1238,31 @@ const ACTIONS = {
     const del = await X.all("SELECT id FROM jobs WHERE serija = ? AND datums > ? AND statuss != 'izpildīts' AND statuss != 'nevar izpildīt'", st.id, last);
     await X.db.batch([X.st('UPDATE standing SET beigas = ? WHERE id = ?', last, st.id)].concat(del.map(d => X.st('DELETE FROM jobs WHERE id = ?', d.id))));
     return { deleted: del.length, standing: await standingFor(X, u) };
+  },
+
+  /* C4: melnraksts no atvaļinājuma / prombūtnes → vadītājs izvēlas aizvietotāju (vienību) un apstiprina vai noraida */
+  standingApprove: async (X, u, r) => {
+    if (u.role === 'brigade') throw new Error('Nav atļauts');
+    const st = (await readStanding(X)).find(x => x.id === String(r.serija));
+    if (!st || st.melnraksts !== '1') throw new Error('Melnraksts nav atrasts vai jau apstrādāts');
+    if (!allowedStand(u, st)) throw new Error('Nav atļauts');
+    const br = String(r.brigade || '').trim(), known = await brigadeNames(X);
+    if (!br || known.indexOf(br) === -1) throw new Error('Izvēlieties aizvietotāju no saraksta');
+    const no = isDate(r.no) ? r.no : st.no, beigas = isDate(r.beigas) ? r.beigas : st.beigas;
+    if (!beigas) throw new Error('Norādiet, līdz kuram datumam aizvietot');
+    if (beigas < no) throw new Error('«Līdz» nevar būt pirms «no»');
+    await X.run("UPDATE standing SET melnraksts = '', brigade = ?, no = ?, beigas = ? WHERE id = ? AND melnraksts = '1'", br, no, beigas, st.id);
+    await audit(X.db, u.name, 'Aizvietošana', st.adrese, [['Melnraksts', 'gaida', 'apstiprināts'], ['Aizvietotājs', '', br], ['Periods', st.no + ' – ' + st.beigas, no + ' – ' + beigas]]);
+    return { standing: await standingFor(X, u), brigades: known };
+  },
+  standingReject: async (X, u, r) => {
+    if (u.role === 'brigade') throw new Error('Nav atļauts');
+    const st = (await readStanding(X)).find(x => x.id === String(r.serija));
+    if (!st || st.melnraksts !== '1') throw new Error('Melnraksts nav atrasts vai jau apstrādāts');
+    if (!allowedStand(u, st)) throw new Error('Nav atļauts');
+    await X.run("UPDATE standing SET melnraksts = 'noraidīts' WHERE id = ?", st.id);
+    await audit(X.db, u.name, 'Aizvietošana', st.adrese, ['Melnraksts', 'gaida', 'noraidīts']);
+    return { standing: await standingFor(X, u) };
   },
 
   problemDone: async (X, u, r) => {
