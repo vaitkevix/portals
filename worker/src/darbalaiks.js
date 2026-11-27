@@ -410,6 +410,8 @@ export async function workerHours(db, no, lidz) {
   Object.values(out).forEach(o => o.dienas = o.dienas.size);
   return out;
 }
+/** Nostrādātās minūtes pa objektiem (pabeigtie posmi) — rentabilitātei */
+export async function objMinutes(db, no, lidz) { const o = {}; for (const x of sessions(await marksOn(db, no, lidz))) o[x.anorm] = (o[x.anorm] || 0) + (x.min || 0); return o; }
 async function recipients(db, b) {
   const W = await all(db, 'SELECT phone, amats, anorm FROM dl_worker WHERE aktivs = 1'), k = b.kam;
   const uniq = (L) => { const m = new Map(); L.forEach(w => m.set(w.phone, w)); return [...m.values()]; };

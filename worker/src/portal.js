@@ -8,6 +8,7 @@ import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo
 import { notify } from './webpush.js';
 import { audit, diff, auditList } from './audit.js';
 import { dlHoursMonth, persMonth } from './exports.js';
+import { profit, rentCfgSave } from './profit.js';
 const AN = { portal: 'Portāls', aizv: 'Aizvietošana', izv: 'Izvešana', kais: 'Kaisāmmateriāls', pers: 'Personāls', budz: 'Budžets', pl: 'Pļaušana', logi: 'Logi', sniegs: 'Sniegs', darz: 'Dārzniecība', stav: 'Stāvvietas', dl: 'Darba laiks', ml: 'Mājas lieta' };
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
 export const APPS_P = ['aizv', 'izv', 'kais', 'pers', 'budz'];
@@ -226,6 +227,8 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'ctGet') return await ctGet(env, String(b.client || ''), P_CORS);
     if (a === 'dlHours') return pj({ ok: true, list: await dlHoursMonth(env.DB, String(b.ym || '')) });
     if (a === 'persMonth') return pj({ ok: true, list: await persMonth(env.DB, String(b.ym || '')) });
+    if (a === 'profit') return pj(Object.assign({ ok: true }, await profit(env.DB, String(b.ym || ''))));
+    if (a === 'rentLikme') { const r = await rentCfgSave(env.DB, b.likme); await audit(env.DB, me.name, 'Rentabilitāte', 'Stundas likme', ['€/h', '', r.likme == null ? '' : String(r.likme)]); return pj(Object.assign({ ok: true }, await profit(env.DB, String(b.ym || '')))); }
     if (a === 'budzApproved') return pj({ ok: true, list: ((await env.DB.prepare("SELECT id, nosaukums, adrese, pasutitajs, bez_pvn, atjaunots FROM budz_budget WHERE statuss = 'Apstiprināts' AND bez_pvn > 0 ORDER BY atjaunots DESC LIMIT 200").all().catch(() => ({ results: [] }))).results || []) });
     if (a === 'firma') return pj(Object.assign({ ok: true }, { firma: await firma(env.DB) }));
     if (a === 'firmaSave') return pj({ ok: true, firma: await saveFirma(env.DB, b.firma, me.name) });

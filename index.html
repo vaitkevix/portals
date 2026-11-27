@@ -186,6 +186,9 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .klr label{display:flex;flex-direction:column;gap:2px;margin:0}.klr label small{font-size:11px;font-weight:700;color:var(--ink-3)}.klr .odel{position:absolute;top:10px;right:8px;height:40px}.klr .klp{grid-column:1/-1;padding-right:34px}
 @media(min-width:700px){.klr{grid-template-columns:1.4fr .7fr .8fr .8fr}.klr .klp{grid-column:1/-1}}
 .kvest{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-4px 0 14px}
+.rtt{display:flex;flex-direction:column;font-size:13.5px}.rtr{display:grid;grid-template-columns:minmax(0,2fr) repeat(4,minmax(0,1fr));gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-weight:600;align-items:baseline}.rtr span:not(.a){text-align:right;font-variant-numeric:tabular-nums}.rtr .a{overflow-wrap:anywhere}
+.rth{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3);font-weight:800}.m0{color:var(--ink-3);font-weight:600;font-size:12px}
+@media(max-width:600px){.rtr{grid-template-columns:1fr 1fr}.rtr .a{grid-column:1/-1;font-weight:800}.rtr span:not(.a){text-align:left}.rth{display:none}.rtr span:not(.a)::before{content:attr(data-l);color:var(--ink-3);font-weight:600}}
 .au-ch{font-size:13px;font-weight:600;color:var(--ink-2);margin-top:6px;overflow-wrap:anywhere}.au-ch .au-l{color:var(--ink-3)}.au-ch .au-b{text-decoration:line-through;color:var(--ink-3)}
 .afil .n{font-size:13px;font-weight:700;color:var(--ink-3);margin-left:4px}
 @media(min-width:900px){.sheet.adm .plist{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -1034,9 +1037,18 @@ function drawAdmin() {
     }
     const ym = A.ym || (A.ym = new Date(Date.now() - 864e5 * new Date().getDate() + 864e5).toISOString().slice(0, 7)), [y, m] = ym.split('-').map(Number);
     const mon = new Date(y, m - 1, 1).toLocaleDateString('lv-LV', { month: 'long', year: 'numeric' });
-    const s = adminShell(`<div class="afil" id="rF"><select id="rC" aria-label="Klients"><option value="">Visi objekti (bez klienta filtra)</option>${A.K.clients.filter(c => c.aktivs).map(c => `<option value="${c.id}" ${A.rc === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+    const rvSeg = `<div class="seg" id="rV" style="margin:0 0 10px"><button type="button" data-v="" class="${A.rv ? '' : 'on'}">Izpilde</button><button type="button" data-v="rent" class="${A.rv === 'rent' ? 'on' : ''}">Rentabilitāte</button></div>`;
+    if (A.rv === 'rent') {
+      const s = adminShell(rvSeg + `<div class="afil"><button class="btn ghost" data-m="-1" style="width:auto;height:40px;padding:0 14px" aria-label="Iepriekšējais mēnesis">‹</button><b style="font-weight:800">${esc(mon)}</b><button class="btn ghost" data-m="1" style="width:auto;height:40px;padding:0 14px" aria-label="Nākamais mēnesis">›</button></div><div id="rOut"><div class="skel"></div></div>`, null);
+      s.querySelector('#rV').onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) { A.rv = b.dataset.v; drawAdmin(); } };
+      s.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { A.ym = new Date(Date.UTC(y, m - 1 + +b.dataset.m, 1)).toISOString().slice(0, 7); drawAdmin(); });
+      const show = (P) => { $('rOut').innerHTML = profitHtml(P); $('rtSave').onclick = async () => { try { show(await api('rentLikme', { ym, likme: $('rtL').value })); toast('Likme saglabāta'); } catch (e) { toast(netMsg(e), 'err'); } }; };
+      api('profit', { ym }).then(show).catch(e => { $('rOut').innerHTML = `<p>${esc(netMsg(e))}</p>`; }); return;
+    }
+    const s = adminShell(rvSeg + `<div class="afil" id="rF"><select id="rC" aria-label="Klients"><option value="">Visi objekti (bez klienta filtra)</option>${A.K.clients.filter(c => c.aktivs).map(c => `<option value="${c.id}" ${A.rc === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
       <button class="btn ghost" data-m="-1" style="width:auto;height:40px;padding:0 14px">‹</button><b style="font-weight:800">${esc(mon)}</b><button class="btn ghost" data-m="1" style="width:auto;height:40px;padding:0 14px">›</button></div><div id="rOut"><div class="skel"></div></div>`, null);
     const go = async () => { const out = $('rOut'); try { const R = A.R = await api('clientReport', { client: A.rc || '', ym }); out.innerHTML = reportHtml(R); out.querySelector('#rCsv').onclick = (e) => { const b = e.target; b.disabled = true; reportXlsx(R).catch(err => toast(err.message, 'err')).finally(() => { b.disabled = false; }); }; out.querySelector('#rAkts').onclick = () => reportAkts(R); out.querySelector('#rInv').onclick = () => reportInvoice(R); } catch (e) { out.innerHTML = `<p>${esc(netMsg(e))}</p>`; } };
+    s.querySelector('#rV').onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) { A.rv = b.dataset.v; drawAdmin(); } };
     s.querySelector('#rC').onchange = (e) => { A.rc = e.target.value; go(); };
     s.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { A.ym = new Date(Date.UTC(y, m - 1 + +b.dataset.m, 1)).toISOString().slice(0, 7); drawAdmin(); });
     go(); return;
@@ -1251,6 +1263,17 @@ function priceIndexSheet() {
       if (!+pct) return toast('Ierakstiet procentus', 'err'); if (!no) return toast('Norādiet datumu', 'err');
       if (!confirm('Mainīt visas klientu cenas par ' + (+pct > 0 ? '+' : '') + pct + ' % no ' + lvD(no) + '?')) return;
       try { const r = await api('priceIndex', { pct, no }); A.K = r; toast('Mainītas ' + r.n + ' cenas'); sheet(''); drawAdmin(); } catch (e) { toast(netMsg(e), 'err'); } });
+}
+/* Rentabilitāte (D9): ieņēmumi − izmaksas; kur datu nav — «nav datu» */
+function profitHtml(P) {
+  const nd = '<span class="m0">nav datu</span>', e = (v) => v == null ? nd : eur(v), pl = (v) => v == null ? nd : `<b style="color:${v < 0 ? '#b42318' : 'inherit'}">${eur(v)}</b>`;
+  const row = (o) => `<div class="rtr"><span class="a">${esc(o.adrese)}</span><span data-l="Ieņēmumi: ">${o.ien ? eur(o.ien) : '—'}</span><span data-l="Darbs: ">${o.h != null ? num(o.h) + ' h' + (o.darbs != null ? ' · ' + eur(o.darbs) : '') : nd}</span><span data-l="Izvešana: ">${o.izv != null ? eur(o.izv) : '—'}</span><span data-l="Peļņa: ">${pl(o.pelna)}</span></div>`;
+  const head = '<div class="rtr rth"><span class="a">Objekts</span><span>Ieņēmumi</span><span>Darbs</span><span>Izvešana</span><span>Peļņa</span></div>';
+  return `<div class="dsec" style="margin-top:0"><h4>Stundas likme (darba izmaksas)</h4><div class="row2" style="gap:8px;align-items:center"><input id="rtL" inputmode="decimal" value="${P.likme != null ? String(P.likme).replace('.', ',') : ''}" placeholder="€ stundā ar nodokļiem" aria-label="Stundas likme" style="max-width:220px"><button class="btn ghost" id="rtSave" style="width:auto;padding:0 16px">Saglabāt</button></div>
+      <p class="copy" style="text-align:left;margin:6px 0 0">Izmaksas = Darba laika stundas objektā × likme + izvešanas izmaksas. Citas izmaksas netiek skaitītas.${P.likme == null ? ' <b>Likme nav ievadīta — darba izmaksas nav zināmas.</b>' : ''}</p></div>
+    ${P.clients.length ? P.clients.map(c => `<div class="dsec"><h4>${esc(c.name)}</h4><div class="stats3" style="margin:0 0 10px"><div class="sx c-pl"><b style="font-size:22px">${eur(c.ien)}</b><small>ieņēmumi${c.ligVisi ? ' (t.sk. līgumcena ' + eur(c.ligVisi) + ')' : ''}</small></div><div class="sx c-izv"><b style="font-size:22px">${e(c.izm)}</b><small>izmaksas</small></div><div class="sx c-ml"><b style="font-size:22px">${c.pelna == null ? 'nav datu' : eur(c.pelna)}</b><small>peļņa${c.ien && c.pelna != null ? ' · ' + Math.round(c.pelna / c.ien * 100) + ' %' : ''}</small></div></div>
+      ${c.objekti.length ? `<div class="rtt">${head}${c.objekti.map(row).join('')}</div>` : '<p class="copy" style="text-align:left;margin:0">Šajā mēnesī objektos nav ne darbu, ne stundu.</p>'}</div>`).join('') : '<div class="card" style="padding:18px;text-align:center;font-weight:700;color:var(--ink-3)">Nav aktīvu klientu — pievienojiet tos cilnē Klienti</div>'}
+    ${P.bezKlienta.length ? `<div class="dsec"><h4>Izmaksas objektos bez klienta · ${P.bezKlienta.length}</h4><div class="rtt">${head}${P.bezKlienta.map(row).join('')}</div></div>` : ''}`;
 }
 function reportHtml(R) {
   if (!R.rows.length) return '<div class="card" style="padding:18px;text-align:center;font-weight:700;color:var(--ink-3)">Šajā mēnesī nav izpildītu darbu šī klienta objektos</div>';
