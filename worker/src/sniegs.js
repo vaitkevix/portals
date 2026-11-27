@@ -24,8 +24,9 @@ export const LAST = 'Lāstekas / jumts';   // lāsteku / jumta tīrīšana — r
 function cleanReq(d) { d = d || {}; return { veidi: (d.veidi || []).filter(x => REQ_VEIDI.indexOf(x) !== -1), zona: String(d.zona || '').trim().slice(0, 200) }; }
 /* Apledojums pēc prognozes: t° min −2…+1 un nokrišņi, vai vakar lietus (t° > 0) → šodien sals */
 export function iceRisk(wx, d) { const x = wx[d] || {}, p = wx[addDays(d, -1)] || {}; if (x.t == null) return '';
-  if (x.t >= -2 && x.t <= 1 && (x.r || 0) >= 0.3) return 'nokrišņi ap 0° (' + (+x.t).toFixed(0) + '°)';
-  if (x.t < 0 && (p.r || 0) >= 0.5 && (p.t == null || p.t > 0)) return 'lietus → sals (' + (+x.t).toFixed(0) + '°)';
+  const deg = (v) => String(Math.round(v) || 0).replace('-', '−') + '°';
+  if (x.t >= -2 && x.t <= 1 && (x.r || 0) >= 0.3) return 'nokrišņi ap 0° (' + deg(x.t) + ')';
+  if (x.t < 0 && (p.r || 0) >= 0.5 && (p.t == null || p.t > 0)) return 'lietus → sals (' + deg(x.t) + ')';
   return ''; }
 function cleanObj(d) { d = d || {}; return { tehnika: TEHNIKA.indexOf(d.tehnika) !== -1 ? d.tehnika : 'Traktors' }; }
 function cleanDone(d) { d = d || {}; return { zona: !!d.zona, tehnika: TEHNIKA.indexOf(d.tehnika) !== -1 ? d.tehnika : '', kaisits: KAISA.indexOf(d.kaisits) !== -1 ? d.kaisits : 'Nav', kg: int(d.kg, 0, 99999), kravas: int(d.kravas, 0, 999) }; }
