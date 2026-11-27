@@ -1,9 +1,10 @@
 import { summary as dlSummary, objStates as dlStates } from './darbalaiks.js';
 import { backupD1 } from './backup.js';
+import { closeCheck, closeLog } from './close.js';
 import { SMS_F, smsCfg } from './darbalaiks.js';
 import { dashboard } from './dashboard.js';
 import { viewLink, viewTokens } from './view.js';
-import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo } from './klienti.js';
+import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo, invoiceIssue, invoices, invoiceSet } from './klienti.js';
 import { notify } from './webpush.js';
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
 export const APPS_P = ['aizv', 'izv', 'kais', 'pers', 'budz'];
@@ -215,6 +216,17 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'firma') return pj(Object.assign({ ok: true }, { firma: await firma(env.DB) }));
     if (a === 'firmaSave') return pj({ ok: true, firma: await saveFirma(env.DB, b.firma) });
     if (a === 'invoiceNo') return pj(Object.assign({ ok: true }, await invoiceNo(env.DB, String(b.client || ''), String(b.ym || ''))));
+    /* Mēneša slēgšana (D2): pārbaudes → slēgt; slēgtā mēnesī Worker atraida darbu/atzīmju izmaiņas */
+    if (a === 'closeCheck') return pj(Object.assign({ ok: true }, await closeCheck(env.DB, String(b.ym || ''))));
+    if (a === 'closeMonth') { const ym = String(b.ym || ''); if (!/^\d{4}-\d{2}$/.test(ym)) throw new Error('Nederīgs mēnesis');
+      if (ym >= new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Riga' }).format(new Date()).slice(0, 7)) throw new Error('Slēgt var tikai pagājušu mēnesi');
+      await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind('close:' + ym, JSON.stringify({ kas: me.name, laiks: new Date().toISOString() })).run();
+      await closeLog(env.DB, me.name + ' slēdza ' + ym); return pj(Object.assign({ ok: true }, await closeCheck(env.DB, ym))); }
+    if (a === 'openMonth') { const ym = String(b.ym || ''); await env.DB.prepare('DELETE FROM kv WHERE k = ?').bind('close:' + ym).run(); await closeLog(env.DB, me.name + ' atvēra ' + ym + (b.iemesls ? ' — ' + String(b.iemesls).slice(0, 120) : ''));
+      return pj(Object.assign({ ok: true }, await closeCheck(env.DB, ym))); }
+    if (a === 'invoiceIssue') { return pj({ ok: true, invoice: await invoiceIssue(env.DB, String(b.client || ''), String(b.ym || ''), me.name) }); }
+    if (a === 'invoices') return pj(Object.assign({ ok: true }, await invoices(env.DB, { st: String(b.st || '') })));
+    if (a === 'invoiceSet') return pj({ ok: true, invoice: await invoiceSet(env.DB, b) });
     if (a === 'clientReport') return pj(Object.assign({ ok: true }, await report(env.DB, String(b.client || ''), String(b.ym || ''))));
     if (a === 'viewLink') return pj(Object.assign({ ok: true }, await viewLink(env.DB, String(b.client || ''), !!b.revoke)));
     if (a === 'viewTokens') return pj({ ok: true, tokens: await viewTokens(env.DB) });

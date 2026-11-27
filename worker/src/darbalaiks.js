@@ -6,7 +6,7 @@
 import { personByPin } from './portal.js';
 import { lvHolidays } from './personals.js';
 import { dlInherit, dlSync } from './majaslieta.js';
-import { today, addDays, dow, nowStr, uid, kv, kvSet, CORS, out } from './util.js';
+import { today, addDays, dow, nowStr, uid, kv, kvSet, CORS, out, assertOpen } from './util.js';
 import { notify, managers } from './webpush.js';
 
 export const KEY = 'dl';
@@ -458,7 +458,7 @@ export async function api(request, env, X) {
     if (a === 'gaida') { need(2); let L = (await kv(db, 'dl:pending')) || [];
       if (W < 3) { const m = await myPhones(db, me.name); L = L.filter(p => m.phones.indexOf(p.phone) !== -1 || m.objekti.indexOf(p.anorm) !== -1); }
       const O = await objs(db); return out({ ok: true, gaida: L.map(p => Object.assign({ adrese: (O.find(o => o.anorm === p.anorm) || {}).adrese || '' }, p)) }); }
-    if (a === 'apstiprinat') { need(2); const L = (await kv(db, 'dl:pending')) || [], p = L.find(x => x.id === b.id); if (!p) throw new Error('Jau apstrādāts');
+    if (a === 'apstiprinat') { need(2); const L = (await kv(db, 'dl:pending')) || [], p = L.find(x => x.id === b.id); if (!p) throw new Error('Jau apstrādāts'); if (b.ok && p.tips === 'labot') await assertOpen(db, p.datums);
       if (W < 3) { const m = await myPhones(db, me.name); if (m.phones.indexOf(p.phone) === -1 && m.objekti.indexOf(p.anorm) === -1) throw new Error('Šis darbinieks ir cita vadītāja'); }
       if (b.ok && p.tips === 'labot') {
         if (p.aizvert) { const m = await db.prepare("SELECT * FROM dl_mark WHERE id = ? AND veids = 'sak'").bind(p.aizvert).first(); if (m && mins(p.beidz) >= mins(m.laiks)) await addMark(db, { datums: m.datums, vards: m.vards, veids: 'beidz', laiks: p.beidz, anorm: m.anorm, amats: m.amats, phone: m.phone, avots: 'sms-labojums', kas: me.name }); }
@@ -467,7 +467,7 @@ export async function api(request, env, X) {
       }
       await kvSet(db, 'dl:pending', L.filter(x => x.id !== p.id)).run();
       return out({ ok: true }); }
-    if (a === 'labot') { if (W < 3) {   // vadītājs labo savos objektos (C2)
+    if (a === 'labot') { await assertOpen(db, b.aizvert || b.id ? ((await db.prepare('SELECT datums FROM dl_mark WHERE id = ?').bind(b.aizvert || b.id).first()) || {}).datums : d); if (W < 3) {   // vadītājs labo savos objektos (C2)
         need(2); const mo = (await myPhones(db, me.name)).objekti, an = b.aizvert || b.id ? ((await db.prepare('SELECT anorm FROM dl_mark WHERE id = ?').bind(b.aizvert || b.id).first()) || {}).anorm : b.anorm;
         if (mo.indexOf(an) === -1) throw new Error('Labot var savos objektos — šis ir cita vadītāja');
       }

@@ -45,3 +45,7 @@ export function splitAddr(a) {
   if (nums.size < 2 && ks < 2) return [];
   return out.map(x => ({ adrese: x, pfx }));
 }
+
+/* Mēneša slēgšana: kv close:YYYY-MM. Slēgtā mēnesī darbu/atzīmju izmaiņas atraida. */
+export async function monthClosed(db, d) { const ym = String(d || '').slice(0, 7); if (!/^\d{4}-\d{2}$/.test(ym)) return false; return !!(await db.prepare('SELECT 1 FROM kv WHERE k = ?').bind('close:' + ym).first()); }
+export async function assertOpen(db, d) { if (await monthClosed(db, d)) throw new Error('Mēnesis ' + String(d).slice(5, 7) + '.' + String(d).slice(0, 4) + ' ir slēgts — izmaiņas nav atļautas (atvērt var administrators Atskaitēs)'); }

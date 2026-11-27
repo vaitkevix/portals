@@ -2,6 +2,7 @@
  * Maršruts POST /pl  { pin, action, … }.  Lomas portālā: perms.pl = admin | vaditajs | izpilditajs.
  * Objekti un grupas — no portāla (tabulas objects, groups); pļaušanai savas tabulas pl_obj, pl_visit, pl_log. */
 import { personByPin, companyBy } from './portal.js';
+import { assertOpen } from './util.js';
 import { groupsOf } from './master.js';
 import { notify, managers } from './webpush.js';
 
@@ -180,6 +181,7 @@ export async function plausana(request, env, X) {
     if (a === 'done' || a === 'cant') {
       need('izpilditajs');
       const v = await db.prepare('SELECT * FROM pl_visit WHERE id = ?').bind(String(b.id || '')).first();
+      if (v) await assertOpen(db, v.datums);   // slēgts mēnesis
       if (!v) throw new Error('Izbraukums nav atrasts — atjaunojiet');
       if (me.company && v.brigade && v.brigade !== me.name) throw new Error('Šis darbs nav jūsu brigādei');
       if (v.statuss === 'done') return out({ ok: true, already: true });

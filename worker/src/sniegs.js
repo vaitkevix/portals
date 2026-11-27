@@ -6,7 +6,7 @@ import { sendSms, smsOn } from './darbalaiks.js';
 import { personByPin, companyBy } from './portal.js';
 import { groupsOf } from './master.js';
 import { notify, managers, personNames } from './webpush.js';
-import { today, addDays, nowStr, uid, anorm, lvD, kv, kvSet, geoQuery, CORS, out } from './util.js';
+import { today, addDays, nowStr, uid, anorm, lvD, kv, kvSet, geoQuery, CORS, out, assertOpen } from './util.js';
 
 export const KEY = 'sniegs', NAME = 'Sniega tīrīšana', KIND = 'traktorists';
 export const DEF_CFG = { snowCm: 3, auto: true, approve: true, photoReq: true, veidi: ['Brauktuve', 'Ietves', 'Stāvlaukums', 'Kaisīts'] };
@@ -155,7 +155,7 @@ export async function api(request, env, X, fetchWx) {
     }
     if (a === 'start' || a === 'done' || a === 'cant') {
       need('izpilditajs');
-      const v = await db.prepare('SELECT * FROM sniegs_visit WHERE id = ?').bind(String(b.id || '')).first(); if (!v) throw new Error('Nav atrasts — atjaunojiet');
+      const v = await db.prepare('SELECT * FROM sniegs_visit WHERE id = ?').bind(String(b.id || '')).first(); if (!v) throw new Error('Nav atrasts — atjaunojiet'); await assertOpen(db, v.datums);
       if (v.izs) { const c = await db.prepare('SELECT statuss FROM sniegs_call WHERE id = ?').bind(v.izs).first(); if (!c || c.statuss !== 'aktivs') throw new Error('Izsaukums nav aktīvs'); }
       if (me.company && v.brigade && v.brigade !== me.name) throw new Error('Šī adrese nav jūsu maršrutā');
       if (v.statuss === 'done') return out({ ok: true, already: true });

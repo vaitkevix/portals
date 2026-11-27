@@ -2,6 +2,7 @@
  * Maršruts POST /stav  { pin, action, … }.  Lomas portālā: perms.stav = admin | vaditajs | izpilditajs; portāla admins = admin, citi = skatitajs.
  * Objekti un grupas — no portāla (objects, groups); savas tabulas stav_obj, stav_visit, stav_log. Laikapstākļi — kopīgi (kv wx, sk. wx.js). */
 import { personByPin, companyBy } from './portal.js';
+import { assertOpen } from './util.js';
 import { groupsOf } from './master.js';
 import { notify, managers, personNames } from './webpush.js';
 import { today, addDays, dow, nowStr, uid, anorm, lvD, kv, kvSet, geoQuery, CORS, out } from './util.js';
@@ -219,6 +220,7 @@ export async function api(request, env, X, fetchWx) {
     if (a === 'done' || a === 'cant') {
       need('izpilditajs');
       const v = await db.prepare('SELECT * FROM stav_visit WHERE id = ?').bind(String(b.id || '')).first();
+      if (v) await assertOpen(db, v.datums);   // slēgts mēnesis
       if (!v) throw new Error('Nav atrasts — atjaunojiet');
       if (me.company && v.brigade && v.brigade !== me.name) throw new Error('Šis darbs nav jūsu brigādei');
       if (v.statuss === 'done') return out({ ok: true, already: true });

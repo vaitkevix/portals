@@ -5,6 +5,7 @@
  * © VAITKEVIX, SIA
  */
 
+import { assertOpen } from './util.js';
 import { backupD1 } from './backup.js';
 import { viewApi } from './view.js';
 import { portal, people, personByPin, seedFrom, peopleStmts, usersStmts, session, cleanSessions } from './portal.js';
@@ -997,6 +998,7 @@ const ACTIONS = {
   },
 
   saveJob: async (X, u, r) => {
+    if (r.datums) await assertOpen(X.db, r.datums);
     if (u.role === 'brigade') throw new Error('Nav atļauts');
     const j = r.job || {};
     if (!j.adrese || !String(j.adrese).trim()) throw new Error('Norādi adresi');
@@ -1154,6 +1156,7 @@ const ACTIONS = {
   done: async (X, u, r) => {
     const job = await X.job(r.id);
     if (!job) throw new Error('Darbs nav atrasts');
+    await assertOpen(X.db, job.datums);
     await canMark(u, job);
     const ids = r.done ? await X.savePhotos(job, r.photos) : [];
     if (r.done) {

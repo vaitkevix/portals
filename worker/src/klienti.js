@@ -126,3 +126,39 @@ export async function invoiceNo(db, clientId, ym) {
   const fin = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(key).first();   // ja paralēli jau izrakstīts — tas pats numurs
   return fin ? JSON.parse(fin.v) : out;
 }
+
+/* ---------- Rēķinu reģistrs (D1): izrakstīšana ar kopiju, statuss, apmaksa, kavētie ---------- */
+const nowRiga = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Riga' }).format(new Date());
+const addD = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+export const INV_ST = ['izrakstīts', 'daļēji', 'apmaksāts', 'anulēts'];
+/** Izraksta (vai atdod jau izrakstīto) rēķinu: numurs + nemainīga kopija */
+export async function invoiceIssue(db, clientId, ym, who) {
+  if (!clientId) throw new Error('Rēķinu izraksta konkrētam klientam');
+  const ex = await db.prepare('SELECT * FROM invoice WHERE client = ? AND ym = ?').bind(clientId, ym).first();
+  if (ex) return invRow(ex);
+  const R = await report(db, clientId, ym), N = await invoiceNo(db, clientId, ym), F = await firma(db);
+  const termins = addD(N.datums, Math.max(0, +F.apmaksa_dienas || 14));
+  const dati = JSON.stringify({ client: R.client, sum: R.sum, rows: R.rows.map(r => ({ app: r.app, datums: r.datums, adrese: r.adrese, daudz: r.daudz, cena: r.cena, summa: r.summa, piez: r.pub || '' })) });
+  await db.prepare('INSERT OR IGNORE INTO invoice (nr, client, klients, ym, datums, termins, summa, pvn, ar_pvn, dati, izveidots, kas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(N.nr, clientId, (R.client && R.client.name) || '', ym, N.datums, termins, R.total, R.pvn, R.arPvn, dati, nowRiga(), String(who || '')).run();
+  return invRow(await db.prepare('SELECT * FROM invoice WHERE client = ? AND ym = ?').bind(clientId, ym).first());
+}
+function invRow(r) {
+  if (!r) return null; const t = nowRiga(), o = Object.assign({}, r); try { o.dati = JSON.parse(r.dati || '{}'); } catch (e) { o.dati = {}; }
+  o.kave = (r.statuss === 'izrakstīts' || r.statuss === 'daļēji') && r.termins && r.termins < t ? Math.round((Date.parse(t) - Date.parse(r.termins)) / 864e5) : 0;
+  o.atlikums = r.statuss === 'apmaksāts' || r.statuss === 'anulēts' ? 0 : Math.round((r.ar_pvn - (r.apm_summa || 0)) * 100) / 100;
+  return o;
+}
+export async function invoices(db, f) {
+  const L = ((await db.prepare('SELECT * FROM invoice ORDER BY datums DESC, nr DESC LIMIT 500').all()).results || []).map(invRow).map(o => { delete o.dati; return o; });
+  const R = f && f.st ? L.filter(o => f.st === 'kave' ? o.kave > 0 : o.statuss === f.st) : L;
+  const sum = (a) => Math.round(a.reduce((s, o) => s + o.atlikums, 0) * 100) / 100;
+  return { list: R, kopa: { neapmaksats: sum(L.filter(o => o.atlikums > 0)), kave: sum(L.filter(o => o.kave > 0)), kaveN: L.filter(o => o.kave > 0).length } };
+}
+export async function invoiceSet(db, b) {
+  const r = await db.prepare('SELECT * FROM invoice WHERE nr = ?').bind(String(b.nr || '')).first(); if (!r) throw new Error('Rēķins nav atrasts');
+  const st = INV_ST.indexOf(b.statuss) !== -1 ? b.statuss : r.statuss, d = /^\d{4}-\d{2}-\d{2}$/.test(b.apmaksats || '') ? b.apmaksats : (st === 'apmaksāts' && !r.apmaksats ? nowRiga() : r.apmaksats);
+  const s = st === 'apmaksāts' ? r.ar_pvn : st === 'daļēji' ? Math.max(0, Math.min(r.ar_pvn, +b.apm_summa || r.apm_summa || 0)) : st === 'anulēts' ? 0 : r.apm_summa;
+  await db.prepare('UPDATE invoice SET statuss = ?, apmaksats = ?, apm_summa = ?, piezime = ? WHERE nr = ?').bind(st, d || '', s, String(b.piezime != null ? b.piezime : r.piezime).slice(0, 300), r.nr).run();
+  return invRow(await db.prepare('SELECT * FROM invoice WHERE nr = ?').bind(r.nr).first());
+}
