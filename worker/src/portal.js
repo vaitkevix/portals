@@ -96,17 +96,15 @@ async function dash(env, me) {
     out.aizv.days = {}; rows.forEach(r => out.aizv.days[r.datums] = [r.n, r.d]);
     out.aizv.next = ((await env.DB.prepare('SELECT datums, adrese, tips, brigade, statuss FROM jobs WHERE datums >= ? AND statuss != \'izpildīts\'' + mine + ' ORDER BY datums, seq LIMIT 4').bind(td, ...args).all()).results || []);
   }
-  if (P.izv) {
-    const b = await kv('izv:getBoot'), t = (b && b.result && b.result.tasks) || [];
-    const open = t.filter(x => x.status === 'Neizpildīts');
-    const mineF = (x) => String(x.requester || '').toLowerCase().indexOf(me.name.toLowerCase()) === 0;
-    out.izv = { open: open.length, urgent: open.filter(x => x.urgent).length, mine: P.izv === 'pieteicejs' ? open.filter(mineF).length : null,
-      top: open.slice().sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0)).slice(0, 3).map(x => ({ a: x.address, u: !!x.urgent, d: x.deadline || '' })) };
+  if (P.izv) {   // tieši no izv_task (agrāk — 300 KB kv kopija)
+    const c = await env.DB.prepare("SELECT COUNT(*) n, SUM(steidzami) u, SUM(CASE WHEN lower(pasutitajs) LIKE ? THEN 1 ELSE 0 END) m FROM izv_task WHERE statuss = 'Neizpildīts'").bind(me.name.toLowerCase() + '%').first();
+    const top = (await env.DB.prepare("SELECT adrese a, steidzami u, termins d FROM izv_task WHERE statuss = 'Neizpildīts' ORDER BY steidzami DESC, row LIMIT 3").all()).results || [];
+    out.izv = { open: (c && c.n) || 0, urgent: (c && c.u) || 0, mine: P.izv === 'pieteicejs' ? (c && c.m) || 0 : null, top: top.map(x => ({ a: x.a, u: !!x.u, d: x.d || '' })) };
   }
   if (P.kais) {
-    const b = await kv('kais:getTasks'), t = (b && b.result) || [];
-    const open = t.filter(x => !/piegād[aā]ts|atcelts/i.test(String(x.status || '')));
-    out.kais = { open: open.length, top: open.slice(0, 3).map(x => ({ a: x.address, m: x.material || '' })) };
+    const c = await env.DB.prepare("SELECT COUNT(*) n FROM kais_task WHERE statuss NOT IN ('Piegādāts', 'Atcelts')").first();
+    const top = (await env.DB.prepare("SELECT adrese a, materials m FROM kais_task WHERE statuss NOT IN ('Piegādāts', 'Atcelts') ORDER BY row LIMIT 3").all()).results || [];
+    out.kais = { open: (c && c.n) || 0, top: top.map(x => ({ a: x.a, m: x.m || '' })) };
   }
   if (P.pers) out.pers = {};
   if (P.budz) out.budz = {};
@@ -144,10 +142,8 @@ async function mineToday(env, me, td) {
     (await all(`SELECT anorm, COUNT(*) n, SUM(CASE WHEN statuss = 'done' THEN 1 ELSE 0 END) d, SUM(CASE WHEN statuss = 'cant' THEN 1 ELSE 0 END) c FROM ${T} WHERE datums = ? GROUP BY anorm`, td).catch(() => []))
       .forEach(r => { if (R[r.anorm]) R[r.anorm].g[k] = [r.n, r.d, r.c]; });
   const an = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  for (const [app, key, done] of [['izv', 'izv:getTasks', /izpild|atcelt/i], ['kais', 'kais:getTasks', /piegād|atcelt/i]]) {
-    const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(key).first(); let t = []; try { t = JSON.parse(r.v).result || []; } catch (e) {}
-    t.forEach(x => { if (done.test(String(x.status || ''))) return; const o = R[an(x.address)]; if (o) o[app]++; });
-  }
+  (await all("SELECT adrese FROM izv_task WHERE statuss = 'Neizpildīts'").catch(() => [])).forEach(x => { const o = R[an(x.adrese)]; if (o) o.izv++; });
+  (await all("SELECT adrese FROM kais_task WHERE statuss NOT IN ('Piegādāts', 'Atcelts')").catch(() => [])).forEach(x => { const o = R[an(x.adrese)]; if (o) o.kais++; });
   const list = Object.values(R), issue = (o) => (o.dl && o.dl.t ? 4 : 0) + (o.aizv[1] ? 2 : 0) + Object.values(o.g).reduce((n, g) => n + (g[0] - g[1] ? 1 : 0) + (g[2] ? 2 : 0), 0) + (o.izv || o.kais ? 1 : 0);
   list.forEach(o => o.i = issue(o)); list.sort((a, b) => b.i - a.i || a.a.localeCompare(b.a, 'lv'));
   return { n: list.length, problem: list.filter(o => o.i).length, trukst: list.filter(o => o.dl && o.dl.t).length, darbi: list.reduce((n, o) => n + o.aizv[0] + Object.values(o.g).reduce((m, g) => m + g[0], 0), 0), list };

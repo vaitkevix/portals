@@ -48,13 +48,8 @@ export async function getInitialData(env) {
   return { addresses: objs.map(o => o.adrese), people: ppl.filter(p => { let x = {}; try { x = JSON.parse(p.perms || '{}'); } catch (e) {} return p.active && x.izv; }).map(p => p.name),
     siaList: comp.filter(c => c.active && String(c.kinds).split(',').indexOf('izvedejs') !== -1).map(c => c.name), ai: !!env.ANTHROPIC_API_KEY };
 }
-/** Portāla kopskatam (portal.js lasa kv «izv:getBoot») */
-async function cache(env) {
-  const tasks = await getTasks(env.DB), lists = await getInitialData(env);
-  await env.DB.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('izv:getBoot', ?), ('izv:getTasks', ?), ('izvt:getBoot', ?), ('izvt:getTasks', ?)")
-    .bind(JSON.stringify({ ok: true, result: { lists, tasks } }), JSON.stringify({ ok: true, result: tasks }), String(Date.now()), String(Date.now())).run();
-  return tasks;
-}
+/** Saglabāšanas atbildei — svaigais saraksts. (Agrāk arī ~300 KB kopija kv portālam; tagad portāls lasa izv_task ar SQL.) */
+async function cache(env) { return getTasks(env.DB); }
 const withTasks = async (env, res) => { if (res && res.status === 'success') res.tasks = await cache(env); return res; };
 const byId = (db, id) => db.prepare('SELECT * FROM izv_task WHERE id = ?').bind(String(id || '').trim()).first();
 const log = (t, text) => (t.vesture ? t.vesture + '\n' : '') + stamp() + ' · ' + text;

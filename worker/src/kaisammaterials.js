@@ -16,8 +16,8 @@ const out = (t) => ({ rowIndex: t.row, id: t.id, date: t.datums, address: t.adre
   photoBefore: t.foto_pirms, status: t.statuss || PENDING, sia: t.kurjers, photoAfter: t.foto_pec, m3Hauled: t.piegadati, carrierComment: t.kurj_kom, deliveredAt: t.piegadats });
 
 export async function tasks(db) { return (await all(db, 'SELECT * FROM kais_task ORDER BY row')).map(out); }
-/** Portāla kopskatam (portal.js lasa kv «kais:getTasks») */
-async function cache(db) { await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('kais:getTasks', ?), ('kaist:getTasks', ?)").bind(JSON.stringify({ ok: true, result: await tasks(db) }), String(Date.now())).run(); }
+/** Agrāk kopija kv portālam; tagad portāls lasa kais_task ar SQL — nekas nav jādara. */
+async function cache() {}
 
 export async function initialData(db) {
   const [objs, ppl, comp, mat] = await Promise.all([all(db, 'SELECT adrese FROM objects ORDER BY ord, adrese'), all(db, 'SELECT name, phone, perms, active FROM people ORDER BY ord, name'),
