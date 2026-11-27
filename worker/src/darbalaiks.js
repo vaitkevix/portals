@@ -52,7 +52,8 @@ export const SMS_F = [
   ['sveiciens', 'Sveiciena SMS jaunam darbiniekam', 'Instrukcija un objektu kodi, pievienojot darbinieku.', true],
   ['objekti', 'SMS par objektu maiņu', 'Mainot darbinieka objektus — jaunās adreses un kodi.', true],
   ['aizv', 'Aizvietošanas plāns brigādei', 'Publicējot plānu — SMS brigādes cilvēkiem ar adresēm un START kodiem.', true],
-  ['sniegs', 'Sniega izsaukums ārējiem traktoristiem (SIA)', 'SMS uz uzņēmuma tālruni, kad izsaukts sniegs.', true]];
+  ['sniegs', 'Sniega izsaukums ārējiem traktoristiem (SIA)', 'SMS uz uzņēmuma tālruni, kad izsaukts sniegs.', true],
+  ['sia_darbs', 'Jauns darbs izvedējam / kurjeram (SIA)', 'Jauns izvešanas vai kaisāmmateriāla pieteikums — SMS uz uzņēmuma tālruni (Uzņēmumi → Tālrunis).', true]];
 export async function smsCfg(db) { const c = (await kv(db, 'sms:cfg')) || {}; const o = {}; SMS_F.forEach(([k, , , d]) => o[k] = typeof c[k] === 'boolean' ? c[k] : d); return o; }
 export async function smsOn(db, k) { return (await smsCfg(db))[k] !== false; }
 /* SMS teksts → komanda */

@@ -190,11 +190,11 @@ export async function plausana(request, env, X) {
         if (C.photoReq && !photos.length) throw new Error('Pievienojiet bildi pēc pļaušanas');
         const ids = photos.length ? await X.savePhotos({ datums: v.datums, adrese: 'Pļaušana · ' + v.adrese }, photos) : [];
         await db.batch([db.prepare("UPDATE pl_visit SET statuss = 'done', datums = ?, laiks = ?, izpilditajs = ?, foto = ?, piezime = ? WHERE id = ?")
-          .bind(kadOf(b).d, kadOf(b).t, me.name, ids.join(','), String(b.piezime || '').slice(0, 300), v.id)]);
+          .bind(kadOf(b).d, kadOf(b).t, (me.who || me.name), ids.join(','), String(b.piezime || '').slice(0, 300), v.id)]);
       } else {
         const why = String(b.iemesls || 'Nepaspēja').slice(0, 60), C = await cfgOf(db), rain = (await kv(db, 'pl:rain')) || {};
         const d = nextDay(addDays(v.datums > today() ? v.datums : today(), 1), C, rain);
-        await db.batch([db.prepare('UPDATE pl_visit SET datums = ?, prio = 1, parcelts = parcelts + 1, iemesls = ?, izpilditajs = ? WHERE id = ?').bind(d, why, me.name, v.id),
+        await db.batch([db.prepare('UPDATE pl_visit SET datums = ?, prio = 1, parcelts = parcelts + 1, iemesls = ?, izpilditajs = ? WHERE id = ?').bind(d, why, (me.who || me.name), v.id),
           log(db, v.adrese + ' → ' + lvD(d) + ' (' + why.toLowerCase() + ', ' + me.name + ')')]);
         const pn = (async () => notify(env, await managers(env, 'pl'), { title: 'Pļaušana: nevar izpildīt', body: v.adrese + ' — ' + why + ' (' + me.name + '), pārcelts uz ' + lvD(d), url: '/sh/#pl' }))().catch(e => console.error('pl push', e));
         if (X && X.bg) X.bg(pn); else await pn;

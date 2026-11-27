@@ -159,16 +159,16 @@ export async function api(request, env, X, fetchWx) {
       if (v.izs) { const c = await db.prepare('SELECT statuss FROM sniegs_call WHERE id = ?').bind(v.izs).first(); if (!c || c.statuss !== 'aktivs') throw new Error('Izsaukums nav aktīvs'); }
       if (me.company && v.brigade && v.brigade !== me.name) throw new Error('Šī adrese nav jūsu maršrutā');
       if (v.statuss === 'done') return out({ ok: true, already: true });
-      if (a === 'start') { if (!v.sakums) await db.batch([db.prepare('UPDATE sniegs_visit SET sakums = ?, izpilditajs = ? WHERE id = ?').bind(nowStr().slice(11), me.name, v.id)]); return out({ ok: true }); }
+      if (a === 'start') { if (!v.sakums) await db.batch([db.prepare('UPDATE sniegs_visit SET sakums = ?, izpilditajs = ? WHERE id = ?').bind(nowStr().slice(11), (me.who || me.name), v.id)]); return out({ ok: true }); }
       if (a === 'done') {
         const C = await cfgOf(db), photos = (b.photos || []).filter(p => /^data:image\/(jpeg|png|webp);base64,/.test(String(p))).slice(0, 4);
         if (C.photoReq && !photos.length) throw new Error('Pievienojiet bildi pēc tīrīšanas');
         const ids = photos.length ? await X.savePhotos({ datums: v.datums, adrese: NAME + ' · ' + v.adrese }, photos) : [];
         await db.batch([db.prepare("UPDATE sniegs_visit SET statuss = 'done', sakums = CASE WHEN sakums = '' THEN ? ELSE sakums END, laiks = ?, izpilditajs = ?, foto = ?, piezime = ?, izpilde = ? WHERE id = ?")
-          .bind(kadOf(b).t, kadOf(b).t, me.name, ids.join(','), String(b.piezime || '').slice(0, 300), JSON.stringify(cleanDone(b.izpilde)), v.id)]);
+          .bind(kadOf(b).t, kadOf(b).t, (me.who || me.name), ids.join(','), String(b.piezime || '').slice(0, 300), JSON.stringify(cleanDone(b.izpilde)), v.id)]);
       } else {
         const why = String(b.iemesls || 'Nevar').slice(0, 60);
-        await db.batch([db.prepare("UPDATE sniegs_visit SET statuss = 'cant', iemesls = ?, izpilditajs = ?, laiks = ? WHERE id = ?").bind(why, me.name, nowStr().slice(11), v.id), log(db, v.adrese + ': ' + why.toLowerCase() + ' (' + me.name + ')')]);
+        await db.batch([db.prepare("UPDATE sniegs_visit SET statuss = 'cant', iemesls = ?, izpilditajs = ?, laiks = ? WHERE id = ?").bind(why, (me.who || me.name), nowStr().slice(11), v.id), log(db, v.adrese + ': ' + why.toLowerCase() + ' (' + (me.who || me.name) + ')')]);
         X.bg && X.bg(managers(env, KEY).then(m => notify(env, m.filter(n => n !== me.name), { title: 'Sniega tīrīšana · nevar', body: v.adrese + ': ' + why + ' (' + me.name + ')', url: '/sh/#sniegs' })).catch(() => 0));
       }
       return out({ ok: true });

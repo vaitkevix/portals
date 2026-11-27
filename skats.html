@@ -23,7 +23,7 @@ body{margin:0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-seri
 .brand{font-size:12.5px;font-weight:800;letter-spacing:.08em;color:var(--brand);text-transform:uppercase}
 h1{margin:4px 0 2px;font-size:clamp(26px,5vw,38px);font-weight:800;letter-spacing:-.03em;line-height:1.1;overflow-wrap:anywhere}
 .sub{margin:0;color:var(--ink-3);font-weight:700;font-size:14px}
-.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:18px 0 14px}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px}
 .mon{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px}
 .mon b{min-width:150px;text-align:center;font-weight:800;font-size:15px}
 .mon b::first-letter{text-transform:uppercase}
@@ -60,71 +60,214 @@ select{height:44px;border-radius:999px;border:1px solid var(--line);background:v
 .lb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;z-index:9;padding:16px}
 .lb.on{display:flex}.lb img{max-width:100%;max-height:100%;border-radius:10px}
 .lb button{position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;width:44px;height:44px;border-radius:50%;border:0;background:#fff;color:#17201c;font-size:22px;font-weight:800;cursor:pointer}
+.bar[hidden],[hidden]{display:none!important}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0 14px}
+.tabs button{height:44px;border-radius:999px;border:1px solid var(--line);background:var(--surface);padding:0 16px;font-weight:800;font-size:14.5px;cursor:pointer}
+.tabs button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tabs button:focus-visible,.lang button:focus-visible,.btn:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.lang{display:flex;gap:4px;flex:none}
+.lang button{min-width:44px;height:36px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-weight:800;font-size:12.5px;cursor:pointer}
+.lang button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.form{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:16px;display:grid;gap:12px;max-width:640px}
+.form label{display:grid;gap:6px;font-weight:800;font-size:14px}
+.form small{font-weight:600;color:var(--ink-3)}
+input,textarea{font:inherit;color:inherit}
+.form input,.form textarea,.form select{width:100%;border-radius:14px;border:1px solid var(--line);background:var(--surface-2);padding:10px 14px;font-size:16px;font-weight:600;min-height:44px;flex:none}
+.form select{border-radius:14px}
+.form textarea{min-height:110px;resize:vertical}
+.btn{height:48px;border-radius:999px;border:0;background:var(--brand);color:#fff;font-weight:800;font-size:15.5px;padding:0 22px;cursor:pointer}
+.btn.ghost{background:var(--surface-2);color:var(--ink)}
+.btn:disabled{opacity:.5;cursor:default}
+.ok{background:var(--mint);border-radius:18px;padding:16px;font-weight:800}
+.tbl{width:100%;border-collapse:collapse;background:var(--surface);border-radius:18px;overflow:hidden;border:1px solid var(--line)}
+.tbl th,.tbl td{padding:10px 12px;text-align:left;font-size:14px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font-size:12px;color:var(--ink-3);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.tbl td.n{text-align:right;white-space:nowrap;font-weight:800}
+.st{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:800;background:var(--surface-2)}
+.st.paid{background:var(--lime)}.st.late{background:#fde4e1;color:#8a1c12}
+@media (prefers-color-scheme:dark){.st.late{background:#4a1d19;color:#ffd5d0}}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+@media (max-width:560px){.tbl.inv thead{display:none}.tbl.inv tr{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:10px 12px;border-bottom:1px solid var(--line)}.tbl.inv td{border:0;padding:2px 0}.tbl.inv td.n{text-align:right}}
+.note{background:var(--sand);border-radius:16px;padding:12px 14px;font-weight:700;font-size:14px;margin:0 0 10px}
 .copy{margin:22px 0 0;text-align:center;font-size:11.5px;font-weight:700;color:var(--ink-3)}
-@media print{.bar .ib,.pr,select,.lb{display:none!important}body{background:#fff}.it,.sc{break-inside:avoid}.mon{border:0}}
+@media print{.bar .ib,.pr,select,.lb,.tabs,.lang{display:none!important}body{background:#fff}.it,.sc{break-inside:avoid}.mon{border:0}}
 </style>
 </head>
 <body>
 <main class="wrap">
-  <div class="brand">SELECTUM HOME</div>
-  <h1 id="cl">Izpildītie darbi</h1>
-  <p class="sub" id="sub">Jūsu objektos paveiktie darbi ar bildēm</p>
-  <div class="bar">
-    <div class="mon"><button class="ib" id="prev" aria-label="Iepriekšējais mēnesis"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+  <div class="top"><div class="brand">SELECTUM HOME</div><div class="lang" role="group" aria-label="Valoda / Язык / Language"><button data-l="lv">LV</button><button data-l="ru">RU</button><button data-l="en">EN</button></div></div>
+  <h1 id="cl">…</h1>
+  <p class="sub" id="sub"></p>
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <div class="bar" id="bar">
+    <div class="mon"><button class="ib" id="prev"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
       <b id="mon" aria-live="polite">…</b>
-      <button class="ib" id="next" aria-label="Nākamais mēnesis"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div>
-    <select id="obj" aria-label="Objekts"><option value="">Visi objekti</option></select>
-    <button class="pr" id="print">Drukāt</button>
+      <button class="ib" id="next"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div>
+    <select id="obj"></select>
+    <button class="pr" id="print"></button>
   </div>
   <div id="out"><div class="skel"></div></div>
   <p class="copy">© VAITKEVIX, SIA</p>
 </main>
-<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Bilde"><img id="lbi" alt=""><button id="lbx" aria-label="Aizvērt">×</button></div>
+<div class="lb" id="lb" role="dialog" aria-modal="true"><img id="lbi" alt=""><button id="lbx">×</button></div>
 <script>
 (function () {
   var API = 'https://vaitkevix.cloud/sh/api/view', IMG = 'https://vaitkevix.cloud/sh/api/img?id=';
-  var k = (location.hash || '').slice(1), D = null, ym = '', obj = '';
+  var k = (location.hash || '').slice(1), D = null, ym = '', obj = '', tab = 'done', PLAN = null, PIN = '', INV = null;
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
-  var num = function (n) { return (Math.round(n * 100) / 100).toLocaleString('lv-LV'); };
+  /* Valoda: ?lang=ru|en (vai pēdējā izvēlētā) */
+  var LANGS = { lv: 'lv-LV', ru: 'ru-RU', en: 'en-GB' }, lang = (new URLSearchParams(location.search).get('lang') || '').toLowerCase();
+  if (!LANGS[lang]) { try { lang = localStorage.getItem('sh_lang') || ''; } catch (e) {} } if (!LANGS[lang]) lang = 'lv';
+  var T = {
+    lv: { title: 'Izpildītie darbi', tDone: 'Izpildīts', tPlan: 'Plānots', tReq: 'Pieteikt darbu', tInv: 'Rēķini', all: 'Visi objekti', print: 'Drukāt', prev: 'Iepriekšējais mēnesis', next: 'Nākamais mēnesis',
+      sub: function (n) { return n + (n === 1 ? ' objekts' : ' objekti'); }, noneObj: 'Šim objektam šajā mēnesī nav izpildītu darbu.', none: 'Jūsu objektos šajā mēnesī nav izpildītu darbu.', once: 'reize', many: 'reizes',
+      badLink: 'Saite nav pilnīga. Atveriet to vēlreiz no e-pasta vai ziņas.', net: 'Nav interneta savienojuma — mēģiniet vēlreiz', load: 'Neizdevās ielādēt',
+      planH: 'Plānotie darbi nākamajās 30 dienās', planNone: 'Nākamajās 30 dienās plānotu darbu nav.', from: 'no', to: 'līdz', carOut: 'Izbrauciet ar auto līdz', photo: 'Atvērt bildi', close: 'Aizvērt',
+      rObj: 'Objekts', rSvc: 'Pakalpojums', rDate: 'Vēlamais datums', rDateH: 'nav obligāti', rDesc: 'Kas jādara', rDescPh: 'Aprakstiet darbu — vieta, apjoms, kas jāņem vērā', rPhoto: 'Bilde', rPhotoH: 'nav obligāti, līdz 2 MB',
+      rSend: 'Nosūtīt pieteikumu', rSending: 'Sūta…', rOk: 'Paldies! Pieteikums saņemts — SELECTUM HOME ar jums sazināsies.', rOkApp: 'Paldies! Pieteikums nodots izpildei — datumu apstiprinās vadītājs.', rMore: 'Pieteikt vēl', rErrDesc: 'Aprakstiet, kas jādara', rErrSvc: 'Izvēlieties pakalpojumu', rErrBig: 'Bilde par lielu — izvēlieties mazāku', rLimit: 'Līdz 10 pieteikumiem dienā.',
+      iPin: 'Rēķinu PIN', iPinH: 'PIN jums iedeva SELECTUM HOME (4–6 cipari)', iShow: 'Rādīt rēķinus', iNr: 'Nr.', iMon: 'Mēnesis', iSum: 'Summa ar PVN', iSt: 'Statuss', iDue: 'Termiņš', iLeft: 'Atlikums', iOpen: 'Skatīt', iNone: 'Rēķinu vēl nav.',
+      st: { 'izrakstīts': 'izrakstīts', 'daļēji': 'daļēji apmaksāts', 'apmaksāts': 'apmaksāts' }, late: 'kavēts', invT: 'Rēķins', invDate: 'Datums', invPayer: 'Maksātājs', invSeller: 'Piegādātājs', invSvc: 'Pakalpojums', invQty: 'Daudzums', invPrice: 'Cena', invTotal: 'Summa', invNet: 'Kopā bez PVN', invVat: 'PVN 21%', invGross: 'Kopā apmaksai', invPay: 'Apmaksāt līdz', invBank: 'Banka', invReg: 'Reģ. nr.', invVatNr: 'PVN nr.', invContract: 'Līgums', invNote: 'Rēķins sagatavots elektroniski un derīgs bez paraksta.' },
+    ru: { title: 'Выполненные работы', tDone: 'Выполнено', tPlan: 'Запланировано', tReq: 'Заказать работу', tInv: 'Счета', all: 'Все объекты', print: 'Печать', prev: 'Предыдущий месяц', next: 'Следующий месяц',
+      sub: function (n) { return 'Объектов: ' + n; }, noneObj: 'По этому объекту в этом месяце работ нет.', none: 'На ваших объектах в этом месяце выполненных работ нет.', once: 'раз', many: 'раз',
+      badLink: 'Ссылка неполная. Откройте её снова из письма или сообщения.', net: 'Нет связи с интернетом — попробуйте ещё раз', load: 'Не удалось загрузить',
+      planH: 'Запланированные работы на 30 дней', planNone: 'В ближайшие 30 дней работ не запланировано.', from: 'с', to: 'до', carOut: 'Уберите автомобиль до', photo: 'Открыть фото', close: 'Закрыть',
+      rObj: 'Объект', rSvc: 'Услуга', rDate: 'Желаемая дата', rDateH: 'необязательно', rDesc: 'Что нужно сделать', rDescPh: 'Опишите работу — место, объём, что учесть', rPhoto: 'Фото', rPhotoH: 'необязательно, до 2 МБ',
+      rSend: 'Отправить заявку', rSending: 'Отправка…', rOk: 'Спасибо! Заявка получена — SELECTUM HOME свяжется с вами.', rOkApp: 'Спасибо! Заявка передана исполнителю — дату подтвердит менеджер.', rMore: 'Ещё заявка', rErrDesc: 'Опишите, что нужно сделать', rErrSvc: 'Выберите услугу', rErrBig: 'Фото слишком большое — выберите меньше', rLimit: 'До 10 заявок в день.',
+      iPin: 'PIN для счетов', iPinH: 'PIN выдал SELECTUM HOME (4–6 цифр)', iShow: 'Показать счета', iNr: '№', iMon: 'Месяц', iSum: 'Сумма с НДС', iSt: 'Статус', iDue: 'Срок', iLeft: 'Остаток', iOpen: 'Открыть', iNone: 'Счетов пока нет.',
+      st: { 'izrakstīts': 'выставлен', 'daļēji': 'оплачен частично', 'apmaksāts': 'оплачен' }, late: 'просрочен', invT: 'Счёт', invDate: 'Дата', invPayer: 'Плательщик', invSeller: 'Поставщик', invSvc: 'Услуга', invQty: 'Кол-во', invPrice: 'Цена', invTotal: 'Сумма', invNet: 'Итого без НДС', invVat: 'НДС 21%', invGross: 'К оплате', invPay: 'Оплатить до', invBank: 'Банк', invReg: 'Рег. №', invVatNr: 'НДС №', invContract: 'Договор', invNote: 'Счёт подготовлен электронно и действителен без подписи.' },
+    en: { title: 'Completed works', tDone: 'Completed', tPlan: 'Planned', tReq: 'Request work', tInv: 'Invoices', all: 'All properties', print: 'Print', prev: 'Previous month', next: 'Next month',
+      sub: function (n) { return n + (n === 1 ? ' property' : ' properties'); }, noneObj: 'No completed works for this property this month.', none: 'No completed works at your properties this month.', once: 'time', many: 'times',
+      badLink: 'The link is incomplete. Open it again from the e-mail or message.', net: 'No internet connection — please try again', load: 'Could not load',
+      planH: 'Planned works in the next 30 days', planNone: 'No works planned in the next 30 days.', from: 'from', to: 'until', carOut: 'Please move your car out by', photo: 'Open photo', close: 'Close',
+      rObj: 'Property', rSvc: 'Service', rDate: 'Preferred date', rDateH: 'optional', rDesc: 'What needs to be done', rDescPh: 'Describe the work — place, scope, anything to note', rPhoto: 'Photo', rPhotoH: 'optional, up to 2 MB',
+      rSend: 'Send request', rSending: 'Sending…', rOk: 'Thank you! Request received — SELECTUM HOME will contact you.', rOkApp: 'Thank you! Request passed on — the manager will confirm the date.', rMore: 'New request', rErrDesc: 'Describe what needs to be done', rErrSvc: 'Choose a service', rErrBig: 'Photo too large — choose a smaller one', rLimit: 'Up to 10 requests per day.',
+      iPin: 'Invoice PIN', iPinH: 'PIN given to you by SELECTUM HOME (4–6 digits)', iShow: 'Show invoices', iNr: 'No.', iMon: 'Month', iSum: 'Total incl. VAT', iSt: 'Status', iDue: 'Due', iLeft: 'Balance', iOpen: 'View', iNone: 'No invoices yet.',
+      st: { 'izrakstīts': 'issued', 'daļēji': 'partly paid', 'apmaksāts': 'paid' }, late: 'overdue', invT: 'Invoice', invDate: 'Date', invPayer: 'Customer', invSeller: 'Supplier', invSvc: 'Service', invQty: 'Qty', invPrice: 'Price', invTotal: 'Amount', invNet: 'Total excl. VAT', invVat: 'VAT 21%', invGross: 'Total due', invPay: 'Pay by', invBank: 'Bank', invReg: 'Reg. No.', invVatNr: 'VAT No.', invContract: 'Contract', invNote: 'This invoice was prepared electronically and is valid without a signature.' } };
+  var SV = { lv: { aizv: ['Aizvietošana', 'darbi'], pl: ['Zāles pļaušana', 'm²'], logi: ['Logu mazgāšana', 'logi'], darz: ['Dārzniecība', 'cilvēkst.'], stav: ['Pazemes stāvvietas', 'm²'], sniegs: ['Sniega tīrīšana', 'h'], izv: ['Izvešana', 'm³'], kais: ['Kaisāmmateriāls', 'maisi'], uzk: ['Uzkopšana', ''], cits: ['Cits', ''] },
+    ru: { aizv: ['Замена (уборка)', 'работ'], pl: ['Покос травы', 'м²'], logi: ['Мойка окон', 'окон'], darz: ['Садовые работы', 'чел.-ч'], stav: ['Подземная парковка', 'м²'], sniegs: ['Уборка снега', 'ч'], izv: ['Вывоз (листья, ветки)', 'м³'], kais: ['Посыпочный материал', 'мешков'], uzk: ['Уборка', ''], cits: ['Другое', ''] },
+    en: { aizv: ['Cover cleaning', 'jobs'], pl: ['Grass mowing', 'm²'], logi: ['Window cleaning', 'windows'], darz: ['Gardening', 'man-h'], stav: ['Underground parking', 'm²'], sniegs: ['Snow clearing', 'h'], izv: ['Removal (leaves, branches)', 'm³'], kais: ['Grit / salt', 'bags'], uzk: ['Cleaning', ''], cits: ['Other', ''] } };
+  var L = function () { return T[lang]; }, sv = function (a) { return (SV[lang][a] || [a, ''])[0]; }, un = function (a, u) { return SV[lang][a] ? SV[lang][a][1] : u; };
+  var loc = function () { return LANGS[lang]; };
+  var num = function (n) { return (Math.round(n * 100) / 100).toLocaleString(loc()); };
+  var eur = function (n) { return (+n || 0).toLocaleString(loc(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; };
   var shift = function (m, d) { var y = +m.slice(0, 4), mo = +m.slice(5) - 1 + d; return new Date(Date.UTC(y, mo, 1)).toISOString().slice(0, 7); };
-  var monName = function (m) { return new Date(+m.slice(0, 4), +m.slice(5) - 1, 1).toLocaleDateString('lv-LV', { month: 'long', year: 'numeric' }); };
-  var dayName = function (d) { return new Date(d + 'T12:00:00').toLocaleDateString('lv-LV', { weekday: 'long', day: 'numeric', month: 'long' }); };
+  var monName = function (m) { return new Date(+m.slice(0, 4), +m.slice(5) - 1, 1).toLocaleDateString(loc(), { month: 'long', year: 'numeric' }); };
+  var dayName = function (d) { return new Date(d + 'T12:00:00').toLocaleDateString(loc(), { weekday: 'long', day: 'numeric', month: 'long' }); };
+  var dmy = function (d) { return d ? new Date(d + 'T12:00:00').toLocaleDateString(loc()) : ''; };
   function fail(t) { $('out').innerHTML = '<div class="err" role="alert">' + esc(t) + '</div>'; $('prev').disabled = $('next').disabled = true; }
-  if (!/^[a-f0-9]{24}$/.test(k)) return fail('Saite nav pilnīga. Atveriet to vēlreiz no e-pasta vai ziņas.');
+  function chrome() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('.lang button').forEach(function (b) { b.classList.toggle('on', b.dataset.l === lang); b.setAttribute('aria-pressed', b.dataset.l === lang); });
+    $('prev').setAttribute('aria-label', L().prev); $('next').setAttribute('aria-label', L().next); $('print').textContent = L().print; $('obj').setAttribute('aria-label', L().rObj); $('lbx').setAttribute('aria-label', L().close);
+    var tabs = [['done', L().tDone], ['plan', L().tPlan], ['req', L().tReq]]; if (D && D.pin) tabs.push(['inv', L().tInv]);
+    $('tabs').innerHTML = tabs.map(function (t) { return '<button role="tab" data-t="' + t[0] + '" aria-selected="' + (tab === t[0]) + '" class="' + (tab === t[0] ? 'on' : '') + '">' + esc(t[1]) + '</button>'; }).join('');
+    $('bar').hidden = tab !== 'done';
+    if (D) { $('cl').textContent = D.client; document.title = D.client + ' · ' + L().title; $('sub').textContent = L().sub(D.objekti.length) + ' · SELECTUM HOME';
+      var s = $('obj'), cur = obj; s.innerHTML = '<option value="">' + esc(L().all) + '</option>' + D.objekti.map(function (a) { return '<option' + (a === cur ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join(''); }
+  }
+  if (!/^[a-f0-9]{24}$/.test(k)) { chrome(); return fail(T[lang].badLink); }
   function load() {
     $('out').innerHTML = '<div class="skel"></div>';
     fetch(API + '?k=' + k + (ym ? '&ym=' + ym : ''), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
-      if (!j.ok) return fail(j.error || 'Neizdevās ielādēt');
-      D = j; ym = j.ym; $('cl').textContent = j.client; document.title = j.client + ' · izpildītie darbi';
-      $('sub').textContent = j.objekti.length + (j.objekti.length === 1 ? ' objekts' : ' objekti') + ' · izpildītie darbi ar bildēm';
-      var s = $('obj'), cur = obj; s.innerHTML = '<option value="">Visi objekti</option>' + j.objekti.map(function (a) { return '<option' + (a === cur ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('');
-      draw();
-    }).catch(function () { fail('Nav interneta savienojuma — mēģiniet vēlreiz'); });
+      if (!j.ok) { chrome(); return fail(j.error || L().load); }
+      D = j; ym = j.ym; chrome(); render();
+    }).catch(function () { fail(L().net); });
   }
+  function render() { chrome(); if (tab === 'done') draw(); else if (tab === 'plan') drawPlan(); else if (tab === 'req') drawReq(); else drawInv(); }
+  function photos(f) { return f && f.length ? '<div class="ph">' + f.map(function (x, i) { return '<button class="th" data-f="' + esc(x) + '" aria-label="' + esc(L().photo) + ' ' + (i + 1) + '"><img loading="lazy" src="' + IMG + encodeURIComponent(x) + '&sz=w300" alt=""></button>'; }).join('') + '</div>' : ''; }
   function draw() {
     $('mon').textContent = monName(ym); $('prev').disabled = ym <= D.min; $('next').disabled = ym >= D.max;
     var rows = D.rows.filter(function (r) { return !obj || (r.obj || r.adrese) === obj; });
-    if (!rows.length) { $('out').innerHTML = '<div class="empty">' + (obj ? 'Šim objektam' : 'Jūsu objektos') + ' šajā mēnesī nav izpildītu darbu.</div>'; return; }
-    var sum = {}; rows.forEach(function (r) { var x = sum[r.app] || (sum[r.app] = { app: r.app, name: r.name, unit: r.unit, reizes: 0, daudz: 0 }); x.reizes++; x.daudz += +r.daudz || 0; });
+    if (!rows.length) { $('out').innerHTML = '<div class="empty">' + esc(obj ? L().noneObj : L().none) + '</div>'; return; }
+    var sum = {}; rows.forEach(function (r) { var x = sum[r.app] || (sum[r.app] = { app: r.app, unit: r.unit, reizes: 0, daudz: 0 }); x.reizes++; x.daudz += +r.daudz || 0; });
     var days = {}; rows.slice().sort(function (a, b) { return b.datums.localeCompare(a.datums) || a.adrese.localeCompare(b.adrese); }).forEach(function (r) { (days[r.datums] = days[r.datums] || []).push(r); });
-    $('out').innerHTML = '<div class="sum">' + Object.keys(sum).map(function (a) { var x = sum[a]; return '<div class="sc c-' + esc(a) + '"><b>' + esc(x.name) + '</b><span class="n">' + x.reizes + '</span><small>' + (x.reizes === 1 ? 'reize' : 'reizes') + (x.daudz && x.unit !== 'darbi' ? ' · ' + num(x.daudz) + ' ' + esc(x.unit) : '') + '</small></div>'; }).join('') + '</div>' +
+    $('out').innerHTML = '<div class="sum">' + Object.keys(sum).map(function (a) { var x = sum[a]; return '<div class="sc c-' + esc(a) + '"><b>' + esc(sv(a)) + '</b><span class="n">' + x.reizes + '</span><small>' + (x.reizes === 1 ? L().once : L().many) + (x.daudz && x.unit !== 'darbi' ? ' · ' + num(x.daudz) + ' ' + esc(un(a, x.unit)) : '') + '</small></div>'; }).join('') + '</div>' +
       Object.keys(days).map(function (d) { return '<section class="day"><h2>' + esc(dayName(d)) + '</h2>' + days[d].map(function (r) {
-        return '<div class="it"><div class="t"><span class="ch c-' + esc(r.app) + '">' + esc(r.name) + '</span><span class="a">' + esc(r.adrese) + '</span>' + (r.daudz && r.unit !== 'darbi' ? '<span class="q">' + num(r.daudz) + ' ' + esc(r.unit) + '</span>' : '') + '</div>' +
-          (r.piez ? '<p class="p">' + esc(r.piez) + '</p>' : '') +
-          (r.foto.length ? '<div class="ph">' + r.foto.map(function (f, i) { return '<button class="th" data-f="' + esc(f) + '" aria-label="Atvērt bildi ' + (i + 1) + '"><img loading="lazy" src="' + IMG + encodeURIComponent(f) + '&sz=w300" alt=""></button>'; }).join('') + '</div>' : '') + '</div>';
+        return '<div class="it"><div class="t"><span class="ch c-' + esc(r.app) + '">' + esc(sv(r.app)) + '</span><span class="a">' + esc(r.adrese) + '</span>' + (r.daudz && r.unit !== 'darbi' ? '<span class="q">' + num(r.daudz) + ' ' + esc(un(r.app, r.unit)) + '</span>' : '') + '</div>' +
+          (r.piez ? '<p class="p">' + esc(r.piez) + '</p>' : '') + photos(r.foto) + '</div>';
       }).join('') + '</section>'; }).join('');
   }
+  function drawPlan() {
+    if (!PLAN) { $('out').innerHTML = '<div class="skel"></div>';
+      fetch(API + '?k=' + k + '&plan=1', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) { if (!j.ok) return fail(j.error || L().load); PLAN = j.plan; if (tab === 'plan') drawPlan(); }).catch(function () { fail(L().net); }); return; }
+    if (!PLAN.length) { $('out').innerHTML = '<div class="empty">' + esc(L().planNone) + '</div>'; return; }
+    var days = {}; PLAN.forEach(function (r) { (days[r.datums] = days[r.datums] || []).push(r); });
+    $('out').innerHTML = '<p class="sub" style="margin:0 0 12px">' + esc(L().planH) + '</p>' + Object.keys(days).map(function (d) { return '<section class="day"><h2>' + esc(dayName(d)) + '</h2>' + days[d].map(function (r) {
+      var tm = r.app === 'stav' && r.no ? '<p class="p"><b>' + esc(L().carOut) + ' ' + esc(r.no) + '</b></p>' : (r.no || r.lidz ? '<p class="p">' + (r.no ? esc(L().from) + ' ' + esc(r.no) + ' ' : '') + (r.lidz ? esc(L().to) + ' ' + esc(r.lidz) : '') + '</p>' : '');
+      return '<div class="it"><div class="t"><span class="ch c-' + esc(r.app) + '">' + esc(sv(r.app)) + '</span><span class="a">' + esc(r.adrese) + '</span></div>' + tm + '</div>'; }).join('') + '</section>'; }).join('');
+  }
+  /* Pieteikums (E5): bilde samazināta pārlūkā līdz ≤1600 px JPEG, lai iekļautos 2 MB */
+  function shrink(file) { return new Promise(function (ok, no) { var u = URL.createObjectURL(file), im = new Image(); im.onload = function () { var m = 1600, w = im.naturalWidth, h = im.naturalHeight, r = Math.min(1, m / Math.max(w, h)), c = document.createElement('canvas'); c.width = Math.round(w * r); c.height = Math.round(h * r); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); var d = c.toDataURL('image/jpeg', 0.82); d.length * 0.75 > 2 * 1024 * 1024 ? no(new Error(L().rErrBig)) : ok(d); }; im.onerror = function () { URL.revokeObjectURL(u); no(new Error(L().rErrBig)); }; im.src = u; }); }
+  function drawReq(done) {
+    if (done) { $('out').innerHTML = '<div class="ok" role="status">' + esc(done) + '</div><p><button class="btn ghost" id="rMore">' + esc(L().rMore) + '</button></p>'; $('rMore').onclick = function () { drawReq(); }; return; }
+    var t = new Date(); t.setMinutes(t.getMinutes() - t.getTimezoneOffset()); var td = t.toISOString().slice(0, 10);
+    var apps = Object.keys(D.reqApps || {});
+    $('out').innerHTML = '<form class="form" id="rf" novalidate>' +
+      '<label>' + esc(L().rObj) + '<select id="rO" required>' + D.objekti.map(function (a) { return '<option' + (a === obj ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('') + '</select></label>' +
+      '<label>' + esc(L().rSvc) + '<select id="rS" required><option value="">—</option>' + apps.map(function (a) { return '<option value="' + esc(a) + '">' + esc(sv(a)) + '</option>'; }).join('') + '</select></label>' +
+      '<label>' + esc(L().rDate) + ' <small>' + esc(L().rDateH) + '</small><input type="date" id="rD" min="' + td + '"></label>' +
+      '<label>' + esc(L().rDesc) + '<textarea id="rT" maxlength="1000" required placeholder="' + esc(L().rDescPh) + '"></textarea></label>' +
+      '<label>' + esc(L().rPhoto) + ' <small>' + esc(L().rPhotoH) + '</small><input type="file" id="rP" accept="image/jpeg,image/png,image/webp,image/heic,image/*"></label>' +
+      '<div id="rE" class="err" role="alert" hidden></div><button class="btn" id="rB" type="submit">' + esc(L().rSend) + '</button><small>' + esc(L().rLimit) + '</small></form>';
+    if (!D.objekti.length) $('rB').disabled = true;
+    $('rf').onsubmit = function (e) {
+      e.preventDefault(); var er = $('rE'); er.hidden = true;
+      var app = $('rS').value, txt = $('rT').value.trim(), f = $('rP').files[0];
+      var bad = function (m) { er.textContent = m; er.hidden = false; };
+      if (!app) return bad(L().rErrSvc); if (txt.length < 3) return bad(L().rErrDesc);
+      var b = $('rB'); b.disabled = true; b.textContent = L().rSending;
+      (f ? shrink(f) : Promise.resolve('')).then(function (foto) {
+        return fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ k: k, action: 'req', adrese: $('rO').value, app: app, datums: $('rD').value, apraksts: txt, foto: foto }) }).then(function (r) { return r.json(); });
+      }).then(function (j) { if (!j.ok) throw new Error(j.error || L().load); PLAN = null; drawReq(j.lietotne ? L().rOkApp : L().rOk); })
+        .catch(function (err) { bad(/fetch|network|load failed/i.test(err.message) ? L().net : err.message); b.disabled = false; b.textContent = L().rSend; });
+    };
+  }
+  /* Rēķini (E7): tikai ar Skata PIN; PIN glabājas tikai šīs lapas atmiņā */
+  function post(body) { return fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ k: k }, body)) }).then(function (r) { return r.json(); }); }
+  function drawInv(err) {
+    if (!INV) {
+      $('out').innerHTML = '<form class="form" id="pf" novalidate><label>' + esc(L().iPin) + ' <small>' + esc(L().iPinH) + '</small><input type="password" id="pP" inputmode="numeric" autocomplete="off" maxlength="6" pattern="[0-9]*"></label>' + (err ? '<div class="err" role="alert">' + esc(err) + '</div>' : '') + '<button class="btn" id="pB" type="submit">' + esc(L().iShow) + '</button></form>';
+      $('pP').focus();
+      $('pf').onsubmit = function (e) { e.preventDefault(); var p = $('pP').value.trim(); if (!/^\d{4,6}$/.test(p)) return drawInv(L().iPinH); $('pB').disabled = true;
+        post({ action: 'inv', pin: p }).then(function (j) { if (!j.ok) return drawInv(j.error); PIN = p; INV = j.list; drawInv(); }).catch(function () { drawInv(L().net); }); };
+      return;
+    }
+    if (!INV.length) { $('out').innerHTML = '<div class="empty">' + esc(L().iNone) + '</div>'; return; }
+    $('out').innerHTML = '<div class="tw"><table class="tbl inv"><thead><tr><th>' + esc(L().iNr) + '</th><th>' + esc(L().iMon) + '</th><th>' + esc(L().iSum) + '</th><th>' + esc(L().iSt) + '</th><th>' + esc(L().iDue) + '</th><th></th></tr></thead><tbody>' +
+      INV.map(function (r) { var st = r.kave ? '<span class="st late">' + esc(L().late) + '</span>' : '<span class="st' + (r.statuss === 'apmaksāts' ? ' paid' : '') + '">' + esc(L().st[r.statuss] || r.statuss) + '</span>';
+        return '<tr><td><b>' + esc(r.nr) + '</b></td><td>' + esc(monName(r.ym)) + '</td><td class="n">' + eur(r.ar_pvn) + (r.atlikums && r.atlikums !== r.ar_pvn ? '<br><small>' + esc(L().iLeft) + ' ' + eur(r.atlikums) + '</small>' : '') + '</td><td>' + st + '</td><td>' + esc(dmy(r.termins)) + '</td><td><button class="btn ghost" style="height:40px;padding:0 14px" data-nr="' + esc(r.nr) + '">' + esc(L().iOpen) + '</button></td></tr>'; }).join('') + '</tbody></table></div>';
+  }
+  function printInv(I, F, w) {
+    var l = L(), e = esc, row = function (x) { return '<tr><td>' + e(x.name) + '</td><td class="n">' + e(num(x.daudz)) + ' ' + e(x.unit || '') + '</td><td class="n">' + (x.cena ? eur(x.cena) : '') + '</td><td class="n">' + eur(x.summa) + '</td></tr>'; };
+    var h = '<!doctype html><html lang="' + lang + '"><head><meta charset="utf-8"><title>' + e(l.invT + ' ' + I.nr) + '</title><style>body{font-family:system-ui,sans-serif;color:#17201c;max-width:820px;margin:0 auto;padding:28px}h1{margin:0;font-size:26px}table{width:100%;border-collapse:collapse;margin:16px 0}td,th{padding:8px;border-bottom:1px solid #ddd;text-align:left;font-size:14px}.n{text-align:right;white-space:nowrap}.g{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:18px 0}.g div{font-size:13.5px;line-height:1.5}.t td{border:0;padding:4px 8px}.t .b td{font-weight:800;font-size:16px}small{color:#555}@media print{body{padding:0}}</style></head><body>' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><h1>' + e(l.invT) + ' ' + e(I.nr) + '</h1><div>' + e(l.invDate) + ': ' + e(dmy(I.datums)) + ' · ' + e(monName(I.ym)) + '</div></div><div style="font-weight:800;color:#0f6b5c">SELECTUM HOME</div></div>' +
+      '<div class="g"><div><b>' + e(l.invSeller) + '</b><br>' + e(F.nosaukums) + (F.regnr ? '<br>' + e(l.invReg) + ' ' + e(F.regnr) : '') + (F.pvnnr ? '<br>' + e(l.invVatNr) + ' ' + e(F.pvnnr) : '') + (F.adrese ? '<br>' + e(F.adrese) : '') + (F.banka ? '<br>' + e(l.invBank) + ': ' + e(F.banka) : '') + (F.iban ? '<br>IBAN ' + e(F.iban) : '') + (F.swift ? ' · ' + e(F.swift) : '') + '</div>' +
+      '<div><b>' + e(l.invPayer) + '</b><br>' + e(I.client.name) + (I.client.regnr ? '<br>' + e(l.invReg) + ' ' + e(I.client.regnr) : '') + (I.client.adrese ? '<br>' + e(I.client.adrese) : '') + (I.client.liguma_nr ? '<br>' + e(l.invContract) + ' ' + e(I.client.liguma_nr) : '') + '</div></div>' +
+      '<table><thead><tr><th>' + e(l.invSvc) + '</th><th class="n">' + e(l.invQty) + '</th><th class="n">' + e(l.invPrice) + '</th><th class="n">' + e(l.invTotal) + '</th></tr></thead><tbody>' + I.sum.map(row).join('') + '</tbody></table>' +
+      '<table class="t" style="width:auto;margin-left:auto"><tr><td>' + e(l.invNet) + '</td><td class="n">' + eur(I.summa) + '</td></tr><tr><td>' + e(l.invVat) + '</td><td class="n">' + eur(I.pvn) + '</td></tr><tr class="b"><td>' + e(l.invGross) + '</td><td class="n">' + eur(I.ar_pvn) + '</td></tr></table>' +
+      '<p><b>' + e(l.invPay) + ': ' + e(dmy(I.termins)) + '</b></p><p><small>' + e(l.invNote) + '</small></p><p><small>© VAITKEVIX, SIA</small></p><script>setTimeout(function(){print()},300)<\/script></body></html>';
+    w.document.write(h); w.document.close();
+  }
+  $('out').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-nr]'); if (!b) return;
+    var w = window.open('', '_blank'); if (!w) return;
+    post({ action: 'invOne', pin: PIN, nr: b.dataset.nr }).then(function (j) { if (!j.ok) { w.close(); if (j.code === 'pin' || j.code === 'rate') { INV = null; PIN = ''; drawInv(j.error); } return; } printInv(j.invoice, j.firma, w); }).catch(function () { w.close(); });
+  });
+  $('tabs').onclick = function (e) { var b = e.target.closest('[data-t]'); if (!b || !D) return; tab = b.dataset.t; render(); };
+  document.querySelector('.lang').onclick = function (e) { var b = e.target.closest('[data-l]'); if (!b) return; lang = b.dataset.l; try { localStorage.setItem('sh_lang', lang); } catch (x) {}
+    var u = new URL(location.href); if (lang === 'lv') u.searchParams.delete('lang'); else u.searchParams.set('lang', lang); history.replaceState(null, '', u.pathname + u.search + u.hash); if (D) render(); else chrome(); };
   $('prev').onclick = function () { ym = shift(ym, -1); load(); };
   $('next').onclick = function () { ym = shift(ym, 1); load(); };
   $('obj').onchange = function (e) { obj = e.target.value; if (D) draw(); };
   $('print').onclick = function () { window.print(); };
   var lb = $('lb'), last = null;
   function closeLb() { lb.classList.remove('on'); $('lbi').src = ''; if (last) last.focus(); }
-  $('out').onclick = function (e) { var b = e.target.closest('[data-f]'); if (!b) return; last = b; $('lbi').src = IMG + encodeURIComponent(b.dataset.f) + '&sz=w1600'; lb.classList.add('on'); $('lbx').focus(); };
+  $('out').addEventListener('click', function (e) { var b = e.target.closest('[data-f]'); if (!b) return; last = b; $('lbi').src = IMG + encodeURIComponent(b.dataset.f) + '&sz=w1600'; lb.classList.add('on'); $('lbx').focus(); });
   lb.onclick = function (e) { if (e.target !== $('lbi')) closeLb(); };
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && lb.classList.contains('on')) closeLb(); });
-  load();
+  chrome(); load();
 })();
 </script>
 </body>

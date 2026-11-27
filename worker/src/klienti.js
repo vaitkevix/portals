@@ -68,6 +68,7 @@ export async function clientsData(db) {
   const subs = await all(db, 'SELECT * FROM client_sub ORDER BY ord, no');
   const ph = await all(db, 'SELECT client, app, cena, no FROM client_price ORDER BY no');
   clients.forEach(c => { c.cenVest = ph.filter(x => x.client === c.id).map(x => ({ app: x.app, cena: x.cena, no: x.no })); });
+  clients.forEach(c => { c.viewPin = !!c.view_pin; delete c.view_pin; });   // PIN hash pārlūkā nesūta
   clients.forEach(c => { c.objekti = links.filter(l => l.client === c.id).map(l => l.adrese); c.lig = subs.filter(x => x.client === c.id).map(x => ({ id: x.id, adrese: x.adrese, apraksts: x.apraksts, summa: x.summa, no: x.no, lidz: x.lidz, avots: x.avots })); });
   return { clients, units: UNITS, allUnits: ALL_UNITS };
 }

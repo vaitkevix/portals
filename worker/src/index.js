@@ -9,6 +9,7 @@ import { assertOpen } from './util.js';
 import { backupD1 } from './backup.js';
 import { thumbR2 } from './thumb.js';
 import { viewApi } from './view.js';
+import { majaApi } from './maja.js';
 import { portal, people, personByPin, seedFrom, peopleStmts, usersStmts, session, cleanSessions } from './portal.js';
 import { plausana, plCron } from './plausana.js';
 import * as logi from './logi.js';
@@ -122,6 +123,7 @@ async function handleFetch(request, env, ctx) {
     if (url.pathname === '/portal' || url.pathname.endsWith('/portal')) { const X = new Ctx(env, ctx); return portal(request, env, ctx, { saved: (list) => peopleSaved(X, list), admin: (a, b, me) => masterAdmin(X, a, b, me), lists: async () => publicLists(await master(env.DB)) }); }
     if (url.pathname === '/img' || url.pathname.endsWith('/img')) return img(url, ctx, env);
     if (url.pathname === '/view') return viewApi(request, env, url);   // skats klientam (sh/skats.html)
+    if (url.pathname === '/maja') return majaApi(request, env, url);   // mājas darbi iedzīvotājiem (sh/maja.html)
     // vaitkevix.cloud/shaizvietosana, /shizvesana → lietotnes (GitHub Pages); …/api → šis API
     for (const base in SITES) {
       if (url.pathname === base) return Response.redirect(url.origin + base + '/' + url.search, 301);
@@ -184,10 +186,10 @@ async function cronJob(env, name, f) {
 const APPS = {
   izv: { gas: 'IZV_GAS_URL', reads: ['getBoot', 'getTasks', 'getInitialData'], boot: 'getBoot',
     fns: ['getBoot', 'getTasks', 'getHist', 'getInitialData', 'saveTask', 'updateTask', 'setTaskCancelled', 'getAccess', 'checkCarrierPin', 'completeTask', 'reportProblem', 'reportPdf',
-      'geocodeAddresses', 'aiParseMessage', 'aiCheckPhoto', 'aiCompare', 'aiAsk', 'aiMonthSummary', 'saveFileToDrive', 'portalCarrier', 'addPhotos', 'deleteTask', 'removePhoto'],
+      'geocodeAddresses', 'aiParseMessage', 'aiCheckPhoto', 'aiCompare', 'aiAsk', 'aiMonthSummary', 'saveFileToDrive', 'portalCarrier', 'addPhotos', 'deleteTask', 'removePhoto', 'carrierAnswer'],
     async: ['saveTask', 'completeTask', 'reportProblem', 'updateTask', 'setTaskCancelled'], open: ['getBoot', 'getTasks', 'getHist', 'getInitialData', 'reportPdf', 'checkCarrierPin', 'portalCarrier'], pinFns: ['completeTask', 'reportProblem'], idRe: /^TASK-\d{10,}$/, idPrefix: 'TASK-' },
   kais: { gas: 'KAIS_GAS_URL', reads: ['getTasks', 'getInitialData'], boot: null,
-    fns: ['getTasks', 'getInitialData', 'saveTask', 'completeTask', 'saveFileToDrive'],
+    fns: ['getTasks', 'getInitialData', 'saveTask', 'completeTask', 'saveFileToDrive', 'carrierAnswer'],
     async: ['saveTask', 'completeTask'], open: ['getTasks', 'getInitialData'], pinFns: [], idRe: /^KM-\d{10,}$/, idPrefix: 'KM-' }
 };
 const IZV_FRESH_MS = 20000;
@@ -379,7 +381,7 @@ async function izv(request, url, env, ctx, app) {
         if (/^ai/.test(fn) && !((me.perms || {}).izv === 'admin' || (me.perms || {}).portal === 'admin' || (me.perms || {}).izv === 'pieteicejs')) throw new Error('Nav atļauts');
       }
       let a = []; try { a = JSON.parse((await request.text()) || '[]'); } catch (e) {}
-      const r = await izvN.handle(env, fn, a, me);
+      const r = await izvN.handle(env, fn, a, me, ctx);
       if (r !== undefined) return new Response(JSON.stringify({ ok: true, result: r }), { headers: H });
     }
     if (app === 'kais' && await kais.isNative(env)) {   // bez Apps Script (D1 + tabulas kopija)

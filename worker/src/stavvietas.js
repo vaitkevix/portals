@@ -203,7 +203,7 @@ export async function api(request, env, X, fetchWx) {
     if (a === 'start') {
       need('izpilditajs');
       const v = await db.prepare('SELECT id, sakums FROM stav_visit WHERE id = ?').bind(String(b.id || '')).first(); if (!v) throw new Error('Nav atrasts — atjaunojiet');
-      if (!v.sakums) await db.batch([db.prepare('UPDATE stav_visit SET sakums = ?, izpilditajs = ? WHERE id = ?').bind(nowStr().slice(11), me.name, v.id)]);
+      if (!v.sakums) await db.batch([db.prepare('UPDATE stav_visit SET sakums = ?, izpilditajs = ? WHERE id = ?').bind(nowStr().slice(11), (me.who || me.name), v.id)]);
       return out({ ok: true });
     }
     if (a === 'report') {   // mēneša kopsavilkums (rēķinam)
@@ -232,11 +232,11 @@ export async function api(request, env, X, fetchWx) {
         const ids = photos.length ? await X.savePhotos({ datums: v.datums, adrese: NAME + ' · ' + v.adrese }, photos) : [];
         const idsB = before.length ? await X.savePhotos({ datums: v.datums, adrese: NAME + ' · pirms · ' + v.adrese }, before) : [];
         await db.batch([db.prepare("UPDATE stav_visit SET statuss = 'done', datums = ?, laiks = ?, sakums = CASE WHEN sakums = '' THEN ? ELSE sakums END, izpilditajs = ?, foto = ?, foto_pirms = CASE WHEN ? = '' THEN foto_pirms ELSE ? END, piezime = ?, izpilde = ? WHERE id = ?")
-          .bind(kadOf(b).d, kadOf(b).t, String(b.sakums || '').slice(0, 5), me.name, ids.join(','), idsB.join(','), idsB.join(','), String(b.piezime || '').slice(0, 300), JSON.stringify(cleanDone(b.izpilde)), v.id)]);
+          .bind(kadOf(b).d, kadOf(b).t, String(b.sakums || '').slice(0, 5), (me.who || me.name), ids.join(','), idsB.join(','), idsB.join(','), String(b.piezime || '').slice(0, 300), JSON.stringify(cleanDone(b.izpilde)), v.id)]);
       } else {
         const why = String(b.iemesls || 'Nepaspēja').slice(0, 60), C = await cfgOf(db), wx = (await kv(db, 'wx')) || {};
         const d = nextDay(addDays(v.datums > today() ? v.datums : today(), 1), C, wx);
-        await db.batch([db.prepare('UPDATE stav_visit SET datums = ?, prio = 1, parcelts = parcelts + 1, iemesls = ?, izpilditajs = ?, pazinots = \'\' WHERE id = ?').bind(d, why, me.name, v.id),
+        await db.batch([db.prepare('UPDATE stav_visit SET datums = ?, prio = 1, parcelts = parcelts + 1, iemesls = ?, izpilditajs = ?, pazinots = \'\' WHERE id = ?').bind(d, why, (me.who || me.name), v.id),
           log(db, v.adrese + ' → ' + lvD(d) + ' (' + why.toLowerCase() + ', ' + me.name + ')')]);
         push(X, env, async () => notify(env, (await managers(env, KEY)).filter(n => n !== me.name), { title: NAME + ' · nevar', body: v.adrese + ': ' + why + ' (' + me.name + ') → ' + lvD(d), url: '/sh/#stav' }));
       }

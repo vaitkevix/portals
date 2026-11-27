@@ -2,6 +2,7 @@
 // Ieslēdz kv «kais:native» = '1' (pēc imports()). Bildes: Drive caur veco GAS (saveFileToDrive), līdz būs R2.
 import * as G from './sheets.js';
 import * as F from './foto.js';
+import { newJob, answer } from './siadarbs.js';
 
 const TAB = 'Kaisāmmateriāls · Pieteikumi';
 const BAG_KG = 25, PENDING = 'Gaida piegādi', DONE = 'Piegādāts';
@@ -13,7 +14,7 @@ const kvGet = async (db, k) => { const r = await db.prepare('SELECT v FROM kv WH
 export const isNative = async (env) => (await kvGet(env.DB, 'kais:native')) === '1';
 
 const out = (t) => ({ rowIndex: t.row, id: t.id, date: t.datums, address: t.adrese, requester: t.pasutitajs, material: t.materials, bagsEst: t.maisi, comment: t.komentars,
-  photoBefore: t.foto_pirms, status: t.statuss || PENDING, sia: t.kurjers, photoAfter: t.foto_pec, m3Hauled: t.piegadati, carrierComment: t.kurj_kom, deliveredAt: t.piegadats });
+  photoBefore: t.foto_pirms, status: t.statuss || PENDING, sia: t.kurjers, photoAfter: t.foto_pec, m3Hauled: t.piegadati, carrierComment: t.kurj_kom, deliveredAt: t.piegadats, accepted: t.pienem || '', declined: t.nevar || '' });
 
 export async function tasks(db) { return (await all(db, 'SELECT * FROM kais_task ORDER BY row')).map(out); }
 /** Agrāk kopija kv portālam; tagad portāls lasa kais_task ar SQL — nekas nav jādara. */
@@ -62,6 +63,7 @@ export async function saveTask(env, ctx, gas, d) {
     .bind(id, nowLV(), String(d.address || '').trim(), String(d.requester || ''), String(d.material || ''), num(d.bagsEst), String(d.comment || ''), photo, PENDING).run();
   await cache(db);
   ctx.waitUntil(pushSheet(env).catch(e => console.error('kais sheet', e)));
+  ctx.waitUntil(newJob(env, 'kais', { adrese: String(d.address || '').trim(), materials: String(d.material || '') }));   // E1: SIA paziņojums
   return { status: 'success', id };
 }
 
@@ -125,6 +127,7 @@ export async function handle(env, ctx, fn, args, gas, me) {
     }
     return await completeTask(env, ctx, gas, d);
   }
+  if (fn === 'carrierAnswer') { const r = await answer(env, 'kais', a[0], me); if (r.status === 'success') r.tasks = await tasks(db); return r; }
   if (fn === 'saveFileToDrive') return await savePhoto(env, gas, a[0], a[1] || 'bilde.jpg');
   return undefined;
 }

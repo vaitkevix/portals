@@ -9,6 +9,9 @@ import { notify } from './webpush.js';
 import { audit, diff, auditList } from './audit.js';
 import { dlHoursMonth, persMonth } from './exports.js';
 import { profit, rentCfgSave } from './profit.js';
+import { siaMonth, siaApprove, siaApprovals } from './siadarbs.js';
+import { clientReqs, clientReqSet, setViewPin } from './view.js';
+import { majaAdmin } from './maja.js';
 const AN = { portal: 'Portāls', aizv: 'Aizvietošana', izv: 'Izvešana', kais: 'Kaisāmmateriāls', pers: 'Personāls', budz: 'Budžets', pl: 'Pļaušana', logi: 'Logi', sniegs: 'Sniegs', darz: 'Dārzniecība', stav: 'Stāvvietas', dl: 'Darba laiks', ml: 'Mājas lieta' };
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
 export const APPS_P = ['aizv', 'izv', 'kais', 'pers', 'budz'];
@@ -64,19 +67,24 @@ async function ensureSeed(db) {
   if (!us.length) return;
   await db.batch([...peopleStmts(db, seedFrom(us)), db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('peopleDirty', '1')")]);
 }
-export async function session(env, t) {
+export async function session(env, t) { return sessionDb(env.DB, t); }
+export async function sessionDb(db, t) {
   if (!t) return null;
-  const r = await env.DB.prepare('SELECT v FROM kv WHERE k = ?').bind('sess:' + await h(t)).first();
+  const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind('sess:' + await h(t)).first();
   const s = r && parse(r.v); if (!s || !(s.name || s.company) || s.exp < Date.now()) return null;
-  const me = s.company ? await companyBy(env.DB, 'name', s.company) : ((await people(env.DB)).find(p => p.active && p.name === s.name) || null);
+  let me = null;
+  if (s.company && s.w) me = await workerById(db, s.w, s.company);   // SIA darbinieks — atsaukts → sesija vairs neder
+  else me = s.company ? await companyBy(db, 'name', s.company) : ((await people(db)).find(p => p.active && p.name === s.name) || null);
   if (me && s.fp && s.fp !== await fpOf(me)) return null;   // PIN / parole nomainīta → vecā sesija vairs neder
   return me;
 }
 /** Sesijas nospiedums: hash no PIN vai SIA paroles — mainot tos, sesijas beidzas */
-export async function fpOf(me) { return (await h('fp|' + String(me.company ? me.pass : me.pin || ''))).slice(0, 24); }
-/** Izvedējs / kurjers (uzņēmums) ienāk ar savu SIA paroli */
+export async function fpOf(me) { return (await h('fp|' + (me.worker ? 'w|' + me.worker.id + '|' + me.worker.h : String(me.company ? me.pass : me.pin || '')))).slice(0, 24); }
+/** Izvedējs / kurjers (uzņēmums) ienāk ar savu SIA paroli; lietotnes var sūtīt arī «t:<portāla sesija>» (parole pārlūkā nav vajadzīga) vai SIA darbinieka PIN */
 export async function companyBy(db, field, v) {
+  if (field === 'pass' && /^t:[a-f0-9]{64}$/.test(String(v || ''))) { const me = await sessionDb(db, String(v).slice(2)); return me && me.company ? me : null; }
   const c = await db.prepare('SELECT name, kinds, pass FROM companies WHERE active = 1 AND ' + (field === 'pass' ? 'pass' : 'name') + ' = ?').bind(String(v || '').trim().toUpperCase() && field === 'pass' ? String(v).trim().toUpperCase() : v).first();
+  if ((!c || !c.pass) && field === 'pass') return workerByPin(db, v);
   if (!c || !c.pass) return null;
   const k = String(c.kinds || '').split(',');
   const DO = { plausejs: 'pl', logu_mazg: 'logi', traktorists: 'sniegs', darznieks: 'darz', stav_mazg: 'stav' };
@@ -87,7 +95,47 @@ export async function companyBy(db, field, v) {
   k.forEach(x => { if (DO[x]) perms[DO[x]] = 'izpilditajs'; });
   return { name: c.name, company: true, pass: c.pass, color: '', perms };
 }
-const pub = (p) => p.company ? { name: p.name, company: true, perms: p.perms, admin: false, carrier: { name: p.name, pass: p.pass } }
+/* ---------- SIA darbinieki (E4): uzņēmuma administrators (ienācis ar SIA paroli) pievieno cilvēkus ar savu PIN.
+ * Darbinieks darbojas uzņēmuma vārdā (brigāde = uzņēmums), izpildītājs = «SIA · vārds». PIN glabā tikai kā hash. */
+const W_RE = /^\d{6,8}$/;
+const wHash = (pin) => h('cp|' + String(pin || '').trim());
+const asWorker = (c, w) => c ? Object.assign(c, { worker: { id: w.id, name: w.name, h: w.pin_h }, who: c.name + ' · ' + w.name }) : null;
+export async function workerByPin(db, pin) {
+  pin = String(pin || '').trim(); if (!W_RE.test(pin)) return null;
+  const w = await db.prepare('SELECT * FROM company_people WHERE active = 1 AND pin_h = ?').bind(await wHash(pin)).first().catch(() => null);
+  return w ? asWorker(await companyBy(db, 'name', w.company), w) : null;
+}
+async function workerById(db, id, company) {
+  const w = await db.prepare('SELECT * FROM company_people WHERE active = 1 AND id = ? AND company = ?').bind(String(id), String(company)).first().catch(() => null);
+  return w ? asWorker(await companyBy(db, 'name', w.company), w) : null;
+}
+export async function workers(db, company) { return ((await db.prepare('SELECT id, name, active, izveidots FROM company_people WHERE company = ? ORDER BY name').bind(company).all().catch(() => ({ results: [] }))).results || []); }
+async function dropSessions(db, pred) {   // sesiju atslēgas ir hash — meklē pēc satura
+  const del = []; for (const r of (await db.prepare("SELECT k, v FROM kv WHERE k LIKE 'sess:%'").all()).results || []) { const v = parse(r.v); if (pred(v)) del.push(db.prepare('DELETE FROM kv WHERE k = ?').bind(r.k)); }
+  for (let i = 0; i < del.length; i += 90) await db.batch(del.slice(i, i + 90)); return del.length;
+}
+async function workerAdd(db, me, b) {
+  const name = String(b.name || '').replace(/\s+/g, ' ').trim().slice(0, 60), pin = String(b.pin || '').trim();
+  if (name.length < 2) throw new Error('Ierakstiet darbinieka vārdu');
+  if (!W_RE.test(pin)) throw new Error('PIN — 6 līdz 8 cipari');
+  if (/^(\d)\1+$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin)) throw new Error('PIN par vienkāršu — izvēlieties citu');
+  const hh = await wHash(pin);
+  if ((await people(db)).some(p => p.pin === pin) || await db.prepare('SELECT 1 FROM companies WHERE UPPER(pass) = ?').bind(pin).first() || await db.prepare('SELECT 1 FROM company_people WHERE pin_h = ?').bind(hh).first())
+    throw new Error('Šis PIN jau ir aizņemts — izvēlieties citu');
+  if (((await db.prepare('SELECT COUNT(*) n FROM company_people WHERE company = ?').bind(me.name).first()) || {}).n >= 50) throw new Error('Līdz 50 darbiniekiem uzņēmumam');
+  if (await db.prepare('SELECT 1 FROM company_people WHERE company = ? AND lower(name) = lower(?)').bind(me.name, name).first()) throw new Error('Šāds vārds jau ir');
+  const id = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+  await db.prepare('INSERT INTO company_people (id, company, name, pin_h, active, izveidots, kas) VALUES (?, ?, ?, ?, 1, ?, ?)').bind(id, me.name, name, hh, new Date().toISOString(), me.name).run();
+  await audit(db, me.name, 'SIA darbinieki', me.name + ' · ' + name, ['pievienots', '', name]);
+}
+async function workerDel(db, me, id) {
+  const w = await db.prepare('SELECT * FROM company_people WHERE id = ? AND company = ?').bind(String(id || ''), me.name).first(); if (!w) throw new Error('Darbinieks nav atrasts');
+  await db.prepare('DELETE FROM company_people WHERE id = ?').bind(w.id).run();
+  await dropSessions(db, (v) => v.company === me.name && v.w === w.id);   // atsaukšana — uzreiz
+  await audit(db, me.name, 'SIA darbinieki', me.name + ' · ' + w.name, ['atsaukts', w.name, '']);
+}
+/* Pārlūkam: SIA paroli vairs neatdod (lietotnes izmanto portāla sesiju «t:<sesija>») */
+const pub = (p) => p.company ? { name: p.name, company: true, perms: p.perms, admin: false, worker: p.worker ? p.worker.name : '', who: p.who || p.name, siaAdmin: !p.worker }
   : { name: p.name, color: p.color, perms: p.perms, admin: p.perms.portal === 'admin' };
 
 async function dash(env, me) {
@@ -166,7 +214,7 @@ export async function portal(request, env, ctx, hooks) {
       const me = await personByPin(env.DB, b.pin) || await companyBy(env.DB, 'pass', b.pin);
       if (!me) { await new Promise(r => setTimeout(r, 700)); return pj({ ok: false, error: 'Nepareizs PIN vai parole' }); }
       const t = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-      await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind('sess:' + await h(t), JSON.stringify(Object.assign(me.company ? { company: me.name } : { name: me.name }, { fp: await fpOf(me), exp: Date.now() + 30 * 864e5 }))).run();
+      await env.DB.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind('sess:' + await h(t), JSON.stringify(Object.assign(me.company ? (me.worker ? { company: me.name, w: me.worker.id } : { company: me.name }) : { name: me.name }, { fp: await fpOf(me), exp: Date.now() + 30 * 864e5 }))).run();
       return pj({ ok: true, token: t, me: pub(me), dash: await dash(env, me) });
     }
     if (a === 'check') {   // Personāls / Budžets pārbauda vienoto PIN
@@ -190,7 +238,25 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'pushOff') { await env.DB.prepare('DELETE FROM push_subs WHERE endpoint = ? AND name = ?').bind(String(b.endpoint || ''), me.name).run(); return pj({ ok: true }); }
     if (a === 'pushTest') return pj({ ok: true, sent: await notify(env, [me.name], { title: 'SH | Portāls', body: 'Paziņojumi strādā ✓', url: '/sh/' }) });
     if (a === 'logout') { await env.DB.prepare('DELETE FROM kv WHERE k = ?').bind('sess:' + await h(b.t)).run(); return pj({ ok: true }); }
+    /* SIA: «Mans mēnesis» (E2) un savi darbinieki (E4) */
+    if (a === 'siaMonth') { if (!me.company) throw new Error('Tikai darbu izpildītājam (SIA)'); return pj(Object.assign({ ok: true }, await siaMonth(env.DB, me.name, String(b.ym || '')))); }
+    if (/^siaPeople/.test(a)) {
+      if (!me.company || me.worker) throw new Error('Darbiniekus pārvalda uzņēmuma administrators (ienācis ar SIA paroli)');
+      if (a === 'siaPeopleAdd') await workerAdd(env.DB, me, b);
+      if (a === 'siaPeopleDel') await workerDel(env.DB, me, b.id);
+      return pj({ ok: true, list: await workers(env.DB, me.name) });
+    }
     if (me.perms.portal !== 'admin') return pj({ ok: false, error: 'Tikai administratoram' });
+    if (a === 'siaMonthAdm') return pj(Object.assign({ ok: true }, await siaMonth(env.DB, String(b.company || ''), String(b.ym || ''))));
+    if (a === 'siaApprove') { await siaApprove(env.DB, String(b.company || ''), String(b.ym || ''), me.name, !!b.undo); await audit(env.DB, me.name, 'SIA mēnesis', String(b.company || '') + ' · ' + String(b.ym || ''), ['statuss', b.undo ? 'saskaņots' : '', b.undo ? 'atcelts' : 'saskaņots']);
+      return pj(Object.assign({ ok: true }, await siaMonth(env.DB, String(b.company || ''), String(b.ym || '')))); }
+    if (a === 'siaApprovals') return pj({ ok: true, map: await siaApprovals(env.DB) });
+    if (a === 'siaWorkers') return pj({ ok: true, list: await workers(env.DB, String(b.company || '')) });
+    /* Klientu pieteikumi no skata (E5), Skata PIN rēķiniem (E7), mājas lapas (E8) */
+    if (a === 'clientReqs') return pj(Object.assign({ ok: true }, await clientReqs(env.DB, String(b.st || ''))));
+    if (a === 'clientReqSet') { await clientReqSet(env.DB, b, me.name); return pj(Object.assign({ ok: true }, await clientReqs(env.DB, String(b.st || '')))); }
+    if (a === 'viewPin') { await setViewPin(env.DB, String(b.client || ''), String(b.pin == null ? '' : b.pin), me.name); return pj({ ok: true }); }
+    if (/^maja/.test(a)) return pj(Object.assign({ ok: true }, await majaAdmin(env, a, b, me.name)));
     if (a === 'people') return pj({ ok: true, people: await people(env.DB), roles: ROLES });
     if (a === 'save') {
       const list = await people(env.DB), p = b.person || {};
@@ -200,6 +266,7 @@ export async function portal(request, env, ctx, hooks) {
       if (list.some(x => x.name !== old && x.name.toLowerCase() === name.toLowerCase())) return pj({ ok: false, error: 'Šāds vārds jau ir' });
       if (list.some(x => x.name !== old && x.pin === pin)) return pj({ ok: false, error: 'Šāds PIN jau ir citam — izvēlieties citu' });
       if (await env.DB.prepare('SELECT 1 FROM companies WHERE UPPER(pass) = UPPER(?) AND pass != \'\'').bind(pin).first()) return pj({ ok: false, error: 'Šāds PIN sakrīt ar kāda uzņēmuma paroli — izvēlieties citu' });
+      if (W_RE.test(pin) && await env.DB.prepare('SELECT 1 FROM company_people WHERE pin_h = ?').bind(await wHash(pin)).first().catch(() => null)) return pj({ ok: false, error: 'Šāds PIN jau ir kādam SIA darbiniekam — izvēlieties citu' });
       const rec = { name, pin, color: String(p.color || '').slice(0, 20), phone: String(p.phone || '').trim().slice(0, 40), email: String(p.email || '').trim().slice(0, 120), active: p.active !== false, perms: cleanPerms(p.perms) };
       if (old === me.name && rec.perms.portal !== 'admin') return pj({ ok: false, error: 'Sev administratora tiesības noņemt nevar' });
       const i = list.findIndex(x => x.name === old), prev = i >= 0 ? JSON.parse(JSON.stringify(list[i])) : null;

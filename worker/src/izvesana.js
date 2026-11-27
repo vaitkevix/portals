@@ -3,6 +3,7 @@
 import * as G from './sheets.js';
 import * as F from './foto.js';
 import * as AI from './ai.js';
+import { newJob, answer } from './siadarbs.js';
 
 const TAB = 'Izvešana · Pieteikumi';
 const DUE_DAYS = 7, MAX_PHOTOS = 5, MAX_AFTER = 15, BAG_M3 = 0.15, COEF_HEAVY = 0.10, COEF_MIXED = 0.05, AI_DAILY = 400;
@@ -40,7 +41,7 @@ async function unknownAddr(db, a, old) {
 /* ---------- dati ---------- */
 const out = (t) => ({ rowIndex: t.row, id: t.id, date: t.datums, address: t.adrese, requester: t.pasutitajs, bagsEst: t.maisi, comment: t.komentars, photoBefore: t.foto_pirms,
   status: t.statuss || ST_PENDING, sia: t.sia, photoAfter: t.foto_pec, photoCarrierBefore: t.foto_izv_pirms || '', m3Hauled: t.m3, carrierComment: t.izv_kom, urgent: !!t.steidzami, deadline: t.termins, problem: t.problema,
-  history: t.vesture, doneAt: t.izpildits, bagsHauled: t.maisi_izv, coefNote: t.koef });
+  history: t.vesture, doneAt: t.izpildits, bagsHauled: t.maisi_izv, coefNote: t.koef, accepted: t.pienem || '', declined: t.nevar || '' });
 export async function getTasks(db) { return (await all(db, "SELECT * FROM izv_task WHERE statuss != 'Dzēsts' ORDER BY row")).map(out); }
 export async function getInitialData(env) {
   const db = env.DB;
@@ -88,7 +89,7 @@ async function savePhotos(env, list, id, suffix) {
 }
 
 /* ---------- pieteikumi ---------- */
-export async function saveTask(env, d) {
+export async function saveTask(env, d, ctx) {
   const db = env.DB; d = d || {};
   if (!String(d.address || '').trim()) return fail('Nav norādīta adrese');
   { const u = await unknownAddr(db, d.address); if (u) return fail(u); }
@@ -101,6 +102,7 @@ export async function saveTask(env, d) {
   await db.prepare('INSERT INTO izv_task (id, row, datums, adrese, pasutitajs, maisi, komentars, foto_pirms, statuss, steidzami, termins, vesture) SELECT ?, COALESCE(MAX(row), 1) + 1, ?,?,?,?,?,?,?,?,?,? FROM izv_task')
     .bind(id, now, String(d.address || '').trim(), String(d.requester || ''), String(d.bagsEst || ''), String(d.comment || ''), photo, ST_PENDING,
       d.urgent ? 1 : 0, dueDate(d.deadline, now), now + ' · Izveidots' + (d.requester ? ' (' + d.requester + ')' : '')).run();
+  { const job = newJob(env, 'izv', { adrese: String(d.address || '').trim(), steidzami: !!d.urgent, termins: dueDate(d.deadline, now) }); if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job; }   // E1: SIA paziņojums
   return withTasks(env, { status: 'success', id });
 }
 export async function updateTask(env, d, me) {
@@ -466,14 +468,15 @@ export async function ai(env, fn, a, me) {
 }
 
 /* ---------- /izv?fn=… ---------- */
-export async function handle(env, fn, a, me) {
+export async function handle(env, fn, a, me, ctx) {
   const db = env.DB; a = Array.isArray(a) ? a : [];
   switch (fn) {
     case 'getBoot': return { lists: await getInitialData(env), tasks: await getTasks(db) };
     case 'getTasks': return await getTasks(db);
     case 'getHist': return (await all(db, 'SELECT gads, men, diena, adrese, veids, n, m3 FROM izv_hist ORDER BY gads, men, diena')).map(r => [r.gads, r.men, r.diena, r.adrese, r.veids, r.n, r.m3]);
     case 'getInitialData': return await getInitialData(env);
-    case 'saveTask': return await saveTask(env, a[0]);
+    case 'saveTask': return await saveTask(env, a[0], ctx);
+    case 'carrierAnswer': return await withTasks(env, await answer(env, 'izv', a[0], me));
     case 'updateTask': return await updateTask(env, a[0], me);
     case 'addPhotos': return await addPhotos(env, a[0], me);
     case 'deleteTask': return await deleteTask(env, a[0], me);
@@ -481,7 +484,7 @@ export async function handle(env, fn, a, me) {
     case 'setTaskCancelled': return await setTaskCancelled(env, a[0], a[1]);
     case 'getAccess': return await getAccess(db, a[0], me);
     case 'checkCarrierPin': return await checkCarrierPin(db, a[0], me);
-    case 'portalCarrier': { const pc = portalCarrier(me); return pc ? { name: pc.sia || pc.admin } : null; }
+    case 'portalCarrier': { const pc = portalCarrier(me); return pc ? { name: pc.sia || pc.admin, sia: !!pc.sia, who: (me && me.who) || '' } : null; }
     case 'completeTask': return await completeTask(env, a[0], me);
     case 'reportProblem': return await reportProblem(env, a[0], me);
     case 'reportPdf': return await reportPdf(db, a[0], a[1]);
