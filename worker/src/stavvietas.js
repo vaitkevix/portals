@@ -43,16 +43,16 @@ export function plan(objs, visits, cfg, wx, t) {
   const inSeason = (d) => { const md = d.slice(5); return C.season[0] <= C.season[1] ? md >= C.season[0] && md <= C.season[1] : md >= C.season[0] || md <= C.season[1]; };
   const okDay = (d) => C.workdays.indexOf(dow(d)) !== -1 && !badWx(C, wx, d);
   const qOf = {}; objs.forEach(o => qOf[o.anorm] = +o.qty || 0);
-  const load = {}; const addLoad = (d, a) => { load[d] = (load[d] || 0) + (qOf[a] || 0); };
+  const load = {}; const addLoad = (d, a) => { load[d] = (load[d] || 0) + (qOf[a] || 0); }; const subLoad = (d, a) => { load[d] = (load[d] || 0) - (qOf[a] || 0); };
   const firstDay = (from, need) => { let d = from; for (let i = 0; i < 90; i++, d = addDays(d, 1)) if (okDay(d) && (load[d] || 0) + need <= C.maxQty) return d;
     d = from; for (let i = 0; i < 90; i++, d = addDays(d, 1)) if (okDay(d)) return d; return from; };
   const moves = [], adds = [];
   const plans = visits.filter(v => v.statuss === 'plan');
+  plans.filter(v => v.datums >= t).forEach(v => addLoad(v.datums, v.anorm));   // jau plānotie — slodze pirms pārcelšanas
   plans.filter(v => v.datums < t).sort((a, b) => a.datums.localeCompare(b.datums)).forEach(v => {
-    const d = firstDay(t, qOf[v.anorm] || 0); moves.push({ id: v.id, datums: d, why: 'nepaspēts ' + lvD(v.datums) }); v.datums = d; v.prio = 1; });
+    const d = firstDay(t, qOf[v.anorm] || 0); moves.push({ id: v.id, datums: d, why: 'nepaspēts ' + lvD(v.datums) }); v.datums = d; v.prio = 1; addLoad(d, v.anorm); });
   plans.filter(v => v.datums >= t && v.datums <= addDays(t, 3) && C.workdays.indexOf(dow(v.datums)) !== -1 && badWx(C, wx, v.datums)).forEach(v => {
-    const why = badWx(C, wx, v.datums), d = firstDay(addDays(v.datums, 1), qOf[v.anorm] || 0); moves.push({ id: v.id, datums: d, why: why + ' ' + lvD(v.datums) }); v.datums = d; v.prio = 1; });
-  plans.filter(v => v.datums >= t).forEach(v => addLoad(v.datums, v.anorm));
+    const why = badWx(C, wx, v.datums), d = firstDay(addDays(v.datums, 1), qOf[v.anorm] || 0); moves.push({ id: v.id, datums: d, why: why + ' ' + lvD(v.datums) }); subLoad(v.datums, v.anorm); v.datums = d; v.prio = 1; addLoad(d, v.anorm); });
   const sched = visits.filter(v => v.avots !== 'pieteikums');   // vienreizēji pieteikumi intervālu neietekmē
   /* Biežums pēc līguma: N reizes gadā → sadala pa sezonu, gadā ne vairāk par N */
   const seasonLen = (() => { const a = Date.parse('2001-' + C.season[0] + 'T12:00:00Z'), b = Date.parse('2001-' + C.season[1] + 'T12:00:00Z'); let n = Math.round((b - a) / 864e5) + 1; if (n <= 0) n += 365; return n; })();

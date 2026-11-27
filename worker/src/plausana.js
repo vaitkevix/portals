@@ -41,18 +41,18 @@ export function plan(objs, visits, cfg, rain, t) {
   const inSeason = (d) => { const md = d.slice(5); return md >= C.season[0] && md <= C.season[1]; };
   const okDay = (d) => C.workdays.indexOf(dow(d)) !== -1 && !wet(d);
   const m2Of = {}; objs.forEach(o => m2Of[o.anorm] = +o.m2 || 0);
-  const load = {}; const addLoad = (d, a) => { load[d] = (load[d] || 0) + (m2Of[a] || 0); };
+  const load = {}; const addLoad = (d, a) => { load[d] = (load[d] || 0) + (m2Of[a] || 0); }; const subLoad = (d, a) => { load[d] = (load[d] || 0) - (m2Of[a] || 0); };
   const firstDay = (from, need) => { let d = from; for (let i = 0; i < 60; i++, d = addDays(d, 1)) if (okDay(d) && (load[d] || 0) + need <= C.maxM2) return d;
     d = from; for (let i = 0; i < 60; i++, d = addDays(d, 1)) if (okDay(d)) return d; return from; };   // pārpildīts → vismaz darba diena
   const moves = [], adds = [];
   const plans = visits.filter(v => v.statuss === 'plan');
   // 1) nepaspētie no pagātnes → pirmā derīgā diena no šodienas, pirmie rindā
+  plans.filter(v => v.datums >= t).forEach(v => addLoad(v.datums, v.anorm));   // jau plānotie — slodze pirms pārcelšanas
   plans.filter(v => v.datums < t).sort((a, b) => a.datums.localeCompare(b.datums)).forEach(v => {
-    const d = firstDay(t, m2Of[v.anorm] || 0); moves.push({ id: v.id, datums: d, why: 'nepaspēts ' + lvD(v.datums) }); v.datums = d; v.prio = 1; });
+    const d = firstDay(t, m2Of[v.anorm] || 0); moves.push({ id: v.id, datums: d, why: 'nepaspēts ' + lvD(v.datums) }); v.datums = d; v.prio = 1; addLoad(d, v.anorm); });
   // 2) lietus / slapjš zāliens tuvākajās dienās → nākamā sausā
   plans.filter(v => v.datums >= t && v.datums <= addDays(t, 3) && !okDay(v.datums) && C.workdays.indexOf(dow(v.datums)) !== -1).forEach(v => {
-    const d = firstDay(addDays(v.datums, 1), m2Of[v.anorm] || 0); moves.push({ id: v.id, datums: d, why: 'lietus ' + lvD(v.datums) }); v.datums = d; v.prio = 1; });
-  plans.filter(v => v.datums >= t).forEach(v => addLoad(v.datums, v.anorm));
+    const d = firstDay(addDays(v.datums, 1), m2Of[v.anorm] || 0); moves.push({ id: v.id, datums: d, why: 'lietus ' + lvD(v.datums) }); subLoad(v.datums, v.anorm); v.datums = d; v.prio = 1; addLoad(d, v.anorm); });
   // 3) jauni izbraukumi objektiem bez nākotnes plāna — no pēdējās īstās pļaušanas + intervāls
   const lastDone = {}; visits.filter(v => v.statuss === 'done').forEach(v => { if (!lastDone[v.anorm] || v.datums > lastDone[v.anorm]) lastDone[v.anorm] = v.datums; });
   const hasPlan = new Set(plans.filter(v => v.datums >= t).map(v => v.anorm));

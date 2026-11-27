@@ -7,7 +7,7 @@ import { personByPin, people } from './portal.js';
 import { master } from './master.js';
 import * as objinfo from './objinfo.js';
 import { aiCall } from './ai.js';
-import { today, nowStr, anorm, CORS, out, cleanAddr } from './util.js';
+import { today, nowStr, anorm, akey, CORS, out, cleanAddr } from './util.js';
 
 export const KEY = 'ml', NAME = 'Mājas lieta';
 const ROLE_W = { admin: 3, vaditajs: 2, skatitajs: 0 };
@@ -23,9 +23,6 @@ export async function cron() {}   // nav plānoto darbu
 const str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const log = (db, t) => db.prepare('INSERT INTO ml_log (laiks, teksts) VALUES (?, ?)').bind(nowStr(), String(t).slice(0, 300)).run();
-/** Adreses salīdzināšanai: bez garumzīmēm, bez «iela», Rīgas/LV, VNĪ/KK prefiksiem */
-const akey = (s) => anorm(s).replace(/^(kk|ir|ee) /, '').replace(/^(j|vni) ?\| ?/, '').replace(/,?\s*(latvija|lv-?\s?\d{4}|riga|rigas pils\.?)\s*/g, ' ')
-  .replace(/\b(iela|gatve|bulvaris|prospekts|cels|laukums)\b/g, ' ').replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
 /** dd.mm.yyyy [hh:mm] → yyyy-mm-dd (citādi kā ir) */
 const iso = (s) => { const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(String(s || '').trim()); return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : String(s || '').slice(0, 10); };
 const fotos = (v) => String(v || '').split(/[\s,]+/).filter(Boolean).map(x => /^https?:/.test(x) ? x : /^[\w-]{20,80}$/.test(x) ? IMG + x : '').filter(Boolean).slice(0, 6);

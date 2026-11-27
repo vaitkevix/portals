@@ -5,6 +5,7 @@
  * © VAITKEVIX, SIA
  */
 
+import { backupD1 } from './backup.js';
 import { portal, people, personByPin, seedFrom, peopleStmts, usersStmts, session, cleanSessions } from './portal.js';
 import { plausana, plCron } from './plausana.js';
 import * as logi from './logi.js';
@@ -87,6 +88,7 @@ export default {
     J('aizvCarry', () => carryOver(new Ctx(env, ctx)));
     J('sessClean', async () => { const t = today(); if ((await kvGet(env.DB, 'sessClean:last')) === t) return; await cleanSessions(env.DB); await kvSet(env.DB, 'sessClean:last', t).run(); });
     J('plCron', () => plCron(env));
+    J('backup', () => backupD1(env));
     J('foto', () => foto.migrateDrive(env));
     J('peek', () => gsheets.peek(env, env.DB));
     J('mail', () => mail.selfTest(env));

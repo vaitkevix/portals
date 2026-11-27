@@ -1,4 +1,5 @@
 import { summary as dlSummary, objStates as dlStates } from './darbalaiks.js';
+import { backupD1 } from './backup.js';
 import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo } from './klienti.js';
 import { notify } from './webpush.js';
 /* SH | Portāls — vienota ieeja, pilnvaras un kopsavilkums visām lietotnēm. © VAITKEVIX, SIA */
@@ -216,6 +217,9 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'firmaSave') return pj({ ok: true, firma: await saveFirma(env.DB, b.firma) });
     if (a === 'invoiceNo') return pj(Object.assign({ ok: true }, await invoiceNo(env.DB, String(b.client || ''), String(b.ym || ''))));
     if (a === 'clientReport') return pj(Object.assign({ ok: true }, await report(env.DB, String(b.client || ''), String(b.ym || ''))));
+    /* D1 rezerves kopija (R2 backup/) */
+    if (a === 'backupInfo') { const g = async (k) => { const r = await env.DB.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); return r ? parse(r.v) : null; }; return pj({ ok: true, info: await g('backup:info'), health: await g('health:backup') }); }
+    if (a === 'backupNow') return pj({ ok: true, info: await backupD1(env, true) });
     if (hooks.admin) { const r = await hooks.admin(a, b, me); if (r) return pj(r); }
     return pj({ ok: false, error: 'Nezināma darbība' });
   } catch (e) { return pj({ ok: false, error: String(e && e.message || e) }); }

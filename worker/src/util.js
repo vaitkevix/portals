@@ -12,6 +12,9 @@ export const uid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 10);
 /* Adrese bez liekā: «iela», «, Rīga, Latvija, LV1014»; sākas ar lielo burtu */
 export const cleanAddr = (a) => { let b = String(a || '').replace(/(\S)\s+iela\b/gi, '$1'); for (let i = 0; i < 4; i++) b = b.replace(/,\s*(Latvija|LV-?\s?\d{4}|Rīga|Riga)\s*$/i, '').trim(); return b.replace(/\s+/g, ' ').trim().replace(/(^|\|\s*|\/\s*)(\p{Ll})/gu, (m, p, c) => p + c.toUpperCase()); };
 export const anorm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+/** Adreses salīdzināšanai: bez garumzīmēm, bez «iela», Rīgas/LV, VNĪ/KK prefiksiem */
+export const akey = (s) => anorm(s).replace(/^(kk|ir|ee) /, '').replace(/^(j|vni) ?\| ?/, '').replace(/,?\s*(latvija|lv-?\s?\d{4}|riga|rigas pils\.?)\s*/g, ' ')
+  .replace(/\b(iela|gatve|bulvaris|prospekts|cels|laukums)\b/g, ' ').replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
 export const lvD = (d) => { const [, m, dd] = d.split('-'); return +dd + '.' + m + '.'; };
 export async function kv(db, k) { const r = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first(); try { return r ? JSON.parse(r.v) : null; } catch (e) { return null; } }
 export const kvSet = (db, k, v) => db.prepare('INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)').bind(k, JSON.stringify(v));
