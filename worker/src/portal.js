@@ -6,6 +6,7 @@ import { dashboard } from './dashboard.js';
 import * as rits from './rits.js';
 import * as mailbox from './mailbox.js';
 import * as qc from './qc.js';
+import * as inv from './inv.js';
 import { viewLink, viewTokens } from './view.js';
 import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo, invoiceIssue, invoices, invoiceSet, priceChange, priceIndex, ctUpload, ctGet } from './klienti.js';
 import { notify } from './webpush.js';
@@ -259,6 +260,7 @@ export async function portal(request, env, ctx, hooks) {
       return pj(Object.assign({ ok: true }, a === 'qcList' ? await qc.list(env, me, adm, b.datums, ctx) : { row: await qc.set(env, me, adm, b) })); }
     if (a === 'ritsCard') { if (me.company) throw new Error('Nav pieejams'); return pj({ ok: true, rits: await rits.card(env, me.name) }); }
     if (me.perms.portal !== 'admin') return pj({ ok: false, error: 'Tikai administratoram' });
+    if (/^inv(List|Item|Move|Order|Hist)$/.test(a)) return pj(Object.assign({ ok: true }, await inv.adminApi(env, a, b, me.name)));   // I8
     if (/^mail(Drafts|Allow|Ai|Reject|Approve)$/.test(a)) return pj(Object.assign({ ok: true }, await mailbox.adminApi(env, ctx, a, b, me.name)));   // I5
     if (a === 'ritsCfg') return pj({ ok: true, cfg: await rits.mailCfg(env.DB), off: await rits.offList(env.DB), log: await env.DB.prepare("SELECT v FROM kv WHERE k = 'rits:log'").first().then(r => r ? parse(r.v) : null).catch(() => null) });
     if (a === 'ritsCfgSave') { const was = await rits.mailCfg(env.DB), c = Object.assign({}, was, { on: !!b.on }); await env.DB.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('mail:rits', ?)").bind(JSON.stringify(c)).run();

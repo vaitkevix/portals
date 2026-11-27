@@ -32,6 +32,7 @@ import * as rits from './rits.js';
 import * as noshow from './noshow.js';
 import * as mlreq from './mlreq.js';
 import * as mailbox from './mailbox.js';
+import * as inv from './inv.js';
 import { chkList, chkSave, chkTake } from './checklist.js';
 import { threadCounts, threadApi } from './thread.js';
 import * as sezona from './sezona.js';
@@ -110,9 +111,10 @@ export default {
     J('peek', () => gsheets.peek(env, env.DB));
     J('mail', () => mail.selfTest(env));
     J('parvMail', () => parvmail.cron(env));   // C8: rītdienas darbi pārvaldniekiem
-    J('rits', () => rits.cron(env));
-    J('noshow', () => noshow.noShowCron(env));
-    J('mlreqClean', () => mlreq.cleanup(env.DB));   // I2: neieradās → aizvietošanas melnraksts   // I1: rīta ziņa vadītājiem 07:15
+    J('rits', () => rits.cron(env));   // I1: rīta ziņa vadītājiem 07:15
+    J('noshow', () => noshow.noShowCron(env));   // I2: neieradās → aizvietošanas melnraksts
+    J('mlreqClean', () => mlreq.cleanup(env.DB));   // I3: vecie limitu skaitītāji
+    J('inv', () => inv.cron(env));   // I8: automātiskās kustības + zem minimuma (ik 30 min)
     J('izv', () => izvN.maybeSwitch(env));
     J('izvReg', () => izvN.regCron(env));
     J('kaisReg', () => kais.regCron(env));

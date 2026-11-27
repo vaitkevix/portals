@@ -2,9 +2,11 @@
  * traktoristu tālruņi, sāls/smilšu krājums; pavasarī — pļaušanas objekti un m², dārzs, pļāvēji. Tikai pārbaude + saites; krājumu ievada šeit (kv kais:krajums). © VAITKEVIX, SIA */
 import { today, nowStr, kv, kvSet } from './util.js';
 import { audit } from './audit.js';
+import * as inv from './inv.js';
 
 const all = async (db, sql, ...a) => (await db.prepare(sql).bind(...a).all()).results || [];
 const MAT = [['sals', 'Sāls'], ['smilts', 'Smilts'], ['mix', 'Smilts + sāls']];
+/* I8: krājums (t) = inventāra atlikums (Administrēšana → Inventārs); šeit ievadītais = inventarizācija */
 
 export async function season(db, kind) {
   kind = kind === 'pavasaris' ? 'pavasaris' : 'rudens';
@@ -24,7 +26,7 @@ export async function season(db, kind) {
     chk('sn_tel', 'Traktoristiem (SIA) ir tālrunis SMS izsaukumam', T.length ? noPh.length : 1, T.length, T.length ? noPh.map(c => c.name).join(', ') : 'Nav neviena uzņēmuma ar pilnvaru «Traktorists» (Uzņēmumi)', '');
     const unk = used.filter(b => !T.some(c => c.name === b));
     if (unk.length) chk('sn_unk', 'Maršrutu brigādes ir zināmas', unk.length, used.length, unk.join(', ') + ' — nav starp traktoristiem (var būt cilvēki ar PIN)', 'sniegs');
-    const K = (await kv(db, 'kais:krajums')) || {}, low = MAT.filter(([k]) => !(+K[k] > 0));
+    const K = Object.assign({}, (await kv(db, 'kais:krajums')) || {}, await inv.krajums(db).catch(() => ({}))), low = MAT.filter(([k]) => !(+K[k] > 0));   // I8: atlikums no inventāra
     chk('kais', 'Sāls un smilšu krājums ievadīts', low.length, MAT.length, low.length ? 'Nav: ' + low.map(m => m[1].toLowerCase()).join(', ') : MAT.map(([k, n]) => n + ' ' + K[k] + ' t').join(' · ') + (K.atjaunots ? ' (' + K.atjaunots + ')' : ''), 'kais');
     const pend = await all(db, "SELECT COUNT(*) n FROM kais_task WHERE statuss NOT IN ('Piegādāts', 'Atcelts')").catch(() => [{ n: 0 }]);
     checks.push({ k: 'kais_open', n: 'Atvērtie kaisāmmateriāla pieteikumi', ok: true, v: pend[0].n, total: 0, d: '', app: 'kais', info: true });
@@ -49,6 +51,7 @@ export async function krajumsSave(db, who, b) {
   const K = (await kv(db, 'kais:krajums')) || {}, was = Object.assign({}, K), ch = [];
   for (const [k, n] of MAT) if (b[k] != null && b[k] !== '') { const v = Math.round(Math.max(0, Math.min(100000, parseFloat(String(b[k]).replace(',', '.')) || 0)) * 10) / 10; if (v !== +was[k]) ch.push([n + ', t', was[k] == null ? '' : String(was[k]), String(v)]); K[k] = v; }
   K.atjaunots = today(); K.kas = who; await kvSet(db, 'kais:krajums', K).run();
+  await inv.setStock(db, who, b).catch(e => console.error('inv stock', e));   // I8: tas pats atlikums inventārā (inventarizācija)
   await audit(db, who, 'Sezona', 'Kaisāmmateriāla krājums', ch);
   return K;
 }

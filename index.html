@@ -919,6 +919,63 @@ function drawQc() {
   b.querySelectorAll('[data-qok]').forEach(x => x.onclick = () => go(x.dataset.qok, 'ok', x));
   b.querySelectorAll('[data-qbad]').forEach(x => x.onclick = () => go(x.dataset.qbad, 'bad', x));
 }
+/* ---------- I8 Materiāli un inventārs: atlikumi, kustības, zem minimuma → pasūtījums; tehnika (kam izsniegts, apkope) ---------- */
+const nf = (x) => String(Math.round((+x || 0) * 1000) / 1000).replace('.', ',');
+function drawInv() {
+  if (!A.INV) { adminShell('<div class="skel"></div>', null); api('invList').then(r => { A.INV = r; if (A.tab === 'inv') drawInv(); }).catch(e => toast(netMsg(e), 'err')); return; }
+  const R = A.INV, G = {}; R.items.forEach(i => (G[i.veids] = G[i.veids] || []).push(i));
+  const row = (i) => `<div class="perm" style="margin:0 0 8px;${i.zem || i.apkope ? 'outline:2px solid #e5a04b' : ''}"><div style="display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline"><b style="flex:1 1 160px;overflow-wrap:anywhere">${esc(i.nosaukums)}</b>
+      ${i.veids === 'tehnika' ? `<span class="chip">${i.izsniegts ? 'pie: ' + esc(i.izsniegts) : 'noliktavā'}</span>` : `<b style="font-size:20px">${nf(i.atlikums)} <small class="hint" style="display:inline">${esc(i.vieniba)}</small></b>`}</div>
+    <div class="hint">${i.veids === 'tehnika' ? `${i.mh ? 'motorstundas ' + nf(i.mh) : ''}${i.apk_mh ? ' · apkope pie ' + nf(i.apk_mh) + ' mh' : ''}${i.apk_dat ? ' · apkope līdz ' + esc(i.apk_dat.slice(8) + '.' + i.apk_dat.slice(5, 7) + '.' + i.apk_dat.slice(0, 4)) : ''}${i.apkope ? ' · <b style="color:var(--red,#b42318)">jāveic apkope</b>' : ''}` : `minimums ${i.minimums ? nf(i.minimums) + ' ' + esc(i.vieniba) : '—'}${i.zem ? ' · <b style="color:var(--red,#b42318)">zem minimuma</b>' : ''}`}${i.pasutits ? ' · pasūtīts ' + esc(i.pasutits) : ''}${i.kods ? ' · auto: Sniegs (kg), Kaisāmmateriāls (maisi)' : ''}</div>
+    <div class="row2" style="gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn ghost" data-imv="${esc(i.id)}" style="flex:1 1 110px">${i.veids === 'tehnika' ? 'Izsniegt / atgriezt' : '+ / − kustība'}</button><button class="btn ghost" data-ied="${esc(i.id)}" style="flex:1 1 90px">Labot</button><button class="btn ghost" data-ihi="${esc(i.id)}" style="flex:1 1 90px">Vēsture</button>${i.zem && !i.pasutits ? `<button class="btn" data-iord="${esc(i.id)}" style="flex:1 1 150px">Izveidot pasūtījumu</button>` : ''}</div></div>`;
+  const s = adminShell(`<div class="dash-h"><span>Atlikums = visu kustību summa. Sāls/smiltis/mix — tas pats krājums, ko rāda «Sezona».</span><button class="btn" id="iNew">+ Jauna vienība</button></div>
+    ${Object.keys(R.veidi).filter(k => G[k]).map(k => `<div class="dsec" style="margin-top:0"><h4>${esc(R.veidi[k])} · ${G[k].length}</h4>${G[k].map(row).join('')}</div>`).join('')}
+    <div class="dsec"><h4>Pēdējās kustības</h4>${R.moves.length ? `<div class="dlate wr">${R.moves.slice(0, 30).map(m => `<div><span class="ch" style="background:${m.daudz < 0 ? '#fde4e1' : '#e3f1e7'}">${m.daudz > 0 ? '+' : ''}${nf(m.daudz)} ${esc(m.vieniba)}</span><span class="a">${esc(m.nosaukums)}<small>${esc(m.datums.slice(8) + '.' + m.datums.slice(5, 7) + '.')} · ${esc(R.mv[m.veids] || m.veids)}${m.adrese ? ' · ' + esc(m.adrese) : ''}${m.kas ? ' · ' + esc(m.kas) : ''}${m.piezime ? ' · ' + esc(m.piezime) : ''}</small></span></div>`).join('')}</div>` : '<p class="copy">Kustību vēl nav</p>'}</div>`, null);
+  const find = (id) => R.items.find(x => x.id === id), done = (r, m) => { A.INV = r; toast(m, 'ok'); A.tab = 'inv'; drawAdmin(); };
+  $('iNew').onclick = () => invEdit(null);
+  s.querySelectorAll('[data-ied]').forEach(b => b.onclick = () => invEdit(find(b.dataset.ied)));
+  s.querySelectorAll('[data-imv]').forEach(b => b.onclick = () => invMove(find(b.dataset.imv)));
+  s.querySelectorAll('[data-iord]').forEach(b => b.onclick = async () => { const i = find(b.dataset.iord), q = prompt('Cik pasūtīt (' + i.vieniba + ')? Piezīme tiks saglabāta pie vienības.', i.minimums ? nf(i.minimums * 2) : ''); if (q === null) return;
+    try { done(await api('invOrder', { item: i.id, daudz: q }), 'Pasūtījums atzīmēts'); } catch (e) { toast(netMsg(e), 'err'); } });
+  s.querySelectorAll('[data-ihi]').forEach(b => b.onclick = async () => { const i = find(b.dataset.ihi); try { const r = await api('invHist', { item: i.id });
+    sheet(`<div class="hd"><button class="x bk" id="ivB" aria-label="Atpakaļ" style="font-size:18px">‹</button><h3>${esc(i.nosaukums)}</h3>${X}</div><p class="copy" style="text-align:left">Atlikums ${nf(i.atlikums)} ${esc(i.vieniba)}</p>${r.moves.length ? `<div class="dlate wr">${r.moves.map(m => `<div><span class="ch" style="background:${m.daudz < 0 ? '#fde4e1' : '#e3f1e7'}">${m.daudz > 0 ? '+' : ''}${nf(m.daudz)}</span><span class="a">${esc(m.datums.slice(8) + '.' + m.datums.slice(5, 7) + '.' + m.datums.slice(0, 4))} · ${esc(R.mv[m.veids] || m.veids)}<small>${esc([m.adrese, m.kas, m.piezime].filter(Boolean).join(' · '))}</small></span></div>`).join('')}</div>` : '<p class="copy">Kustību nav</p>'}`);
+    $('ivB').onclick = () => { A.tab = 'inv'; drawAdmin(); }; } catch (e) { toast(netMsg(e), 'err'); } });
+}
+function invEdit(i) {
+  const R = A.INV, T = i && i.veids === 'tehnika';
+  sheet(`<div class="hd"><button class="x bk" id="ivB" aria-label="Atpakaļ" style="font-size:18px">‹</button><h3>${i ? 'Labot' : 'Jauna vienība'}</h3>${X}</div>
+    <label class="fld"><span>Nosaukums</span><input id="ivN" class="minp" maxlength="80" value="${esc(i ? i.nosaukums : '')}" placeholder="Piem. Atkritumu maisi 120 l, Traktors JD"></label>
+    <div class="row2" style="gap:8px;flex-wrap:wrap"><label class="fld" style="flex:1 1 140px"><span>Veids</span><select id="ivV" class="minp" ${i && i.kods ? 'disabled' : ''}>${Object.keys(R.veidi).map(k => `<option value="${k}" ${(i ? i.veids : 'maisi') === k ? 'selected' : ''}>${esc(R.veidi[k])}</option>`).join('')}</select></label>
+      <label class="fld" style="flex:1 1 100px"><span>Vienība</span><input id="ivU" class="minp" maxlength="12" value="${esc(i ? i.vieniba : 'gab.')}" ${i && i.kods ? 'disabled' : ''}></label>
+      <label class="fld" style="flex:1 1 100px"><span>Minimums</span><input id="ivM" class="minp" inputmode="decimal" value="${i && i.minimums ? nf(i.minimums) : ''}"></label></div>
+    <div id="ivT" ${T ? '' : 'hidden'}><div class="row2" style="gap:8px;flex-wrap:wrap"><label class="fld" style="flex:1 1 140px"><span>Kam izsniegts</span><input id="ivK" class="minp" maxlength="80" value="${esc(i ? i.izsniegts : '')}"></label>
+      <label class="fld" style="flex:1 1 100px"><span>Motorstundas</span><input id="ivH" class="minp" inputmode="decimal" value="${i && i.mh ? nf(i.mh) : ''}"></label></div>
+      <div class="row2" style="gap:8px;flex-wrap:wrap"><label class="fld" style="flex:1 1 140px"><span>Nākamā apkope pie (mh)</span><input id="ivAh" class="minp" inputmode="decimal" value="${i && i.apk_mh ? nf(i.apk_mh) : ''}"></label>
+      <label class="fld" style="flex:1 1 140px"><span>Nākamā apkope līdz</span><input id="ivAd" type="date" class="minp" value="${esc(i ? i.apk_dat : '')}"></label></div></div>
+    <label class="fld"><span>Piezīme</span><input id="ivP" class="minp" maxlength="300" value="${esc(i ? i.piezime : '')}"></label>
+    <button class="btn" id="ivGo" style="width:100%;height:48px;margin-top:6px">Saglabāt</button>`);
+  $('ivB').onclick = () => { A.tab = 'inv'; drawAdmin(); };
+  $('ivV').onchange = () => { $('ivT').hidden = $('ivV').value !== 'tehnika'; };
+  $('ivGo').onclick = async (e) => { const v = (id) => $(id).value; e.target.disabled = true;
+    try { A.INV = await api('invItem', { f: { id: i ? i.id : '', nosaukums: v('ivN'), veids: v('ivV'), vieniba: v('ivU'), minimums: v('ivM'), izsniegts: v('ivK'), mh: v('ivH'), apk_mh: v('ivAh'), apk_dat: v('ivAd'), piezime: v('ivP') } }); toast('Saglabāts', 'ok'); A.tab = 'inv'; drawAdmin(); }
+    catch (err) { e.target.disabled = false; toast(netMsg(err), 'err'); } };
+}
+function invMove(i) {
+  const R = A.INV, T = i.veids === 'tehnika', t = ymd(new Date());
+  sheet(`<div class="hd"><button class="x bk" id="ivB" aria-label="Atpakaļ" style="font-size:18px">‹</button><h3>${esc(i.nosaukums)}</h3>${X}</div>
+    <p class="copy" style="text-align:left;margin:0 0 10px">${T ? (i.izsniegts ? 'Šobrīd pie: ' + esc(i.izsniegts) : 'Noliktavā') : 'Atlikums ' + nf(i.atlikums) + ' ' + esc(i.vieniba)}</p>
+    <label class="fld"><span>Kustība</span><select id="mvV" class="minp">${(T ? ['izsniegts', 'ienakums'] : ['ienakums', 'izsniegts', 'izlietots', 'inventarizacija', 'korekcija']).map(k => `<option value="${k}">${esc(k === 'ienakums' && T ? 'Atgriezts' : R.mv[k])}</option>`).join('')}</select></label>
+    <div class="row2" style="gap:8px;flex-wrap:wrap"><label class="fld" style="flex:1 1 120px"><span id="mvQl">Daudzums (${esc(i.vieniba)})</span><input id="mvQ" class="minp" inputmode="decimal" value="${T ? '1' : ''}"></label><label class="fld" style="flex:1 1 140px"><span>Datums</span><input id="mvD" type="date" class="minp" max="${t}" value="${t}"></label></div>
+    <label class="fld"><span>Objekts (pēc izvēles)</span><input id="mvA" class="minp" list="mvAl" maxlength="200"><datalist id="mvAl">${(A.M && A.M.objects || []).slice(0, 800).map(o => `<option value="${esc(o.adrese)}">`).join('')}</datalist></label>
+    <label class="fld"><span>${T ? 'Kam izsniegts' : 'Kas / kam'}</span><input id="mvK" class="minp" maxlength="80"></label>
+    <label class="fld"><span>Piezīme</span><input id="mvP" class="minp" maxlength="300" placeholder="Piem. rēķina nr., piegādātājs"></label>
+    <button class="btn" id="mvGo" style="width:100%;height:48px;margin-top:6px">Saglabāt</button>`);
+  $('ivB').onclick = () => { A.tab = 'inv'; drawAdmin(); };
+  $('mvV').onchange = () => { $('mvQl').textContent = $('mvV').value === 'inventarizacija' ? 'Faktiskais atlikums (' + i.vieniba + ')' : $('mvV').value === 'korekcija' ? 'Korekcija ± (' + i.vieniba + ')' : 'Daudzums (' + i.vieniba + ')'; };
+  $('mvGo').onclick = async (e) => { e.target.disabled = true;
+    try { A.INV = await api('invMove', { item: i.id, veids: $('mvV').value, daudz: $('mvQ').value, datums: $('mvD').value, adrese: $('mvA').value, kam: $('mvK').value, piezime: $('mvP').value }); toast('Kustība saglabāta', 'ok'); A.tab = 'inv'; drawAdmin(); }
+    catch (err) { e.target.disabled = false; toast(netMsg(err), 'err'); } };
+}
 /* ---------- C9 «Mana nedēļa»: 7 dienas × mani objekti × lietotnes; grafika darbu var pārcelt ---------- */
 const WK = { from: '' };
 const WAPP = { aizv: 'Aizv.', pl: 'Pļaušana', logi: 'Logi', sniegs: 'Sniegs', darz: 'Dārzs', stav: 'Stāvv.' };
@@ -993,18 +1050,20 @@ function drawPanel() {
     <div class="dsec"><h4>Nokavētie un ilgi gaidošie${D.lateN ? ' · ' + D.lateN : ''}</h4>${late ? `<div class="dlate">${late}</div>${D.lateN > D.late.length ? `<p class="copy" style="text-align:left">Rāda ${D.late.length} vecākos no ${D.lateN}</p>` : ''}` : '<p class="copy" style="text-align:left;margin:0">Nokavētu darbu nav.</p>'}</div>
     ${(D.ligumi || []).length ? `<div class="dsec"><h4>Līgumi beidzas · ${D.ligumi.length}</h4><div class="dlate wr">${D.ligumi.map(l => `<div><span class="ch" style="background:${l.dienas < 0 ? '#fde4e1' : l.dienas <= 30 ? '#fdf0d5' : '#e2ddf2'}">${l.dienas < 0 ? 'beidzies' : 'pēc ' + l.dienas + ' d.'}</span><span class="a">${esc(l.name)}${l.auto ? `<small>Pagarināsies automātiski${l.uzteikt ? ' · uzteikt līdz ' + esc(l.uzteikt.split('-').reverse().join('.')) : ''}</small>` : ''}</span><span class="d">${esc(l.lidz.split('-').reverse().join('.'))}</span></div>`).join('')}</div></div>` : ''}
     ${(D.persT || []).length ? `<div class="dsec"><h4>Personāls: termiņi 30 dienās · ${D.persT.length}</h4><div class="dlate wr" id="dPers">${D.persT.map(x => `<div><span class="ch" style="background:${x.dienas < 0 ? '#fde4e1' : x.dienas <= 7 ? '#fdf0d5' : '#e2ddf2'}">${x.dienas < 0 ? 'nokavēts' : x.dienas === 0 ? 'šodien' : 'pēc ' + x.dienas + ' d.'}</span><span class="a">${esc(x.vards)} — ${esc(x.n)}</span><span class="d">${esc(x.datums.split('-').reverse().join('.'))}</span></div>`).join('')}</div></div>` : ''}
+    ${(D.inv || []).length ? `<div class="dsec"><h4>Materiāli un tehnika · ${D.inv.length}</h4><div class="dlate wr" id="dInv">${D.inv.map(x => `<div data-inv style="cursor:pointer"><span class="ch" style="background:#fde4e1">${x.zem ? 'zem minimuma' : 'apkope'}</span><span class="a">${esc(x.nosaukums)}<small>${x.zem ? nf(x.atlikums) + ' ' + esc(x.vieniba) + ' (min ' + nf(x.minimums) + ')' + (x.pasutits ? ' · pasūtīts ' + esc(x.pasutits) : ' · nav pasūtīts') : (x.apk_dat ? 'līdz ' + esc(x.apk_dat) : '') + (x.apk_mh ? ' · ' + nf(x.mh) + '/' + nf(x.apk_mh) + ' mh' : '') + (x.izsniegts ? ' · pie ' + esc(x.izsniegts) : '')}</small></span></div>`).join('')}</div></div>` : ''}
     ${(() => { const L = (D.iek || []).filter(x => x.obligata && (x.nokavets || x.bez)); return L.length ? `<div class="dsec"><h4 style="color:var(--red,#b42318)">Nokavētās pārbaudes · ${L.length}</h4><p class="copy" style="text-align:left;margin:0 0 6px">Obligātās pārbaudes (dūmvadi, ugunsdzēšamie aparāti, lifts, rotaļlaukums, apdrošināšana, elektroinstalācija), kurām termiņš pagājis vai nav ievadīts. Vadītājs saņem atgādinājumu 30 un 7 dienas iepriekš.</p><div class="dlate wr" id="dParb">${L.slice(0, 30).map(x => `<div data-ml="${esc(x.anorm)}" style="cursor:pointer"><span class="ch" style="background:#fde4e1">${x.bez ? 'nav datu' : 'kopš ' + (+x.nakama.slice(8)) + '.' + x.nakama.slice(5, 7) + '.'}</span><span class="a">${esc(x.adrese)}<small>${esc(x.nosaukums)}${x.atbildigais ? ' · ' + esc(x.atbildigais) : ''}</small></span></div>`).join('')}</div></div>` : ''; })()}
     ${(D.iek || []).length ? `<div class="dsec"><h4>Iekārtu apkopes · ${D.iek.length}</h4><p class="copy" style="text-align:left;margin:0 0 6px">Nokavētas vai tuvāko 30 dienu laikā (Mājas lieta → Iekārtas).</p><div class="dlate wr">${D.iek.slice(0, 20).map(x => `<div><span class="ch" style="background:${x.nokavets || x.bez ? '#fde4e1' : '#fdf0d5'}">${x.bez ? 'nav datu' : x.nokavets ? 'nokavēta' : (+x.nakama.slice(8)) + '.' + x.nakama.slice(5, 7) + '.'}</span><span class="a">${esc(x.adrese)}<small>${esc(x.nosaukums)}${x.atbildigais ? ' · ' + esc(x.atbildigais) : ''}</small></span></div>`).join('')}</div></div>` : ''}
     ${(D.normas || []).length ? `<div class="dsec"><h4>Darba laiks: fakts zem normas · ${D.normas.length}</h4><p class="copy" style="text-align:left;margin:0 0 6px">Pagājušā nedēļa: nostrādāts mazāk par 85 % no objekta normas (Mājas lieta → algas → slodze).</p><div class="dlate wr">${D.normas.slice(0, 20).map(x => `<div><span class="ch" style="background:#fde4e1">${x.pct}%</span><span class="a">${esc(x.adrese)}<small>${String(x.fakts).replace('.', ',')} h no ${String(x.norma).replace('.', ',')} h</small></span></div>`).join('')}</div></div>` : ''}
     <div class="dsec"><h4>Datu rezerves kopija</h4><div class="dbk"><span>${esc(bk)}</span>${BH && BH.n ? `<span class="bad">Kļūda: ${esc(BH.msg || '')}</span>` : ''}<button class="btn ghost" id="dBk">Izveidot tagad</button></div></div>`, null);
   $('dRe').onclick = () => { A.D.stale = 1; drawPanel(); };
   $('dQc').onclick = () => openQc();
+  { const I = $('dInv'); if (I) I.onclick = () => { A.tab = 'inv'; A.INV = null; drawAdmin(); }; }
   { const P = $('dParb'); if (P) P.onclick = (e) => { const r = e.target.closest('[data-ml]'); if (r) { closeSheet(); openApp('ml'); } }; }
   $('dApps').onclick = (e) => { const c = e.target.closest('[data-app]'); if (c) { closeSheet(); openApp(c.dataset.app); } };
   $('dBk').onclick = async (e) => { const b = e.target; b.disabled = true; b.textContent = 'Veido…'; try { await api('backupNow'); toast('Rezerves kopija izveidota'); A.D.stale = 1; drawPanel(); } catch (err) { toast(netMsg(err), 'err'); b.disabled = false; b.textContent = 'Izveidot tagad'; } };
 }
 /* ---------- Administrēšana: cilvēki un pilnvaras + pamatdati (viens saraksts visām lietotnēm) ---------- */
-const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['invoices', 'Rēķini'], ['close', 'Slēgšana'], ['companies', 'Uzņēmumi'], ['kreq', 'Klientu pieteikumi'], ['maja', 'Mājas lapas'], ['season', 'Sezona'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['mbox', 'E-pasta pieteikumi'], ['sms', 'SMS'], ['audit', 'Žurnāls'], ['review', 'Pārbaudīt']];
+const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['invoices', 'Rēķini'], ['close', 'Slēgšana'], ['companies', 'Uzņēmumi'], ['kreq', 'Klientu pieteikumi'], ['maja', 'Mājas lapas'], ['season', 'Sezona'], ['inv', 'Inventārs'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['mbox', 'E-pasta pieteikumi'], ['sms', 'SMS'], ['audit', 'Žurnāls'], ['review', 'Pārbaudīt']];
 /* Objekti pārcelti uz Mājas lietu (2026-11-24): cilne paslēpta, kods paliek (atgriezt — izņemt 'objects' no ADM_HIDE) */
 const ADM_HIDE = ['objects'];
 const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kaisāmmateriāls)', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
@@ -1018,7 +1077,7 @@ async function openAdmin(tab) {
   if (ADM_HIDE.indexOf(A.tab) !== -1) A.tab = 'people';
   if (tab && ADM_HIDE.indexOf(tab) !== -1) { closeSheet(); return openApp('ml'); }
   if (tab && tab !== A.tab) { A.tab = tab; A.q = ''; A.f = {}; }
-  A.KR = null; A.MJ = null; A.SZ = null; A.parv = null;   // klientu pieteikumi un mājas lapas — svaigi katru reizi
+  A.KR = null; A.MJ = null; A.SZ = null; A.parv = null; A.INV = null; A.MB = null; A.rits = null;   // klientu pieteikumi un mājas lapas — svaigi katru reizi
   const s = sheet(`<div class="hd"><h3>Administrēšana</h3>${X}</div><div class="skel"></div>`);
   try { const [r, m] = await Promise.all([api('people'), api('master')]); S.people = r.people; S.roles = r.roles; A.M = m; drawAdmin(); }
   catch (e) { s.innerHTML = `<div class="hd"><h3>Administrēšana</h3>${X}</div><p>${esc(netMsg(e))}</p>`; }
@@ -1050,6 +1109,7 @@ function drawAdmin() {
   if (A.tab === 'panel') return drawPanel();
   if (A.tab === 'sms') return drawSms();
   if (A.tab === 'mbox') return drawMbox();
+  if (A.tab === 'inv') return drawInv();
   if (A.tab === 'invoices') return drawInvoices();
   if (A.tab === 'close') return drawClose();
   if (A.tab === 'audit') return drawAudit();
