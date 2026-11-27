@@ -77,6 +77,22 @@ button{cursor:pointer}
 .pin{width:100%;height:56px;border-radius:var(--r-md,14px);border:1.5px solid var(--line-2);background:var(--surface-2);text-align:center;font-size:24px;font-weight:800;letter-spacing:.35em;outline:none}
 .pin:focus{border-color:var(--brand)}
 .lcard .err{min-height:20px;margin:10px 0 4px;color:var(--red);font-weight:700;font-size:13.5px}
+
+/* Ieejas ekrāns datorā: pa kreisi lietotņu pasteļkartītes (tikai dekors), pa labi ieeja */
+.lshow{display:none}
+@media (min-width:1040px){
+  .login{gap:56px;padding:40px}
+  .lshow{display:block;flex:1 1 520px;max-width:600px;animation:up .45s ease-out}
+  .lshow .lk{margin:0;font-size:12.5px;font-weight:800;letter-spacing:.08em;color:var(--brand)}
+  .lshow h1{margin:6px 0 6px;font-size:clamp(34px,3.6vw,46px);font-weight:800;letter-spacing:-.035em;line-height:1.05}
+  .lshow .ls{margin:0 0 22px;color:var(--ink-3);font-weight:700;font-size:15px}
+  .ltiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .lt{border-radius:var(--r-lg,20px);padding:14px 14px 12px;min-height:84px;display:flex;flex-direction:column;justify-content:flex-end;color:#17201c}
+  :root[data-theme="dark"] .lt{color:var(--ink)}
+  .lt b{font-size:14.5px;font-weight:800;letter-spacing:-.01em}.lt small{font-size:12px;font-weight:700;opacity:.65;margin-top:2px}
+  .lcard{flex:0 0 380px;padding:34px 28px 22px}
+}
+@media (min-width:1040px) and (prefers-reduced-motion:reduce){.lshow{animation:none}}
 .btn{height:50px;border:0;border-radius:var(--r-md,14px);background:var(--brand);color:#fff;font-weight:800;font-size:16px;width:100%}
 .btn:disabled{opacity:.6}
 .btn.ghost{background:var(--surface-2);color:var(--ink);border:1px solid var(--line)}
@@ -372,6 +388,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 
 <!-- Ieeja -->
 <section id="vLogin" class="login" hidden>
+  <aside class="lshow" aria-hidden="true"><p class="lk">SELECTUM HOME</p><h1>Visas darba lietotnes vienuviet</h1><p class="ls">Viens PIN · telefonā un datorā · gaišā un tumšā tēma</p><div class="ltiles"><div class="lt c-aizv"><b>Aizvietošana</b><small>Papilddarbi</small></div><div class="lt c-izv"><b>Izvešana</b><small>Lapas · zari · bio</small></div><div class="lt c-kais"><b>Kaisāmmateriāls</b><small>Sāls · smilts · mix</small></div><div class="lt c-pers"><b>Personāls</b><small>Pieņemšana · atvaļinājumi</small></div><div class="lt c-budz"><b>Budžets</b><small>Uzkopšanas tāmes</small></div><div class="lt c-pl"><b>Zāles pļaušana</b><small>Grafiks · bilde</small></div><div class="lt c-logi"><b>Logu mazgāšana</b><small>Grafiks · bilde</small></div><div class="lt c-sniegs"><b>Sniega tīrīšana</b><small>Maršruti</small></div><div class="lt c-darz"><b>Dārzniecība</b><small>Sezonas darbi</small></div><div class="lt c-stav"><b>Stāvvietas</b><small>Mazgāšana</small></div><div class="lt c-dl"><b>Darba laiks</b><small>Atzīmes ar SMS</small></div><div class="lt c-ml"><b>Mājas lieta</b><small>Kadastrs · dokumenti</small></div></div></aside>
   <form class="card lcard" id="loginForm" autocomplete="on">
     <img class="lgo-l" src="icon.png?v=4" alt=""><img class="lgo-d" src="icon-dark.png?v=4" alt="">
     <h2>SH | Portāls</h2>
