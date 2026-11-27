@@ -1,11 +1,11 @@
 /* SH | Klienti un izpildes akti: klienti ar cenām par vienību katrai lietotnei, objektu piesaiste, mēneša atskaite no visām lietotnēm
  * (daudzums × cena), CSV rēķinam un izpildes akts ar bildēm. Tikai portāla administratoram. © VAITKEVIX, SIA */
-import { akey, splitAddr } from './util.js';
+import { akey, splitAddr, assertOpen, monthClosed as monthClosedQ } from './util.js';
 import { audit, diff } from './audit.js';
 const uid = () => crypto.randomUUID().replace(/-/g, '').slice(0, 10);
 const J = (s) => { try { return JSON.parse(s || '{}') || {}; } catch (e) { return {}; } };
 const mins = (a, b) => { if (!/^\d\d:\d\d$/.test(a || '') || !/^\d\d:\d\d$/.test(b || '')) return 0; let m = (+b.slice(0, 2) * 60 + +b.slice(3)) - (+a.slice(0, 2) * 60 + +a.slice(3)); if (m < 0) m += 1440; return m; };
-const r2 = (n) => Math.round(n * 100) / 100;
+const r2 = (n) => Math.round(n * 100) / 100, r4 = (n) => Math.round(n * 1e4) / 1e4;   // cenas — līdz 4 zīmēm (0,0525 €/m²)
 /* Bilžu lauks (id, Drive saites, «r2-…») → id saraksts ar komatiem, kā /img sagaida */
 const fid = (v) => String(v || '').split(/[\s,]+/).map(x => { const m = /[?&]id=([\w-]{20,80})/.exec(x) || /\/d\/([\w-]{20,80})/.exec(x); return m ? m[1] : /^[\w-]{20,80}$/.test(x) ? x : ''; }).filter(Boolean).join(',');
 /* Lietotne → kā skaita daudzumu rēķinam */
@@ -27,10 +27,47 @@ const dmyIso = (s) => { const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(String(s
 const num = (v) => parseFloat(String(v == null ? '' : v).replace(',', '.')) || 0;
 async function all(db, sql, ...a) { try { return (await db.prepare(sql).bind(...a).all()).results || []; } catch (e) { return []; } }
 
+/* ---------- Cenu vēsture (client_price): cena, kas spēkā datumā; bez vēstures — clients.cenas ---------- */
+const BASE = '2000-01-01';   // sākotnējā cena (pirms pirmās maiņas)
+const todayR = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Riga' }).format(new Date());
+async function priceHist(db, clientId) {
+  const H = {}; for (const r of await all(db, 'SELECT app, cena, no FROM client_price WHERE client = ? ORDER BY no', clientId)) (H[r.app] = H[r.app] || []).push({ no: r.no, cena: r.cena }); return H;
+}
+const priceAt = (H, cen, app, d) => { const L = H[app]; if (!L || !L.length) return cen[app] || 0; let p = null; for (const x of L) if (x.no <= d) p = x.cena; return p == null ? (cen[app] || 0) : p; };
+/** «Mainīt cenu no …»: jauna cena no datuma; pirmajā reizē saglabā arī līdzšinējo kā sākotnējo */
+export async function priceChange(db, clientId, app, cena, no, who) {
+  if (!UNITS[app]) throw new Error('Nezināms pakalpojums'); if (!isoD(no)) throw new Error('Norādiet datumu «spēkā no»');
+  await assertOpen(db, no);
+  const c = await db.prepare('SELECT * FROM clients WHERE id = ?').bind(clientId).first(); if (!c) throw new Error('Klients nav atrasts');
+  const cen = J(c.cenas), H = await priceHist(db, clientId), v = r4(Math.max(0, num(cena))), old = priceAt(H, cen, app, no), t = new Date().toISOString();
+  const st = [];
+  if (!(H[app] || []).length && cen[app] > 0 && no > BASE) st.push(db.prepare('INSERT OR IGNORE INTO client_price (client, app, cena, no, kas, laiks) VALUES (?, ?, ?, ?, ?, ?)').bind(clientId, app, cen[app], BASE, String(who || ''), t));
+  st.push(db.prepare('INSERT OR REPLACE INTO client_price (client, app, cena, no, kas, laiks) VALUES (?, ?, ?, ?, ?, ?)').bind(clientId, app, v, no, String(who || ''), t));
+  await db.batch(st);
+  const now = priceAt(await priceHist(db, clientId), cen, app, todayR()); if (now > 0) cen[app] = now; else delete cen[app];   // klienta formā — šodien spēkā esošā
+  await db.prepare('UPDATE clients SET cenas = ? WHERE id = ?').bind(JSON.stringify(cen), clientId).run();
+  if (who) await audit(db, who, 'Cenas', c.name, ['Cena ' + UNITS[app].name + ' no ' + no, old ? String(old) : '', String(v)]);
+  return { bija: old, cena: v };
+}
+/** Masveida indeksācija: +X % visām aktīvo klientu cenām no datuma */
+export async function priceIndex(db, pct, no, who) {
+  pct = num(pct); if (!pct || Math.abs(pct) > 100) throw new Error('Norādiet procentus (piem. 5 vai -3)'); if (!isoD(no)) throw new Error('Norādiet datumu «spēkā no»');
+  await assertOpen(db, no);
+  let n = 0;
+  for (const c of await all(db, 'SELECT id, cenas FROM clients WHERE aktivs = 1')) {
+    const cen = J(c.cenas), H = await priceHist(db, c.id);
+    for (const app of Object.keys(UNITS)) { const p = priceAt(H, cen, app, no); if (p > 0) { await priceChange(db, c.id, app, Math.round(p * (1 + pct / 100) * 10000) / 10000, no, who); n++; } }
+  }
+  if (who) await audit(db, who, 'Cenas', 'Visi klienti', ['Indeksācija no ' + no, '', (pct > 0 ? '+' : '') + pct + ' % · ' + n + ' cenas']);
+  return { n };
+}
+
 export async function clientsData(db) {
   const clients = (await all(db, 'SELECT * FROM clients ORDER BY ord, name')).map(c => Object.assign({}, c, { cenas: J(c.cenas), aktivs: !!c.aktivs }));
   const links = await all(db, 'SELECT o.adrese, c.client FROM client_obj c JOIN objects o ON o.anorm = c.anorm');
   const subs = await all(db, 'SELECT * FROM client_sub ORDER BY ord, no');
+  const ph = await all(db, 'SELECT client, app, cena, no FROM client_price ORDER BY no');
+  clients.forEach(c => { c.cenVest = ph.filter(x => x.client === c.id).map(x => ({ app: x.app, cena: x.cena, no: x.no })); });
   clients.forEach(c => { c.objekti = links.filter(l => l.client === c.id).map(l => l.adrese); c.lig = subs.filter(x => x.client === c.id).map(x => ({ id: x.id, adrese: x.adrese, apraksts: x.apraksts, summa: x.summa, no: x.no, lidz: x.lidz, avots: x.avots })); });
   return { clients, units: UNITS, allUnits: ALL_UNITS };
 }
@@ -41,7 +78,12 @@ export async function saveClient(db, c, who) {
   const id = c.id || uid(), name = String(c.name || '').trim().slice(0, 120); if (!name) throw new Error('Ierakstiet klienta nosaukumu');
   const prev = c.id ? await db.prepare('SELECT * FROM clients WHERE id = ?').bind(c.id).first() : null;
   const prevN = prev ? ((await db.prepare('SELECT COUNT(*) n FROM client_obj WHERE client = ?').bind(id).first()) || {}).n || 0 : 0;
-  const cen = {}; Object.keys(UNITS).forEach(k => { const v = +String((c.cenas || {})[k] || '').replace(',', '.'); if (v > 0) cen[k] = r2(v); });
+  const cen = {}; Object.keys(UNITS).forEach(k => { const v = +String((c.cenas || {})[k] || '').replace(',', '.'); if (v > 0) cen[k] = r4(v); });
+  if (prev) {   // ja pakalpojumam jau ir cenu vēsture — tieša maiņa formā = jauna cena no šodienas (iepriekšējie mēneši nemainās)
+    const H = await priceHist(db, id), pc = J(prev.cenas), t = todayR(), tt = new Date().toISOString();
+    for (const k of Object.keys(UNITS)) if ((H[k] || []).length && (cen[k] || 0) !== (pc[k] || 0) && !await monthClosedQ(db, t))
+      await db.prepare('INSERT OR REPLACE INTO client_price (client, app, cena, no, kas, laiks) VALUES (?, ?, ?, ?, ?, ?)').bind(id, k, cen[k] || 0, t, String(who || ''), tt).run();
+  }
   const st = [db.prepare('INSERT INTO clients (id, name, regnr, adrese, epasts, kontakts, liguma_nr, cenas, aktivs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, regnr = excluded.regnr, adrese = excluded.adrese, epasts = excluded.epasts, kontakts = excluded.kontakts, liguma_nr = excluded.liguma_nr, cenas = excluded.cenas, aktivs = excluded.aktivs')
     .bind(id, name, String(c.regnr || '').slice(0, 30), String(c.adrese || '').slice(0, 200), String(c.epasts || '').slice(0, 120), String(c.kontakts || '').slice(0, 120), String(c.liguma_nr || '').slice(0, 60), JSON.stringify(cen), c.aktivs === false ? 0 : 1)];
   let ligCh = null;
@@ -73,7 +115,7 @@ export async function report(db, clientId, ym) {
   if (!/^\d{4}-\d{2}$/.test(ym || '')) throw new Error('Nederīgs mēnesis');
   const c = clientId ? await db.prepare('SELECT * FROM clients WHERE id = ?').bind(clientId).first() : null;
   if (clientId && !c) throw new Error('Klients nav atrasts');
-  const cen = c ? J(c.cenas) : {};
+  const cen = c ? J(c.cenas) : {}, PH = c ? await priceHist(db, c.id) : {};
   const anorms = c ? new Set((await all(db, 'SELECT anorm FROM client_obj WHERE client = ?', clientId)).map(r => r.anorm)) : null;
   // Kuram klientam pieder darbs: ja rindas anorm ir zināms objekts — tikai pēc tā. Brīvā teksta adreses (izvešana, kaisāmmateriāls,
   // «KK Ģertrūdes 10, Rīga») — pēc akey, bet tikai ja VISI objekti ar šo akey ir šī klienta (citādi neskaidrs → nepiesaista).
@@ -121,11 +163,11 @@ export async function report(db, clientId, ym) {
   }
   rows.forEach(r => { if (r.pub == null) r.pub = r.piez || ''; });   // darz/stav/sniegs piezīme ir tikai strukturēti dati
   rows.sort((a, b) => a.datums.localeCompare(b.datums) || a.adrese.localeCompare(b.adrese));
-  rows.forEach(r => { r.cena = cen[r.app] || 0; r.summa = r.cena ? r2(r.daudz * r.cena) : 0; });
+  rows.forEach(r => { r.cena = priceAt(PH, cen, r.app, r.datums); r.summa = r.cena ? r2(r.daudz * r.cena) : 0; });
   // Fiksētā līgumcena: rindas, kas spēkā šajā mēnesī (pilns mēnesis) — pēc darbiem, katra sava rinda kopsavilkumā
   if (c) for (const x of await all(db, "SELECT * FROM client_sub WHERE client = ? AND summa > 0 AND (no = '' OR no <= ?) AND (lidz = '' OR lidz >= ?) ORDER BY ord, no", c.id, dEnd, d0))
     rows.push({ app: 'ligums', sid: x.id, datums: x.no > d0 ? x.no : d0, adrese: x.adrese || 'Visi objekti', daudz: 1, cena: r2(x.summa), summa: r2(x.summa), kas: '', piez: x.apraksts, pub: x.apraksts, foto: '' });
-  const sum = {}; rows.forEach(r => { const k = r.app === 'ligums' ? 'ligums:' + r.sid : r.app, u = ALL_UNITS[r.app];
+  const sum = {}; rows.forEach(r => { const k = r.app === 'ligums' ? 'ligums:' + r.sid : r.app + '|' + r.cena, u = ALL_UNITS[r.app];   // cena mainījusies mēneša vidū — divas rindas
     const s = sum[k] = sum[k] || { app: r.app, name: r.app === 'ligums' ? LIG.name + (r.pub ? ': ' + r.pub : '') + (r.adrese !== 'Visi objekti' ? ' · ' + r.adrese : '') : u.name, unit: u.unit, reizes: 0, daudz: 0, cena: r.cena, summa: 0 };
     s.reizes++; s.daudz = r2(s.daudz + r.daudz); s.summa = r2(s.summa + r.summa); });
   const total = r2(Object.values(sum).reduce((a, s) => a + s.summa, 0));

@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@cf-wasm/photon": "^0.4.0",
     "@cloudflare/puppeteer": "^2.0.1"
   }
 }

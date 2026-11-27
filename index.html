@@ -185,6 +185,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .klr{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px;border-radius:var(--r-md,14px);background:var(--surface-2);margin:0 0 6px;position:relative}.klr input{height:40px;border:1px solid var(--line-2);border-radius:var(--r-sm,10px);background:var(--surface);padding:0 10px;font:inherit;font-weight:600;color:var(--ink);min-width:0;width:100%}
 .klr label{display:flex;flex-direction:column;gap:2px;margin:0}.klr label small{font-size:11px;font-weight:700;color:var(--ink-3)}.klr .odel{position:absolute;top:10px;right:8px;height:40px}.klr .klp{grid-column:1/-1;padding-right:34px}
 @media(min-width:700px){.klr{grid-template-columns:1.4fr .7fr .8fr .8fr}.klr .klp{grid-column:1/-1}}
+.kvest{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-4px 0 14px}
 .au-ch{font-size:13px;font-weight:600;color:var(--ink-2);margin-top:6px;overflow-wrap:anywhere}.au-ch .au-l{color:var(--ink-3)}.au-ch .au-b{text-decoration:line-through;color:var(--ink-3)}
 .afil .n{font-size:13px;font-weight:700;color:var(--ink-3);margin-left:4px}
 @media(min-width:900px){.sheet.adm .plist{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -1026,6 +1027,7 @@ function drawAdmin() {
         <div class="chips"><span class="chip a">${c.objekti.length} objekti</span>${Object.keys(c.cenas).map(k => `<span class="chip">${esc(A.K.units[k].name)} ${String(c.cenas[k]).replace('.', ',')} €/${esc(A.K.units[k].unit)}</span>`).join('')}${c.regnr ? `<span class="chip">${esc(c.regnr)}</span>` : ''}</div></div>${CHEV}</button>`).join('') || empty()}</div>`, 'Klients');
       $('pAdd').onclick = () => editClient(-1);
       s.querySelector('.adm-top').insertAdjacentHTML('beforeend', '<button class="btn ghost" id="pFirma" style="width:auto;padding:0 14px">Mūsu rekvizīti</button>'); $('pFirma').onclick = () => editFirma();
+      s.querySelector('.adm-top').insertAdjacentHTML('beforeend', '<button class="btn ghost" id="pIdx" style="width:auto;padding:0 14px">Indeksācija</button>'); $('pIdx').onclick = () => priceIndexSheet();
       s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-k]'); if (r) { remember(); editClient(+r.dataset.k); } };
       return;
     }
@@ -1168,6 +1170,7 @@ function editClient(i) {
     `<div class="row2" style="gap:8px">${fld('kR', 'Reģ. nr.', c.regnr, '4000…')}${fld('kL', 'Līguma nr.', c.liguma_nr, '')}</div>` + fld('kA', 'Juridiskā adrese', c.adrese, '') +
     `<div class="row2" style="gap:8px">${fld('kE', 'E-pasts', c.epasts, '')}${fld('kK', 'Kontaktpersona', c.kontakts, '')}</div>` +
     `<div class="f"><label>Cenas par vienību (bez PVN)</label><div class="kcen">${Object.keys(A.K.units).map(k => `<div class="kc"><span>${gl(k, 16)}${esc(A.K.units[k].name)}</span><input data-c="${k}" inputmode="decimal" aria-label="${esc(A.K.units[k].name)} cena" value="${c.cenas[k] != null ? String(c.cenas[k]).replace('.', ',') : ''}" placeholder="—"><small>€/${esc(A.K.units[k].unit)}</small></div>`).join('')}</div></div>` +
+    (c.id ? `<div class="kvest">${(c.cenVest || []).filter(x => x.no > '2000-01-01').map(x => `<span class="chip${x.no > new Date().toISOString().slice(0, 10) ? ' a' : ''}">${esc(UN(x.app).name)}: ${String(x.cena).replace('.', ',')} € no ${esc(lvD(x.no))}</span>`).join('')}<button type="button" class="btn ghost" id="kPrice" style="height:40px;width:auto;padding:0 14px">Mainīt cenu no …</button></div>` : '') +
     `<div class="f"><label>Fiksētā līgumcena (€ mēnesī bez PVN)</label><p class="hint" style="margin:0 0 8px">Pieskaitās mēneša atskaitei un rēķinam, kamēr ir spēkā. Tukša adrese — visiem klienta objektiem.</p><div id="kLig"></div>
       <div class="row2" style="gap:8px;margin-top:6px"><button type="button" class="btn ghost" id="kLigAdd" style="height:40px">+ Līgumcena</button><button type="button" class="btn ghost" id="kLigB" style="height:40px">Pievienot no apstiprinātas tāmes</button></div></div>` +
     `<div class="f"><label>Objekti: <b id="kNum">0</b></label><div class="row2" style="gap:8px;margin-bottom:8px"><input type="text" id="kQ" placeholder="Meklēt adresi…" autocomplete="off"><select id="kG" class="fsel" style="max-width:46%"><option value="">+ visa grupa…</option>${GR.map(g => `<option>${esc(g)}</option>`).join('')}</select></div><div id="kList" class="glist"></div></div>` +
@@ -1200,6 +1203,7 @@ function editClient(i) {
         c.lig.push({ apraksts: (t.nosaukums || 'Tāme') + ' (' + t.id + ')', adrese: ob ? ob.adrese : '', summa: t.bez_pvn, no: new Date().toISOString().slice(0, 8) + '01', avots: 'budz:' + t.id });
         box.remove(); drawLig(); toast('Pievienots no tāmes — pārbaudiet datumus un saglabājiet'); }; }
     catch (e) { toast(netMsg(e), 'err'); } finally { el.disabled = false; } };
+  if ($('kPrice')) $('kPrice').onclick = () => priceSheet(c, i);
   const vLink = (t) => location.origin + '/sh/skats.html#' + t;
   const vDraw = (t) => { const el = $('kView'); if (!el) return;
     el.innerHTML = t ? `<input type="text" id="kVu" readonly value="${esc(vLink(t))}" aria-label="Saite klientam" style="margin-bottom:8px"><div class="row2" style="gap:8px"><button type="button" class="btn" id="kVc">Kopēt saiti</button><button type="button" class="btn ghost" id="kVo">Atvērt</button><button type="button" class="btn ghost" id="kVr">Atsaukt</button></div>`
@@ -1213,6 +1217,26 @@ function editClient(i) {
   $('kG').onchange = (e) => { const g = e.target.value; if (!g) return; A.M.objects.filter(o => o.grupa === g).forEach(o => sel.add(an(o.adrese))); e.target.value = ''; draw(); };
   $('kList').onchange = (e) => { const x = e.target.closest('[data-a]'); if (!x) return; const k = an(x.dataset.a); if (x.checked) sel.add(k); else sel.delete(k); $('kNum').textContent = sel.size; };
   draw();
+}
+const lvD = (d) => d ? String(d).slice(0, 10).split('-').reverse().join('.') : '';
+/* Cenu maiņa no datuma (D4): iepriekšējie mēneši paliek ar veco cenu */
+function priceSheet(c, i) {
+  const t1 = new Date(); t1.setMonth(t1.getMonth() + 1, 1); const nx = t1.toISOString().slice(0, 10);
+  subSheet('Mainīt cenu · ' + c.name, `<p class="hint" style="margin:0 0 10px">Jaunā cena der darbiem no norādītā datuma. Agrākie darbi paliek ar veco cenu.</p>
+    <div class="f"><label for="pcA">Pakalpojums</label><select id="pcA" class="fsel">${Object.keys(A.K.units).map(k => `<option value="${k}">${esc(A.K.units[k].name)}${c.cenas[k] ? ' — tagad ' + String(c.cenas[k]).replace('.', ',') + ' €/' + esc(A.K.units[k].unit) : ''}</option>`).join('')}</select></div>
+    <div class="row2" style="gap:8px">${fld('pcC', 'Jaunā cena, € (bez PVN)', '', '0,00')}${fld('pcN', 'Spēkā no', nx, '', 'date')}</div>`,
+    async () => { const cena = $('pcC').value.trim(), no = $('pcN').value, app = $('pcA').value;
+      if (!(+cena.replace(',', '.') >= 0) || !cena) return toast('Ierakstiet cenu', 'err'); if (!no) return toast('Norādiet datumu', 'err');
+      try { A.K = await api('priceChange', { client: c.id, app, cena, no }); toast('Cena mainīta no ' + lvD(no)); editClient(i); } catch (e) { toast(netMsg(e), 'err'); } });
+}
+function priceIndexSheet() {
+  const t1 = new Date(); t1.setMonth(t1.getMonth() + 1, 1); const nx = t1.toISOString().slice(0, 10);
+  subSheet('Cenu indeksācija', `<p class="hint" style="margin:0 0 10px">Visām aktīvo klientu cenām par vienību pieskaita procentus no datuma. Līgumcenas nemainās. Ierakstās žurnālā.</p>
+    <div class="row2" style="gap:8px">${fld('ixP', 'Izmaiņa, %', '', 'piem. 5 vai -3')}${fld('ixN', 'Spēkā no', nx, '', 'date')}</div>`,
+    async () => { const pct = $('ixP').value.trim().replace(',', '.'), no = $('ixN').value;
+      if (!+pct) return toast('Ierakstiet procentus', 'err'); if (!no) return toast('Norādiet datumu', 'err');
+      if (!confirm('Mainīt visas klientu cenas par ' + (+pct > 0 ? '+' : '') + pct + ' % no ' + lvD(no) + '?')) return;
+      try { const r = await api('priceIndex', { pct, no }); A.K = r; toast('Mainītas ' + r.n + ' cenas'); sheet(''); drawAdmin(); } catch (e) { toast(netMsg(e), 'err'); } });
 }
 function reportHtml(R) {
   if (!R.rows.length) return '<div class="card" style="padding:18px;text-align:center;font-weight:700;color:var(--ink-3)">Šajā mēnesī nav izpildītu darbu šī klienta objektos</div>';

@@ -7,6 +7,7 @@
 
 import { assertOpen } from './util.js';
 import { backupD1 } from './backup.js';
+import { thumbR2 } from './thumb.js';
 import { viewApi } from './view.js';
 import { portal, people, personByPin, seedFrom, peopleStmts, usersStmts, session, cleanSessions } from './portal.js';
 import { plausana, plCron } from './plausana.js';
@@ -206,7 +207,9 @@ async function imgFetch(id, sz, ctx) {
 async function img(url, ctx, env) {
   const id = url.searchParams.get('id') || '', sz = url.searchParams.get('sz') || 'w600';
   if (!/^[\w-]{20,80}$/.test(id) || IMG_SIZES.indexOf(sz) === -1) return new Response('Nederīgs', { status: 400, headers: CORS });
-  if (id.startsWith('r2-') && env && env.FOTO) {   // R2 (jaunās bildes) — oriģināls, ilgs kešs
+  if (id.startsWith('r2-') && env && env.FOTO) {   // R2 (jaunās bildes) — sīktēls (w300/400/600) vai oriģināls, ilgs kešs
+    if (sz !== 'w1600') { const t = await thumbR2(env, id, sz).catch(e => { console.error('thumb', e); return null; });
+      if (t) return new Response(t.body, { headers: Object.assign({ 'Content-Type': t.type, 'Cache-Control': 'public, max-age=31536000, immutable' }, CORS) }); }
     const o = await env.FOTO.get(id);
     if (!o) return new Response('Nav bildes', { status: 404, headers: CORS });
     return new Response(o.body, { headers: Object.assign({ 'Content-Type': (o.httpMetadata && o.httpMetadata.contentType) || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable' }, CORS) });

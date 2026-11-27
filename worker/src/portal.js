@@ -4,7 +4,7 @@ import { closeCheck, closeLog } from './close.js';
 import { SMS_F, smsCfg } from './darbalaiks.js';
 import { dashboard } from './dashboard.js';
 import { viewLink, viewTokens } from './view.js';
-import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo, invoiceIssue, invoices, invoiceSet } from './klienti.js';
+import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo, invoiceIssue, invoices, invoiceSet, priceChange, priceIndex } from './klienti.js';
 import { notify } from './webpush.js';
 import { audit, diff, auditList } from './audit.js';
 const AN = { portal: 'Portāls', aizv: 'Aizvietošana', izv: 'Izvešana', kais: 'Kaisāmmateriāls', pers: 'Personāls', budz: 'Budžets', pl: 'Pļaušana', logi: 'Logi', sniegs: 'Sniegs', darz: 'Dārzniecība', stav: 'Stāvvietas', dl: 'Darba laiks', ml: 'Mājas lieta' };
@@ -219,6 +219,8 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'clients') return pj(Object.assign({ ok: true }, await clientsData(env.DB)));
     if (a === 'saveClient') { await saveClient(env.DB, b.client || {}, me.name); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
     if (a === 'delClient') { await delClient(env.DB, String(b.id || ''), me.name); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
+    if (a === 'priceChange') { await priceChange(env.DB, String(b.client || ''), String(b.app || ''), b.cena, String(b.no || ''), me.name); return pj(Object.assign({ ok: true }, await clientsData(env.DB))); }
+    if (a === 'priceIndex') { const r = await priceIndex(env.DB, b.pct, String(b.no || ''), me.name); return pj(Object.assign({ ok: true, n: r.n }, await clientsData(env.DB))); }
     if (a === 'budzApproved') return pj({ ok: true, list: ((await env.DB.prepare("SELECT id, nosaukums, adrese, pasutitajs, bez_pvn, atjaunots FROM budz_budget WHERE statuss = 'Apstiprināts' AND bez_pvn > 0 ORDER BY atjaunots DESC LIMIT 200").all().catch(() => ({ results: [] }))).results || []) });
     if (a === 'firma') return pj(Object.assign({ ok: true }, { firma: await firma(env.DB) }));
     if (a === 'firmaSave') return pj({ ok: true, firma: await saveFirma(env.DB, b.firma, me.name) });
