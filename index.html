@@ -339,6 +339,13 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .sx b{display:block;font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.03em;margin-top:8px;line-height:1}
 .sx .arrow{width:38px;height:38px;right:10px;bottom:10px}
 @media(max-width:520px){.sx{min-height:104px;padding:12px}.sx .arrow{display:none}}
+.wkx{overflow-x:auto;margin:0 -4px;border-radius:var(--r-lg,20px)}.wkt{border-collapse:separate;border-spacing:0;min-width:max-content;font-size:13px}.wkt th,.wkt td{padding:6px 4px;vertical-align:top;border-top:1px solid var(--line-2,rgba(0,0,0,.08))}
+.wkt th{font-size:12px;font-weight:800;color:var(--ink-3,#6d7672);text-align:center;min-width:74px}.wkt th small{display:block;font-weight:700}.wkt .td{background:color-mix(in srgb,var(--ink,#17201c) 5%,transparent)}.wkt th.we{opacity:.7}
+.wkt .wo{position:sticky;left:0;z-index:1;background:var(--surface,#fff);min-width:130px;max-width:160px;text-align:left;font-weight:800;overflow-wrap:anywhere;padding-left:8px}
+.wch{display:block;width:100%;min-height:32px;margin:0 0 4px;padding:4px 6px;border:0;border-radius:10px;font:inherit;font-size:12px;font-weight:800;color:var(--ink,#17201c);cursor:pointer;text-align:left}.wch.st-done{opacity:.6}.wch.st-cant{box-shadow:inset 0 0 0 2px #c63d3d}.wch[data-mv]{box-shadow:inset 0 0 0 1.5px rgba(23,32,28,.35)}
+.wkd{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
+.szl{display:flex;flex-direction:column;gap:8px}.szr{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r-lg,20px);background:var(--surface-2,rgba(0,0,0,.04))}.szi{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;background:#2f8f5b}.szr.bad .szi{background:#c63d3d}.szr.inf .szi{background:#6d7672}
+.szt{flex:1;min-width:0}.szt b{display:block;font-weight:800;overflow-wrap:anywhere}.szt small{display:block;font-size:12.5px;font-weight:700;color:var(--ink-3,#6d7672);overflow-wrap:anywhere}.szk{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}.szk span{display:block;font-size:13px;font-weight:800;margin:0 0 4px}
 .mlist{display:flex;flex-direction:column;gap:6px;margin-top:10px}.mrow{background:rgba(255,255,255,.55);border-radius:var(--r-lg,20px);padding:9px 12px}:root[data-theme="dark"] .mrow{background:rgba(0,0,0,.18)}.mrow.bad{box-shadow:inset 3px 0 0 #c63d3d}
 .ma{display:flex;align-items:center;gap:8px}.ma b{flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mdl{display:flex;gap:4px}.mbs{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}.mbs .ok{font-size:12px;color:var(--ink-3)}
 .mb{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:var(--r-pill,999px);background:rgba(255,255,255,.7);font-size:12px;font-weight:800;cursor:pointer}:root[data-theme="dark"] .mb{background:rgba(255,255,255,.08)}.mb.w{background:#fdf3d8;color:#7a5400}.mb.r{background:#f5dbe3;color:#8a2a3b}:root[data-theme="dark"] .mb.w{background:rgba(253,213,120,.16);color:#f3cf7a}:root[data-theme="dark"] .mb.r{background:rgba(242,163,184,.16);color:#f4a9bd}
@@ -665,7 +672,8 @@ function home() {
       <h3>${D.mine.n} objekti${D.mine.problem ? ' · ' + D.mine.problem + ' jāpievērš uzmanība' : ' · viss kārtībā'}</h3>
       <div class="meta">${D.mine.darbi} darbi šodien${D.mine.trukst ? ' · trūkst darbinieka ' + D.mine.trukst : ''}</div>
       <div class="mlist">${D.mine.list.slice(0, 6).map(mineRow).join('')}</div>
-      ${D.mine.n > 6 ? `<button class="btn ghost" id="mineAll" style="margin-top:10px;width:100%">Visi ${D.mine.n} objekti</button>` : ''}</div>`);
+      <div class="row2" style="gap:8px;margin-top:10px;flex-wrap:wrap">${D.mine.n > 6 ? `<button class="btn ghost" id="mineAll" style="flex:1 1 140px">Visi ${D.mine.n} objekti</button>` : ''}<button class="btn" id="mineWeek" style="flex:1 1 140px">Mana nedēļa</button></div></div>`);
+    $('mineWeek').onclick = () => openWeek();
     const all = $('mineAll'); if (all) all.onclick = () => { const s = sheet(`<div class="hd"><h3>Mani objekti · šodien</h3>${X}</div><div class="mlist">${D.mine.list.map(mineRow).join('')}</div>`); };
   }
   // Kalendārs + tuvākais
@@ -813,6 +821,59 @@ function drawSms() {
     try { await api('smsCfgSave', { cfg: { [k]: v } }); A.SMS.list.find(x => x.k === k).on = v; toast((v ? 'Ieslēgts: ' : 'Izslēgts: ') + A.SMS.list.find(x => x.k === k).n); drawSms(); }
     catch (err) { c.checked = !v; toast(netMsg(err), 'err'); } finally { c.disabled = false; } };
 }
+/* ---------- C9 «Mana nedēļa»: 7 dienas × mani objekti × lietotnes; grafika darbu var pārcelt ---------- */
+const WK = { from: '' };
+const WAPP = { aizv: 'Aizv.', pl: 'Pļaušana', logi: 'Logi', sniegs: 'Sniegs', darz: 'Dārzs', stav: 'Stāvv.' };
+const wdN = ['Sv', 'P', 'O', 'T', 'C', 'Pk', 'S'], ddm = (d) => +d.slice(8, 10) + '.' + d.slice(5, 7) + '.';
+const addD = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+async function openWeek(from) {
+  if (from != null) WK.from = from;
+  if (!$('sheetBg') || !document.getElementById('wkBody')) sheet(`<div class="hd"><h3>Mana nedēļa</h3>${X}</div><div id="wkBody"><div class="skel"></div><div class="skel"></div></div>`);
+  try { WK.R = await api('week', { from: WK.from }); drawWeek(); } catch (e) { $('wkBody').innerHTML = `<p>${esc(netMsg(e))}</p>`; }
+}
+function drawWeek() {
+  const R = WK.R, T = R.today, box = $('wkBody'); if (!box) return; WK.from = R.from;
+  const chip = (x, d) => `<button type="button" class="wch c-${x.app} st-${x.st}" data-wa="${x.app}" data-wi="${esc(x.id)}" data-wd="${d}" ${x.mv ? 'data-mv="1"' : ''} title="${esc((APPS[x.app] || {}).name || x.app)}${x.t ? ' · ' + esc(x.t) : ''}">${x.st === 'done' ? '✓ ' : x.st === 'cant' ? '✗ ' : ''}${WAPP[x.app] || x.app}</button>`;
+  const n = R.objekti.reduce((a, o) => a + Object.values(o.d).reduce((b, L) => b + L.length, 0), 0);
+  box.innerHTML = `<div class="afil" style="gap:8px"><button class="btn ghost" id="wkP" style="width:auto;height:44px;padding:0 14px" aria-label="Iepriekšējā nedēļa">‹</button><b style="font-weight:800;flex:1;text-align:center">${ddm(R.days[0])} – ${ddm(R.days[6])}</b><button class="btn ghost" id="wkN" style="width:auto;height:44px;padding:0 14px" aria-label="Nākamā nedēļa">›</button></div>
+    <p class="copy" style="text-align:left;margin:0 0 10px">${R.objekti.length ? R.objekti.length + ' objekti · ' + n + ' darbi. Pieskarieties darbam: pļaušanu, logus, dārzu un stāvvietas var pārcelt uz citu dienu.' : 'Jums nav piešķirtu objektu (Mājas lieta → Objekts → Darbu vadītājs).'}</p>
+    ${R.objekti.length ? `<div class="wkx"><table class="wkt"><thead><tr><th class="wo">Objekts</th>${R.days.map(d => { const w = new Date(d + 'T12:00:00Z').getUTCDay(); return `<th class="${d === T ? 'td' : ''}${w === 0 || w === 6 ? ' we' : ''}">${wdN[w]}<small>${ddm(d)}</small></th>`; }).join('')}</tr></thead><tbody>
+      ${R.objekti.map(o => `<tr><td class="wo">${esc(o.adrese)}</td>${R.days.map(d => `<td class="${d === T ? 'td' : ''}">${(o.d[d] || []).map(x => chip(x, d)).join('')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
+    ${R.open.length ? `<div class="dsec"><h4>Atvērtie pieteikumi</h4><div class="dlate wr">${R.open.map(x => `<div><span class="ch c-${x.app}">${esc(APPS[x.app].name)}</span><span class="a">${esc(x.adrese)}</span><span class="d">${x.n}</span></div>`).join('')}</div></div>` : ''}`;
+  $('wkP').onclick = () => openWeek(addD(R.from, -7)); $('wkN').onclick = () => openWeek(addD(R.from, 7));
+  box.querySelectorAll('[data-wa]').forEach(b => b.onclick = () => weekItem(b.dataset.wa, b.dataset.wi, b.dataset.wd, !!b.dataset.mv));
+}
+function weekItem(app, id, d, mv) {
+  const A0 = APPS[app] || { name: app };
+  if (!mv) { if (confirm(A0.name + ' · ' + ddm(d) + '\nAtvērt lietotni?')) { closeSheet(); openApp(app); } return; }
+  const T = WK.R.today, opts = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(i => addD(T, i)).filter(x => x !== d);
+  const s = sheet(`<div class="hd"><button class="x bk" id="wmB" aria-label="Atpakaļ" style="font-size:18px">‹</button><h3>Pārcelt · ${esc(A0.name)}</h3>${X}</div>
+    <p class="copy" style="text-align:left">Tagad: ${ddm(d)}. Izvēlieties jauno dienu — izpildītājs to redzēs savā maršrutā.</p>
+    <div class="wkd">${opts.map(x => { const w = new Date(x + 'T12:00:00Z').getUTCDay(); return `<button class="btn ghost" data-nd="${x}">${wdN[w]} ${ddm(x)}</button>`; }).join('')}</div>
+    <div class="row2" style="gap:8px;margin-top:10px"><button class="btn ghost" id="wmO" style="flex:1">Atvērt lietotni</button></div>`);
+  $('wmB').onclick = () => { sheet(`<div class="hd"><h3>Mana nedēļa</h3>${X}</div><div id="wkBody"></div>`); drawWeek(); };
+  $('wmO').onclick = () => { closeSheet(); openApp(app); };
+  s.querySelectorAll('[data-nd]').forEach(b => b.onclick = async () => { b.disabled = true;
+    try { WK.R = await api('weekMove', { app, id, datums: b.dataset.nd, from: WK.from }); toast('Pārcelts uz ' + ddm(b.dataset.nd), 'ok'); sheet(`<div class="hd"><h3>Mana nedēļa</h3>${X}</div><div id="wkBody"></div>`); drawWeek(); }
+    catch (e) { toast(netMsg(e), 'err'); b.disabled = false; } });
+}
+/* ---------- C11 sezonas maiņas vednis ---------- */
+function drawSeason() {
+  const m = new Date().getMonth(), K = A.f.sz || (m >= 2 && m <= 7 ? 'pavasaris' : 'rudens');
+  if (!A.SZ || A.SZ.kind !== K) { adminShell('<div class="skel"></div>', null); api('season', { kind: K }).then(r => { A.SZ = r; if (A.tab === 'season') drawSeason(); }).catch(e => toast(netMsg(e), 'err')); return; }
+  const R = A.SZ, bad = R.checks.filter(c => !c.ok && !c.info).length;
+  const s = adminShell(`<div class="seg" id="szK" style="margin:0 0 12px"><button data-k="rudens" class="${K === 'rudens' ? 'on' : ''}">Rudens · ziema</button><button data-k="pavasaris" class="${K === 'pavasaris' ? 'on' : ''}">Pavasaris · vasara</button></div>
+    <div class="dash-h"><span>${bad ? '<span class="bad">Jāsakārto: ' + bad + '</span>' : '✓ Viss gatavs sezonai'}</span><button class="btn ghost" id="szRe" style="width:auto">Pārbaudīt vēlreiz</button></div>
+    <div class="szl">${R.checks.map(c => `<div class="szr ${c.info ? 'inf' : c.ok ? 'ok' : 'bad'}"><span class="szi" aria-hidden="true">${c.info ? 'i' : c.ok ? '✓' : '!'}</span><span class="szt"><b>${esc(c.n)}</b>${c.info ? `<small>${esc(String(c.v))}</small>` : `<small>${c.ok ? (c.total ? 'Visi ' + c.total : 'Kārtībā') : c.v + (c.total ? ' no ' + c.total : '')}${c.d ? ' · ' + esc(c.d) : ''}</small>`}</span>${c.app ? `<button class="btn ghost" data-sa="${c.app}" style="flex:none;width:auto;height:44px;padding:0 12px">Atvērt</button>` : ''}</div>`).join('')}</div>
+    ${K === 'rudens' ? `<div class="dsec"><h4>Kaisāmmateriāla krājums, tonnas</h4><div class="szk">${R.mat.map(([k, n]) => `<label class="mfld"><span>${esc(n)}</span><input type="number" min="0" step="0.1" inputmode="decimal" class="minp" id="szM_${k}" value="${R.krajums[k] != null ? esc(R.krajums[k]) : ''}"></label>`).join('')}</div>
+      <button class="btn" id="szSave" style="margin-top:8px">Saglabāt krājumu</button>${R.krajums.atjaunots ? `<p class="copy" style="text-align:left">Atjaunots ${esc(R.krajums.atjaunots)}${R.krajums.kas ? ' · ' + esc(R.krajums.kas) : ''}</p>` : ''}</div>` : ''}
+    ${R.items.length ? `<div class="dsec"><h4>Objekti, kam trūkst datu · ${R.items.length}</h4><div class="dlate wr">${R.items.map(x => `<div><span class="ch c-${x.app}">${esc(x.kas)}</span><span class="a">${esc(x.adrese)}${x.vaditajs ? `<small>${esc(x.vaditajs)}</small>` : ''}</span></div>`).join('')}</div></div>` : ''}`, null);
+  s.querySelector('#szK').onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { A.f.sz = b.dataset.k; drawSeason(); } };
+  s.querySelector('#szRe').onclick = () => { A.SZ = null; drawSeason(); };
+  s.querySelectorAll('[data-sa]').forEach(b => b.onclick = () => { closeSheet(); openApp(b.dataset.sa); });
+  if (s.querySelector('#szSave')) s.querySelector('#szSave').onclick = async () => { const k = {}; R.mat.forEach(([m]) => k[m] = s.querySelector('#szM_' + m).value);
+    try { A.SZ = await api('seasonStock', { krajums: k }); toast('Krājums saglabāts', 'ok'); drawSeason(); } catch (e) { toast(netMsg(e), 'err'); } };
+}
 /* ---------- Vadības panelis: visu lietotņu kopskats (Worker /portal action=dashboard) ---------- */
 function drawPanel() {
   if (!A.D || A.D.stale) { if (!A.D) adminShell('<div class="skel"></div>', null); api('dashboard').then(r => { A.D = r; if (A.tab === 'panel') drawPanel(); }).catch(e => toast(netMsg(e), 'err')); if (!A.D) return; }
@@ -834,13 +895,14 @@ function drawPanel() {
     <div class="dsec"><h4>Nokavētie un ilgi gaidošie${D.lateN ? ' · ' + D.lateN : ''}</h4>${late ? `<div class="dlate">${late}</div>${D.lateN > D.late.length ? `<p class="copy" style="text-align:left">Rāda ${D.late.length} vecākos no ${D.lateN}</p>` : ''}` : '<p class="copy" style="text-align:left;margin:0">Nokavētu darbu nav.</p>'}</div>
     ${(D.ligumi || []).length ? `<div class="dsec"><h4>Līgumi beidzas · ${D.ligumi.length}</h4><div class="dlate wr">${D.ligumi.map(l => `<div><span class="ch" style="background:${l.dienas < 0 ? '#fde4e1' : l.dienas <= 30 ? '#fdf0d5' : '#e2ddf2'}">${l.dienas < 0 ? 'beidzies' : 'pēc ' + l.dienas + ' d.'}</span><span class="a">${esc(l.name)}${l.auto ? `<small>Pagarināsies automātiski${l.uzteikt ? ' · uzteikt līdz ' + esc(l.uzteikt.split('-').reverse().join('.')) : ''}</small>` : ''}</span><span class="d">${esc(l.lidz.split('-').reverse().join('.'))}</span></div>`).join('')}</div></div>` : ''}
     ${(D.persT || []).length ? `<div class="dsec"><h4>Personāls: termiņi 30 dienās · ${D.persT.length}</h4><div class="dlate wr" id="dPers">${D.persT.map(x => `<div><span class="ch" style="background:${x.dienas < 0 ? '#fde4e1' : x.dienas <= 7 ? '#fdf0d5' : '#e2ddf2'}">${x.dienas < 0 ? 'nokavēts' : x.dienas === 0 ? 'šodien' : 'pēc ' + x.dienas + ' d.'}</span><span class="a">${esc(x.vards)} — ${esc(x.n)}</span><span class="d">${esc(x.datums.split('-').reverse().join('.'))}</span></div>`).join('')}</div></div>` : ''}
+    ${(D.normas || []).length ? `<div class="dsec"><h4>Darba laiks: fakts zem normas · ${D.normas.length}</h4><p class="copy" style="text-align:left;margin:0 0 6px">Pagājušā nedēļa: nostrādāts mazāk par 85 % no objekta normas (Mājas lieta → algas → slodze).</p><div class="dlate wr">${D.normas.slice(0, 20).map(x => `<div><span class="ch" style="background:#fde4e1">${x.pct}%</span><span class="a">${esc(x.adrese)}<small>${String(x.fakts).replace('.', ',')} h no ${String(x.norma).replace('.', ',')} h</small></span></div>`).join('')}</div></div>` : ''}
     <div class="dsec"><h4>Datu rezerves kopija</h4><div class="dbk"><span>${esc(bk)}</span>${BH && BH.n ? `<span class="bad">Kļūda: ${esc(BH.msg || '')}</span>` : ''}<button class="btn ghost" id="dBk">Izveidot tagad</button></div></div>`, null);
   $('dRe').onclick = () => { A.D.stale = 1; drawPanel(); };
   $('dApps').onclick = (e) => { const c = e.target.closest('[data-app]'); if (c) { closeSheet(); openApp(c.dataset.app); } };
   $('dBk').onclick = async (e) => { const b = e.target; b.disabled = true; b.textContent = 'Veido…'; try { await api('backupNow'); toast('Rezerves kopija izveidota'); A.D.stale = 1; drawPanel(); } catch (err) { toast(netMsg(err), 'err'); b.disabled = false; b.textContent = 'Izveidot tagad'; } };
 }
 /* ---------- Administrēšana: cilvēki un pilnvaras + pamatdati (viens saraksts visām lietotnēm) ---------- */
-const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['invoices', 'Rēķini'], ['close', 'Slēgšana'], ['companies', 'Uzņēmumi'], ['kreq', 'Klientu pieteikumi'], ['maja', 'Mājas lapas'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['sms', 'SMS'], ['audit', 'Žurnāls'], ['review', 'Pārbaudīt']];
+const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['invoices', 'Rēķini'], ['close', 'Slēgšana'], ['companies', 'Uzņēmumi'], ['kreq', 'Klientu pieteikumi'], ['maja', 'Mājas lapas'], ['season', 'Sezona'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['sms', 'SMS'], ['audit', 'Žurnāls'], ['review', 'Pārbaudīt']];
 /* Objekti pārcelti uz Mājas lietu (2026-11-24): cilne paslēpta, kods paliek (atgriezt — izņemt 'objects' no ADM_HIDE) */
 const ADM_HIDE = ['objects'];
 const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kaisāmmateriāls)', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
@@ -854,7 +916,7 @@ async function openAdmin(tab) {
   if (ADM_HIDE.indexOf(A.tab) !== -1) A.tab = 'people';
   if (tab && ADM_HIDE.indexOf(tab) !== -1) { closeSheet(); return openApp('ml'); }
   if (tab && tab !== A.tab) { A.tab = tab; A.q = ''; A.f = {}; }
-  A.KR = null; A.MJ = null;   // klientu pieteikumi un mājas lapas — svaigi katru reizi
+  A.KR = null; A.MJ = null; A.SZ = null; A.parv = null;   // klientu pieteikumi un mājas lapas — svaigi katru reizi
   const s = sheet(`<div class="hd"><h3>Administrēšana</h3>${X}</div><div class="skel"></div>`);
   try { const [r, m] = await Promise.all([api('people'), api('master')]); S.people = r.people; S.roles = r.roles; A.M = m; drawAdmin(); }
   catch (e) { s.innerHTML = `<div class="hd"><h3>Administrēšana</h3>${X}</div><p>${esc(netMsg(e))}</p>`; }
@@ -890,6 +952,7 @@ function drawAdmin() {
   if (A.tab === 'audit') return drawAudit();
   if (A.tab === 'kreq') return drawKreq();
   if (A.tab === 'maja') return drawMaja();
+  if (A.tab === 'season') return drawSeason();
   if (A.tab === 'people') {
     const F = A.f.p || '', list = S.people.filter(p => qm(p.name + ' ' + (p.phone || '') + ' ' + (p.email || '')) && (!F || (F === 'admin' ? p.perms.portal === 'admin' : F === 'off' ? !p.active : (p.perms[F] && p.perms[F] !== ''))));
     const s = adminShell(`<div class="afil" id="pF"><select aria-label="Filtrs"><option value="">Visi cilvēki</option><option value="admin" ${F === 'admin' ? 'selected' : ''}>Portāla admini</option><option value="off" ${F === 'off' ? 'selected' : ''}>Neaktīvie</option>${ORDER.map(k => `<option value="${k}" ${F === k ? 'selected' : ''}>Ar piekļuvi: ${APPS[k].name}</option>`).join('')}</select><span class="n">${list.length}</span></div><div class="plist">${list.map(p => `<button class="prow ${p.active ? '' : 'off'}" data-p="${esc(p.name)}"><span class="dot" style="background:${esc(p.color || '')}"></span>
@@ -967,7 +1030,19 @@ function drawAdmin() {
         fld('Vadības e-pasti', 'kam sūtīt iesniegto budžetu; vairākus atdalīt ar komatu', inp('bMgmt', B['Vadības e-pasti'])) +
         fld('Sūtītāja vārds', '', `<input type="text" class="minp" id="bFrom" value="${esc(B['Sūtītāja vārds'] || '')}">`) +
         yn('bNote', B['Sūtīt paziņojumus'] !== 'nē', 'Paziņot autoram, kad budžets apstiprināts vai noraidīts'), 'budz') +
+      card(ico('ml'), 'Pārvaldniekiem: rītdienas darbi', 'Reizi dienā — rīt plānotā pļaušana, logi, stāvvietas, dārzs un sniega izsaukums objektos, kur Mājas lietā norādīts pārvaldnieks.',
+        (A.parv ? `${yn('pvOn', A.parv.cfg.on, '<b>Sūtīt automātiski katru dienu</b>')}
+         ${fld('Laiks', 'pēc šī laika (Rīga) — vienreiz dienā', `<input type="time" class="minp" id="pvT" value="${esc(A.parv.cfg.laiks)}">`)}
+         ${A.parv.parv.length ? A.parv.parv.map((x, i) => fld(esc(x.name) + ' <span class="hint" style="display:inline">· ' + x.objekti + ' obj.</span>', '', inp('pvE' + i, x.epasts, 'pārvaldnieka e-pasts'))).join('') : '<p class="hint">Nevienam objektam vēl nav norādīts pārvaldnieks (Mājas lieta → Objekts → Pārvaldnieks).</p>'}
+         <div class="row2" style="gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn ghost" id="pvPrev" style="flex:none">Rītdienas saraksts</button><button class="btn ghost" id="pvNow" style="flex:none">Nosūtīt tagad</button></div>
+         ${A.parv.log.length ? `<div class="hint" style="margin-top:10px"><b>Žurnāls</b>${A.parv.log.slice(0, 8).map(l => `<div>${esc(l.laiks)} · ${esc(l.kam)}${l.n ? ' · ' + l.n + ' obj.' : ''} · ${l.ok ? 'nosūtīts' : '<span style="color:var(--red,#c0392b)">' + esc(l.err || 'kļūda') + '</span>'}</div>`).join('')}</div>` : ''}` : '<div class="skel"></div>'), A.parv ? 'parv' : '') +
       `<p class="hint" style="margin:4px 2px 0">Pārējās lietotnes (Aizvietošana, Izvešana, grafiki, Darba laiks) sūta paziņojumus uz telefonu vai SMS, ne e-pastu.</p>`, null);
+    if (!A.parv) api('parvCfg').then(r => { A.parv = r; if (A.tab === 'mail') { remember(); drawAdmin(); } }).catch(e => toast(netMsg(e), 'err'));
+    if (s.querySelector('#pvPrev')) s.querySelector('#pvPrev').onclick = async () => { try { const r = await api('parvPreview'); const P = r.plan, K = Object.keys(P);
+      sheet(`<div class="hd"><button class="x bk" id="pvB" aria-label="Atpakaļ" style="font-size:18px">‹</button><h3>Rīt ${esc(r.datums.slice(8) + '.' + r.datums.slice(5, 7) + '.')}</h3>${X}</div>${K.length ? K.map(k => `<div class="dsec"><h4>${esc(k)} · ${P[k].length}</h4><div class="dlate wr">${P[k].map(o => `<div><span class="a">${esc(o.adrese)}<small>${o.darbi.map(esc).join(' · ')}</small></span></div>`).join('')}</div></div>`).join('') : '<p class="copy">Rīt pārvaldnieku objektos plānotu darbu nav.</p>'}`);
+      $('pvB').onclick = () => { A.tab = 'mail'; drawAdmin(); }; } catch (e) { toast(netMsg(e), 'err'); } };
+    if (s.querySelector('#pvNow')) s.querySelector('#pvNow').onclick = async (e) => { if (!confirm('Nosūtīt rītdienas darbu sarakstu visiem pārvaldniekiem ar e-pastu tagad?')) return; e.target.disabled = true;
+      try { const r = await api('parvSendNow'); A.parv = r; const R = r.sent.res, ok = R.filter(x => x.ok).length; toast(R.length ? 'Nosūtīts: ' + ok + ' no ' + R.length : 'Rīt darbu nav', ok === R.length ? 'ok' : 'err'); remember(); drawAdmin(); } catch (err) { toast(netMsg(err), 'err'); e.target.disabled = false; } };
     s.querySelector('#mOn').onchange = (e) => { if (e.target.checked) s.querySelector('#mTo').focus(); };
     const save = async (data, msg) => { try { const r = await api('mailCfgSave', data); if (r.ok === false) throw new Error(r.error); A.mail = r; toast(msg, 'ok'); remember(); drawAdmin(); } catch (e) { toast(netMsg(e), 'err'); } };
     const v = (id) => s.querySelector('#' + id).value.trim(), c = (id) => s.querySelector('#' + id).checked;
@@ -976,6 +1051,8 @@ function drawAdmin() {
       if (b.dataset.msave === 'all') { if (c('mOn') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v('mTo'))) return toast('Ievadiet e-pasta adresi novirzīšanai', 'err');
         return save({ override: c('mOn') ? v('mTo') : '' }, c('mOn') ? 'Novirzīšana ieslēgta → ' + v('mTo') : 'Novirzīšana izslēgta'); }
       if (b.dataset.msave === 'pers') return save({ pers: { ADMIN_EMAIL: v('pAdm'), EMAIL_PIENEMSANA: v('pHire'), EMAIL_ATVALINAJUMI: v('pVac'), EMAIL_GROZIJUMI: v('pChg'), PILNI_DATI_EPASTA: c('pFull') ? 'JĀ' : 'NĒ', ZINOT_VADITAJAM: c('pMgr') ? 'JĀ' : 'NĒ' } }, 'Personāla e-pasti saglabāti');
+      if (b.dataset.msave === 'parv') { const em = {}; A.parv.parv.forEach((x, i) => em[x.name] = v('pvE' + i));
+        return api('parvCfgSave', { on: c('pvOn'), laiks: v('pvT'), emails: em }).then(r => { if (r.ok === false) throw new Error(r.error); A.parv = r; toast('Pārvaldnieku e-pasti saglabāti', 'ok'); remember(); drawAdmin(); }).catch(err => toast(netMsg(err), 'err')); }
       if (b.dataset.msave === 'budz') return save({ budz: { 'Vadības e-pasti': v('bMgmt'), 'Sūtītāja vārds': v('bFrom'), 'Sūtīt paziņojumus': c('bNote') ? 'jā' : 'nē' } }, 'Budžeta e-pasti saglabāti');
     });
     s.querySelector('#mTestGo').onclick = async () => {

@@ -26,6 +26,8 @@ import * as gsheets from './sheets.js';
 import * as ai from './ai.js';
 import * as foto from './foto.js';
 import * as mail from './mail.js';
+import * as parvmail from './parvmail.js';
+import * as sezona from './sezona.js';
 import * as objinfo from './objinfo.js';
 import * as kais from './kaisammaterials.js';
 import * as izvN from './izvesana.js';
@@ -97,6 +99,7 @@ export default {
     J('foto', () => foto.migrateDrive(env));
     J('peek', () => gsheets.peek(env, env.DB));
     J('mail', () => mail.selfTest(env));
+    J('parvMail', () => parvmail.cron(env));   // C8: rītdienas darbi pārvaldniekiem
     J('izv', () => izvN.maybeSwitch(env));
     J('pers', () => persN.maybeSwitch(env));
     J('persResend', () => persN.resendQueued(env));
@@ -1410,6 +1413,15 @@ async function masterAdmin(X, a, b, me) {
         PILNI_DATI_EPASTA: String(P.PILNI_DATI_EPASTA || 'NĒ').toUpperCase() === 'JĀ' ? 'JĀ' : 'NĒ', ZINOT_VADITAJAM: String(P.ZINOT_VADITAJAM || 'JĀ').toUpperCase() === 'NĒ' ? 'NĒ' : 'JĀ' },
       budz: { 'Vadības e-pasti': B['Vadības e-pasti'] || '', 'Sūtīt paziņojumus': String(B['Sūtīt paziņojumus'] || 'jā').toLowerCase() === 'nē' ? 'nē' : 'jā', 'Sūtītāja vārds': B['Sūtītāja vārds'] || 'SH | Budžets' } }; };
   const emList = (v, label) => { const L = String(v || '').split(/[,;\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean); const bad = L.find(x => !mail.valid(x)); if (bad) throw new Error(label + ': nepareiza adrese «' + bad + '»'); return [...new Set(L)].join(', '); };
+  if (a === 'season') return Object.assign({ ok: true }, await sezona.season(db, String(b.kind || '')));   // C11
+  if (a === 'seasonStock') { await sezona.krajumsSave(db, me && me.name || '', b.krajums || {}); return Object.assign({ ok: true }, await sezona.season(db, 'rudens')); }
+  if (a === 'parvCfg') return Object.assign({ ok: true }, await parvmail.info(db));   // C8
+  if (a === 'parvCfgSave') { try { const r = await parvmail.save(db, b); const ch = [];
+      if (r.was.on !== r.cfg.on) ch.push(['Pārvaldniekiem rītdienas darbi', r.was.on ? 'ieslēgts' : 'izslēgts', r.cfg.on ? 'ieslēgts' : 'izslēgts']); if (r.was.laiks !== r.cfg.laiks) ch.push(['Sūtīšanas laiks', r.was.laiks, r.cfg.laiks]);
+      new Set(Object.keys(r.was.emails).concat(Object.keys(r.cfg.emails))).forEach(k => { if ((r.was.emails[k] || '') !== (r.cfg.emails[k] || '')) ch.push(['E-pasts: ' + k, r.was.emails[k] || '', r.cfg.emails[k] || '']); });
+      await audit(db, me && me.name || '', 'E-pasts', 'Pārvaldnieki', ch); return Object.assign({ ok: true }, await parvmail.info(db)); } catch (e) { return { ok: false, error: e.message }; } }
+  if (a === 'parvSendNow') { const r = await parvmail.sendAll(X.env, true, String(b.only || '')); return Object.assign({ ok: true, sent: r }, await parvmail.info(db)); }
+  if (a === 'parvPreview') return { ok: true, datums: addDays(today(), 1), plan: await parvmail.plan(db, addDays(today(), 1)) };
   if (a === 'mailCfg') return await mailCfg();
   if (a === 'mailCfgSave') {
     if ('override' in b) { const o = String(b.override || '').trim().toLowerCase(); if (o && !mail.valid(o)) return { ok: false, error: 'Nepareiza e-pasta adrese' };
