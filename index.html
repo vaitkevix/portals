@@ -207,6 +207,11 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .f input[type=text],.f input[type=tel]{width:100%;height:46px;border-radius:var(--r-md,14px);border:1px solid var(--line-2);background:var(--surface-2);padding:0 14px;outline:none;font-weight:700}
 .f input:focus{border-color:var(--brand)}
 .row2{display:flex;gap:8px}
+.exc .row2>.f,.exc .row2>span{flex:1;min-width:0}.exc .f input{width:100%;box-sizing:border-box}
+.f input[type=month],.exc .f input:not([type=checkbox]):not([type=file]){width:100%;box-sizing:border-box;height:46px;border-radius:var(--r-md,14px);border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink);padding:0 14px;outline:none;font:inherit;font-weight:700;color-scheme:light dark}
+.exc select.fsel{width:100%;height:40px;border:0;border-radius:12px;background:var(--surface-2);padding:0 10px;font:inherit;font-weight:700;color:var(--ink)}
+.ecr{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:8px;align-items:center;padding:10px 12px!important;margin:0 0 8px!important}.ecr>.ecs{grid-column:2/4;display:flex;flex-direction:column;gap:6px;min-width:0}
+.ecr input{height:40px;border:0;border-radius:12px;background:var(--surface-2);color:var(--ink);padding:0 10px;font:inherit;font-weight:700;min-width:0;width:100%;box-sizing:border-box}
 .tboard{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
 .tcol{background:var(--surface);border-radius:var(--r-lg,20px);padding:10px;display:flex;flex-direction:column;gap:8px;min-height:120px;border:2px solid transparent}
 .tcol.over{border-color:var(--ink)}.tcol .th{display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:2px 4px}.tcol .th span{font-size:12px;font-weight:800;color:var(--ink-3)}
@@ -1719,14 +1724,139 @@ function csvDl(file, head, rows) {
   const txt = '\ufeff' + [head].concat(rows).map(r => r.map(q).join(';')).join('\r\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv;charset=utf-8' })); a.download = file; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
+/* ---------- Eksports grāmatvedības programmai (Horizon u.c.): kolonnas un formātu iestata grāmatvedība pati ---------- */
+const EXPF = [['', '— tukša kolonna —'], ['const', 'Konstante (savs teksts)'], ['nr', 'Rēķina Nr.'], ['datums', 'Rēķina datums'], ['termins', 'Apmaksas termiņš'], ['periods', 'Periods (GGGG-MM)'], ['periods_no', 'Perioda sākums'], ['periods_lidz', 'Perioda beigas'],
+  ['pamatojums', 'Pamatojums (teksts)'], ['valuta', 'Valūta (EUR)'], ['pvn_likme', 'PVN likme (21)'], ['summa', 'Rēķins bez PVN'], ['pvn', 'Rēķina PVN'], ['ar_pvn', 'Rēķins ar PVN'], ['statuss', 'Statuss'],
+  ['klients', 'Klienta nosaukums'], ['klienta_kods', 'Klienta kods grāmatvedībā'], ['regnr', 'Klienta reģ. nr.'], ['adrese', 'Klienta adrese'], ['epasts', 'Klienta e-pasts'], ['liguma_nr', 'Līguma Nr.'],
+  ['rinda_nr', 'Rindas Nr.'], ['pak_kods', 'Pakalpojuma kods'], ['pak_nos', 'Pakalpojuma nosaukums'], ['konts', 'Ieņēmumu konts'], ['daudz', 'Daudzums'], ['mervien', 'Mērvienība'], ['cena', 'Cena bez PVN'], ['reizes', 'Reizes'],
+  ['r_summa', 'Rindas summa bez PVN'], ['r_pvn', 'Rindas PVN'], ['r_ar_pvn', 'Rindas summa ar PVN'], ['musu_nos', 'Mūsu nosaukums'], ['musu_regnr', 'Mūsu reģ. nr.'], ['musu_pvnnr', 'Mūsu PVN nr.'], ['musu_iban', 'Mūsu konts (IBAN)']];
+const EXPAPP = [['aizv', 'Aizvietošana'], ['pl', 'Zāles pļaušana'], ['logi', 'Logu mazgāšana'], ['darz', 'Dārzniecība'], ['stav', 'Pazemes stāvvietas'], ['sniegs', 'Sniega tīrīšana'], ['izv', 'Izvešana'], ['kais', 'Kaisāmmateriāls'], ['ligums', 'Līgumcena (fiksēta)'], ['rekins', 'Viena rinda rēķinam']];
+const EXPPRE = {
+  horizon: { name: 'Horizon (sākums — salīdziniet ar savu veidni)', cfg: { fmt: 'xlsx', date: 'dd.mm.yyyy', dec: ',', sep: ';', level: 'rinda', head: true, lapa: 'Pavadzīmes', cols: [['Dokumenta Nr.', 'nr'], ['Dokumenta datums', 'datums'], ['Apmaksas termiņš', 'termins'], ['Partnera kods', 'klienta_kods'], ['Partnera nosaukums', 'klients'], ['Partnera reģ. Nr.', 'regnr'], ['Artikula kods', 'pak_kods'], ['Artikula nosaukums', 'pak_nos'], ['Daudzums', 'daudz'], ['Mērvienība', 'mervien'], ['Cena', 'cena'], ['Summa', 'r_summa'], ['PVN likme', 'pvn_likme'], ['Valūta', 'valuta']].map(([h, f]) => ({ h, f, c: '' })) } },
+  vienk: { name: 'Vienkāršs — viena rinda rēķinam (CSV)', cfg: { fmt: 'csv', date: 'dd.mm.yyyy', dec: ',', sep: ';', level: 'rekins', head: true, lapa: '', cols: [['Nr.', 'nr'], ['Datums', 'datums'], ['Termiņš', 'termins'], ['Klients', 'klients'], ['Reģ. nr.', 'regnr'], ['Summa bez PVN', 'summa'], ['PVN', 'pvn'], ['Summa ar PVN', 'ar_pvn']].map(([h, f]) => ({ h, f, c: '' })) } } };
+const expNorm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+const EXPGUESS = [[/pvn.*likm|likme|vat.*rate/, 'pvn_likme'], [/termin|apmaks.*(dat|lidz)|due/, 'termins'], [/(dok|rek|pavadz|invoice).*(nr|numur|no\b)|^nr\.?$|^numurs|^dok.*nr/, 'nr'], [/period/, 'periods'], [/dat/, 'datums'],
+  [/(partner|klient|pirc|debitor).*(kod|id)/, 'klienta_kods'], [/reg|registr|nmr/, 'regnr'], [/(artikul|pakalp|prec|nomenkl|item).*(kod|id)/, 'pak_kods'], [/partner|klient|pirc|sanem|debitor|customer/, 'klients'],
+  [/artikul|pakalp|prec|nomenkl|apraks|nosauk|item|descr/, 'pak_nos'], [/daudz|skaits|qty|quantity/, 'daudz'], [/merv|mervien|vieniba|unit/, 'mervien'], [/cena|price/, 'cena'], [/pvn.*summ|^pvn$|vat amount|^vat$/, 'r_pvn'],
+  [/ar pvn|kopa|total|bruto/, 'r_ar_pvn'], [/summ|bez pvn|neto|amount/, 'r_summa'], [/konts|account/, 'konts'], [/valut|currency/, 'valuta'], [/adres/, 'adrese'], [/e-?pasts|mail/, 'epasts'], [/ligum|contract/, 'liguma_nr'], [/pamatoj|koment|piezim/, 'pamatojums']];
+const expGuess = (h) => { const n = expNorm(h); const g = EXPGUESS.find(([r]) => r.test(n)); return g ? g[1] : ''; };
+const expYmPrev = () => { const d = new Date(); d.setDate(0); return d.toISOString().slice(0, 7); };
+/** Rindas pēc iestatījumiem: [[vērtība, ...], ...]; skaitļi kā number, datumi kā {d:'GGGG-MM-DD'} */
+function expRows(D) {
+  const G = D.cfg, F = D.firma || {}, out = [], r2 = (x) => Math.round((+x || 0) * 100) / 100;
+  for (const I of D.list) {
+    if (I.statuss === 'anulēts' && !G.anul) continue;
+    const [y, m] = I.ym.split('-').map(Number), last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10), mon = new Date(y, m - 1, 1).toLocaleDateString('lv-LV', { month: 'long', year: 'numeric' });
+    let L = G.level === 'rekins' || !I.sum.length ? [{ app: 'rekins', name: 'Pakalpojumi par ' + mon, unit: 'gab.', reizes: 1, daudz: 1, cena: I.summa, summa: I.summa }] : I.sum.map(x => Object.assign({}, x));
+    L.forEach(x => { x.summa = r2(x.summa); x.pvn = r2(x.summa * 0.21); }); const dp = r2(I.pvn - L.reduce((s, x) => s + x.pvn, 0)); if (dp && L.length) L[L.length - 1].pvn = r2(L[L.length - 1].pvn + dp);   // centu noapaļojums — kā rēķinā
+    L.forEach((x, i) => {
+      const v = { nr: I.nr, datums: { d: I.datums }, termins: { d: I.termins }, periods: I.ym, periods_no: { d: I.ym + '-01' }, periods_lidz: { d: last }, pamatojums: 'Izpildes akts par ' + mon + (I.cl.liguma_nr ? ', līgums Nr. ' + I.cl.liguma_nr : ''),
+        valuta: 'EUR', pvn_likme: 21, summa: +I.summa, pvn: +I.pvn, ar_pvn: +I.ar_pvn, statuss: I.statuss, klients: I.cl.name, klienta_kods: (G.kk || {})[I.client] || '', regnr: I.cl.regnr, adrese: I.cl.adrese, epasts: I.cl.epasts, liguma_nr: I.cl.liguma_nr,
+        rinda_nr: i + 1, pak_kods: (G.kodi || {})[x.app] || '', pak_nos: x.app === 'rekins' || x.app === 'ligums' ? x.name + (x.app === 'ligums' ? ' (' + mon + ')' : '') : x.name + ' (' + mon + ')', konts: (G.konti || {})[x.app] || '',
+        daudz: +x.daudz || 0, mervien: x.unit || '', cena: +x.cena || 0, reizes: +x.reizes || 0, r_summa: x.summa, r_pvn: x.pvn, r_ar_pvn: r2(x.summa + x.pvn),
+        musu_nos: F.nosaukums || '', musu_regnr: F.regnr || '', musu_pvnnr: F.pvnnr || '', musu_iban: F.iban || '' };
+      out.push(G.cols.map(c => c.f === 'const' ? c.c : c.f ? (v[c.f] == null ? '' : v[c.f]) : ''));
+    });
+  }
+  return out;
+}
+const expDate = (iso, f) => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return f === 'yyyy-mm-dd' ? iso : f === 'dd/mm/yyyy' ? d + '/' + m + '/' + y : d + '.' + m + '.' + y; };
+async function expDownload(D, name) {
+  const G = D.cfg, R = expRows(D); if (!R.length) return toast('Šajā periodā nav rēķinu', 'err');
+  const head = G.cols.map(c => c.h);
+  if (G.fmt === 'csv') {
+    const sep = G.sep === 'tab' ? '\t' : G.sep, q = (v) => { if (v == null) return ''; if (typeof v === 'object') return expDate(v.d, G.date === 'excel' ? 'dd.mm.yyyy' : G.date); if (typeof v === 'number') return String(Math.round(v * 100) / 100).replace('.', G.dec); const t = String(v); return t.indexOf(sep) !== -1 || /["\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    const txt = '﻿' + (G.head === false ? [] : [head]).concat(R).map(r => r.map(q).join(sep)).join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv;charset=utf-8' })); a.download = name + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); return R.length;
+  }
+  await exceljs();
+  const wb = new ExcelJS.Workbook(); wb.creator = 'SELECTUM HOME'; const ws = wb.addWorksheet((G.lapa || 'Rēķini').replace(/[\\/?*[\]:]/g, ' ').slice(0, 31));
+  if (G.head !== false) { ws.addRow(head); ws.getRow(1).font = { bold: true }; }
+  R.forEach(r => { const row = ws.addRow(r.map(v => v && typeof v === 'object' ? (G.date === 'excel' ? new Date(v.d + 'T00:00:00Z') : expDate(v.d, G.date)) : v));
+    r.forEach((v, i) => { const c = row.getCell(i + 1); if (v && typeof v === 'object' && G.date === 'excel') c.numFmt = 'dd.mm.yyyy'; else if (typeof v === 'number' && !Number.isInteger(v)) c.numFmt = '0.00'; }); });
+  ws.columns.forEach((c, i) => { c.width = Math.min(40, Math.max(10, String(head[i] || '').length + 2)); });
+  const buf = await wb.xlsx.writeBuffer(), a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = name + '.xlsx'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  return R.length;
+}
+async function expSheet(ym) {
+  ym = ym || A.expYm || expYmPrev(); A.expYm = ym;
+  const s = sheet(`<div class="hd"><h3>Eksports grāmatvedībai</h3>${X}</div>
+    <div class="f exc"><label for="exYm">Mēnesis (par kuru rēķins)</label><input type="month" id="exYm" value="${esc(ym)}"></div><div id="exOut"><div class="skel"></div></div>`);
+  $('exYm').onchange = (e) => { if (/^\d{4}-\d{2}$/.test(e.target.value)) expSheet(e.target.value); };
+  let D; try { D = await api('invExport', { ym }); } catch (e) { $('exOut').innerHTML = `<p>${esc(netMsg(e))}</p>`; return; }
+  const G = D.cfg || {}, ok = G.cols && G.cols.length, L = D.list.filter(o => o.statuss !== 'anulēts' || G.anul), tot = L.reduce((a, o) => a + (+o.ar_pvn || 0), 0);
+  $('exOut').innerHTML = `<div class="card" style="padding:14px 16px;margin:6px 0 12px"><b style="font-size:20px">${L.length} rēķini · ${eur(tot)}</b><div class="hint">ar PVN${D.list.length !== L.length ? ' · ' + (D.list.length - L.length) + ' anulēti netiek iekļauti' : ''}</div></div>
+    ${ok ? `<p class="copy" style="text-align:left;margin:0 0 10px">Formāts: <b>${G.fmt === 'csv' ? 'CSV' : 'Excel (.xlsx)'}</b> · ${G.cols.length} kolonnas · ${G.level === 'rekins' ? 'viena rinda rēķinam' : 'rinda katram pakalpojumam'}</p><button class="btn" id="exGo" ${L.length ? '' : 'disabled'}>Lejupielādēt</button>`
+      : '<p class="copy" style="text-align:left;margin:0 0 10px">Formāts vēl nav iestatīts. Iestatiet to vienreiz — ielādējiet savas programmas (Horizon u.c.) importa veidni vai izvēlieties sagatavi.</p>'}
+    <button class="btn ghost" id="exCfg" style="margin-top:8px">Iestatīt formātu</button>`;
+  if ($('exGo')) $('exGo').onclick = async (e) => { const b = e.target; b.disabled = true; try { const n = await expDownload(D, 'rekini-' + ym); if (n) toast(n + ' rindas lejupielādētas'); } catch (err) { toast(netMsg(err), 'err'); } finally { b.disabled = false; } };
+  $('exCfg').onclick = () => expCfgSheet(G, D);
+}
+function expCfgSheet(G0, D) {
+  const E = JSON.parse(JSON.stringify(Object.assign({ cols: [], fmt: 'xlsx', sep: ';', dec: ',', date: 'dd.mm.yyyy', level: 'rinda', head: true, lapa: '', anul: false, kodi: {}, konti: {}, kk: {} }, G0 || {})));
+  const s = sheet(`<div class="hd"><button class="x bk" id="ecB" aria-label="Atpakaļ" style="font-size:18px">‹</button><h3>Eksporta formāts</h3>${X}</div>
+    <p class="copy" style="text-align:left;margin:0 0 10px">Grāmatvedība pati nosaka, kā fails izskatās. Vienkāršākais: Horizon → Pavadzīmju saraksts → Darbības → <b>Ārējo datu ielāde</b> → lejupielādējiet tukšo Excel veidni un ielādējiet to šeit. Kolonnas izveidosies pašas, atliek pārbaudīt, kas katrā liekams.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px"><label class="btn ghost" style="width:auto;padding:0 16px;display:inline-flex;align-items:center;cursor:pointer">Ielādēt veidni (.xlsx / .csv)<input type="file" id="ecF" accept=".xlsx,.csv,.txt" hidden></label>
+      ${Object.keys(EXPPRE).map(k => `<button class="btn ghost" data-pre="${k}" type="button" style="width:auto;padding:0 16px">${esc(EXPPRE[k].name)}</button>`).join('')}</div>
+    <div class="dsec" style="margin-top:0"><h4>Kolonnas</h4><div id="ecCols"></div><button class="btn ghost" id="ecAdd" type="button" style="width:auto;padding:0 16px;margin-top:6px">+ Kolonna</button></div>
+    <div class="dsec"><h4>Faila iestatījumi</h4>
+      <div class="row2" style="gap:8px"><div class="f"><label for="ecFmt">Fails</label><select id="ecFmt" class="fsel"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV</option></select></div>
+        <div class="f"><label for="ecLv">Rindas</label><select id="ecLv" class="fsel"><option value="rinda">Rinda katram pakalpojumam</option><option value="rekins">Viena rinda rēķinam</option></select></div></div>
+      <div class="row2" style="gap:8px"><div class="f"><label for="ecDt">Datumi</label><select id="ecDt" class="fsel"><option value="dd.mm.yyyy">DD.MM.GGGG</option><option value="yyyy-mm-dd">GGGG-MM-DD</option><option value="dd/mm/yyyy">DD/MM/GGGG</option><option value="excel">Excel datums</option></select></div>
+        <div class="f"><label for="ecDec">Decimāldaļa (CSV)</label><select id="ecDec" class="fsel"><option value=",">komats 12,50</option><option value=".">punkts 12.50</option></select></div></div>
+      <div class="row2" style="gap:8px"><div class="f"><label for="ecSep">Atdalītājs (CSV)</label><select id="ecSep" class="fsel"><option value=";">semikols ;</option><option value=",">komats ,</option><option value="tab">tabulācija</option></select></div>
+        ${fld('ecLapa', 'Excel lapas nosaukums', E.lapa, 'Rēķini')}</div>
+      <label class="tog" style="display:flex;gap:8px;align-items:center;font-weight:700;margin:6px 0"><input type="checkbox" id="ecHd" ${E.head !== false ? 'checked' : ''}> Pirmā rinda — virsraksti</label>
+      <label class="tog" style="display:flex;gap:8px;align-items:center;font-weight:700;margin:6px 0"><input type="checkbox" id="ecAn" ${E.anul ? 'checked' : ''}> Iekļaut anulētos rēķinus</label></div>
+    <div class="dsec"><h4>Pakalpojumu kodi un konti grāmatvedībā</h4><p class="hint" style="margin:0 0 8px">Piem. Horizon artikula kods un ieņēmumu konts (6110). Tukšs — kolonna paliek tukša.</p>
+      ${EXPAPP.map(([k, n]) => `<div class="row2" style="gap:8px;align-items:end"><div class="f"><label for="ek_${k}">${esc(n)} · kods</label><input id="ek_${k}" data-kod="${k}" value="${esc((E.kodi || {})[k] || '')}" autocomplete="off"></div><div class="f"><label for="ekk_${k}">konts</label><input id="ekk_${k}" data-konts="${k}" value="${esc((E.konti || {})[k] || '')}" autocomplete="off"></div></div>`).join('')}</div>
+    <div class="dsec"><h4>Klientu kodi grāmatvedībā</h4><p class="hint" style="margin:0 0 8px">Partnera kods jūsu programmā (ja to prasa imports). Var atstāt tukšu, ja sasaista pēc reģ. nr.</p><div id="ecKK"><div class="skel"></div></div></div>
+    <div class="acts"><button class="btn" id="ecSave" type="button">Saglabāt</button></div>`);
+  s.classList.add('exc');
+  $('ecB').onclick = () => expSheet();
+  const sel = (id, v) => { const e = $(id); if (e) e.value = v; }; sel('ecFmt', E.fmt); sel('ecLv', E.level); sel('ecDt', E.date); sel('ecDec', E.dec); sel('ecSep', E.sep);
+  const opts = (f) => EXPF.map(([k, n]) => `<option value="${k}" ${k === f ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  const draw = () => { $('ecCols').innerHTML = E.cols.length ? E.cols.map((c, i) => `<div class="card ecr" data-i="${i}">
+      <b style="color:var(--ink-3)">${String.fromCharCode(65 + (i % 26))}${i >= 26 ? Math.floor(i / 26) : ''}</b><input data-h value="${esc(c.h)}" placeholder="Virsraksts" aria-label="Kolonnas ${i + 1} virsraksts">
+      <div style="display:flex;gap:2px"><button class="btn ghost" data-mv="-1" type="button" aria-label="Uz augšu" style="width:34px;height:34px;padding:0">↑</button><button class="btn ghost" data-mv="1" type="button" aria-label="Uz leju" style="width:34px;height:34px;padding:0">↓</button><button class="btn ghost" data-rm type="button" aria-label="Noņemt" style="width:34px;height:34px;padding:0">✕</button></div><div class="ecs"><select data-f class="fsel" aria-label="Kolonnas ${i + 1} saturs">${opts(c.f)}</select>${c.f === 'const' ? `<input data-c value="${esc(c.c)}" placeholder="Teksts katrā rindā" aria-label="Konstante">` : ''}</div></div>`).join('')
+      : '<div class="card" style="padding:14px;text-align:center;font-weight:700;color:var(--ink-3)">Nav kolonnu — ielādējiet veidni vai izvēlieties sagatavi</div>'; };
+  draw();
+  $('ecCols').oninput = (e) => { const r = e.target.closest('[data-i]'); if (!r) return; const c = E.cols[+r.dataset.i]; if (e.target.matches('[data-h]')) c.h = e.target.value; if (e.target.matches('[data-c]')) c.c = e.target.value; };
+  $('ecCols').onchange = (e) => { const r = e.target.closest('[data-i]'); if (r && e.target.matches('[data-f]')) { E.cols[+r.dataset.i].f = e.target.value; draw(); } };
+  $('ecCols').onclick = (e) => { const r = e.target.closest('[data-i]'); if (!r) return; const i = +r.dataset.i, b = e.target.closest('button'); if (!b) return;
+    if (b.hasAttribute('data-rm')) E.cols.splice(i, 1); else if (b.dataset.mv) { const j = i + +b.dataset.mv; if (j < 0 || j >= E.cols.length) return; [E.cols[i], E.cols[j]] = [E.cols[j], E.cols[i]]; } draw(); };
+  $('ecAdd').onclick = () => { E.cols.push({ h: '', f: '', c: '' }); draw(); };
+  s.querySelectorAll('[data-pre]').forEach(b => b.onclick = () => { const p = EXPPRE[b.dataset.pre].cfg; Object.assign(E, JSON.parse(JSON.stringify(p))); ['ecFmt', 'ecLv', 'ecDt', 'ecDec', 'ecSep'].forEach((id, i) => sel(id, [E.fmt, E.level, E.date, E.dec, E.sep][i])); $('ecLapa').value = E.lapa; $('ecHd').checked = E.head !== false; draw(); toast('Sagatave ielikta — pārbaudiet kolonnas'); });
+  $('ecF').onchange = async (e) => { const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try { let H = [], lapa = '';
+      if (/\.xlsx$/i.test(f.name)) { await exceljs(); const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await f.arrayBuffer()); const ws = wb.worksheets[0]; if (!ws) throw new Error('Failā nav lapu'); lapa = ws.name;
+        for (let r = 1; r <= Math.min(ws.rowCount, 30) && !H.length; r++) { const row = ws.getRow(r), v = []; for (let c = 1; c <= Math.max(row.cellCount, ws.columnCount); c++) { const x = row.getCell(c); v.push(String(x.text != null ? x.text : x.value || '').trim()); } if (v.filter(Boolean).length >= 2) { while (v.length && !v[v.length - 1]) v.pop(); H = v; } } }
+      else if (/\.(csv|txt)$/i.test(f.name)) { const t = (await f.text()).replace(/^﻿/, ''), l1 = t.split(/\r?\n/).find(x => x.trim()) || '', sp = ['\t', ';', ','].sort((a, b) => l1.split(b).length - l1.split(a).length)[0];
+        H = l1.split(sp).map(x => x.replace(/^"|"$/g, '').trim()); E.fmt = 'csv'; E.sep = sp === '\t' ? 'tab' : sp; sel('ecFmt', 'csv'); sel('ecSep', E.sep); }
+      else throw new Error('Vecais .xls nav atbalstīts — Excel saglabājiet kā .xlsx');
+      if (!H.length) throw new Error('Neatradu virsrakstu rindu');
+      E.cols = H.map(h => ({ h, f: expGuess(h), c: '' })); if (lapa) { E.lapa = lapa; $('ecLapa').value = lapa; } if (/\.xlsx$/i.test(f.name)) { E.fmt = 'xlsx'; sel('ecFmt', 'xlsx'); }
+      draw(); const n = E.cols.filter(c => c.f).length; toast(H.length + ' kolonnas · ' + n + ' atpazītas automātiski — pārbaudiet pārējās');
+    } catch (err) { toast(err.message || String(err), 'err'); } };
+  (A.K ? Promise.resolve(A.K) : api('clients').then(r => (A.K = r))).then(K => { const L = (K.clients || []).filter(c => c.aktivs !== 0);
+    $('ecKK').innerHTML = L.length ? L.map(c => `<div class="row2" style="gap:8px;align-items:center;margin:0 0 6px"><span style="font-weight:700">${esc(c.name)}${c.regnr ? `<small style="color:var(--ink-3);font-weight:600"> · ${esc(c.regnr)}</small>` : ''}</span><input data-kk="${esc(c.id)}" value="${esc((E.kk || {})[c.id] || '')}" placeholder="kods" aria-label="${esc(c.name)} kods" style="height:40px;border:0;border-radius:12px;background:var(--surface-2);padding:0 10px;font:inherit;font-weight:700"></div>`).join('') : '<p class="hint">Klientu nav</p>'; })
+    .catch(e => { $('ecKK').innerHTML = `<p>${esc(netMsg(e))}</p>`; });
+  $('ecSave').onclick = async (e) => { const b = e.target;
+    E.fmt = $('ecFmt').value; E.level = $('ecLv').value; E.date = $('ecDt').value; E.dec = $('ecDec').value; E.sep = $('ecSep').value; E.lapa = $('ecLapa').value.trim(); E.head = $('ecHd').checked; E.anul = $('ecAn').checked;
+    E.kodi = {}; E.konti = {}; s.querySelectorAll('[data-kod]').forEach(i => { if (i.value.trim()) E.kodi[i.dataset.kod] = i.value.trim(); }); s.querySelectorAll('[data-konts]').forEach(i => { if (i.value.trim()) E.konti[i.dataset.konts] = i.value.trim(); });
+    const kk = s.querySelectorAll('[data-kk]'); if (kk.length) { E.kk = {}; kk.forEach(i => { if (i.value.trim()) E.kk[i.dataset.kk] = i.value.trim(); }); }
+    if (!E.cols.length) return toast('Pievienojiet vismaz vienu kolonnu', 'err');
+    b.disabled = true; try { await api('invExpSave', { cfg: E }); toast('Formāts saglabāts'); expSheet(); } catch (err) { toast(netMsg(err), 'err'); } finally { b.disabled = false; } };
+}
 /* ---------- Rēķinu reģistrs (D1) un mēneša slēgšana (D2) ---------- */
 function drawInvoices() {
   if (!A.INV || A.INV.st !== (A.invSt || '')) { if (!A.INV) adminShell('<div class="skel"></div>', null); api('invoices', { st: A.invSt || '' }).then(r => { A.INV = Object.assign(r, { st: A.invSt || '' }); if (A.tab === 'invoices') drawInvoices(); }).catch(e => toast(netMsg(e), 'err')); if (!A.INV) return; }
   const R = A.INV, K = R.kopa || {}, stc = { 'izrakstīts': '#fdf0d5', 'daļēji': '#e2ddf2', 'apmaksāts': '#d6e8e1', 'anulēts': '#f1f4f2' };
   const lv = (d) => d ? d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4) : '';
   const s = adminShell(`<div class="stats3" style="margin:0 0 12px"><div class="sx c-izv"><b style="font-size:26px">${eur(K.neapmaksats || 0)}</b><small>neapmaksāts kopā</small></div><div class="sx" style="background:#fde4e1"><b style="font-size:26px">${eur(K.kave || 0)}</b><small>kavēti · ${K.kaveN || 0} rēķini</small></div></div>
-    <div class="afil" id="ivF"><select aria-label="Statuss"><option value="">Visi rēķini</option><option value="kave" ${A.invSt === 'kave' ? 'selected' : ''}>Kavēti</option>${['izrakstīts', 'daļēji', 'apmaksāts', 'anulēts'].map(x => `<option ${A.invSt === x ? 'selected' : ''}>${x}</option>`).join('')}</select><span class="n">${R.list.length} rēķini</span>${R.list.length ? '<button class="btn ghost" id="ivCsv" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">CSV grāmatvedībai</button>' : ''}</div>
+    <div class="afil" id="ivF"><select aria-label="Statuss"><option value="">Visi rēķini</option><option value="kave" ${A.invSt === 'kave' ? 'selected' : ''}>Kavēti</option>${['izrakstīts', 'daļēji', 'apmaksāts', 'anulēts'].map(x => `<option ${A.invSt === x ? 'selected' : ''}>${x}</option>`).join('')}</select><span class="n">${R.list.length} rēķini</span><button class="btn" id="ivExp" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">Eksports grāmatvedībai</button>${R.list.length ? '<button class="btn ghost" id="ivCsv" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">CSV grāmatvedībai</button>' : ''}</div>
     <div class="plist">${R.list.map(o => `<button class="prow" data-nr="${esc(o.nr)}"><div class="nm"><b>${esc(o.nr)} · ${esc(o.klients)}</b><div class="chips"><span class="chip" style="background:${stc[o.statuss] || '#f1f4f2'}">${esc(o.statuss)}</span>${o.kave ? `<span class="chip" style="background:#fde4e1;color:#b42318">kavē ${o.kave} d.</span>` : ''}<span class="chip">${eur(o.ar_pvn)}</span><span class="chip">par ${esc(o.ym)}</span><span class="chip">līdz ${esc(lv(o.termins))}</span></div></div>${CHEV}</button>`).join('') || empty()}</div>`, null);
+  $('ivExp').onclick = () => expSheet();
   s.querySelector('#ivF select').onchange = (e) => { A.invSt = e.target.value; A.INV = null; drawInvoices(); };
   if ($('ivCsv')) $('ivCsv').onclick = () => csvDl('rekini' + (A.invSt ? '-' + A.invSt : '') + '-' + new Date().toISOString().slice(0, 10) + '.csv', ['Nr.', 'Datums', 'Termiņš', 'Klients', 'Reģ. nr.', 'Summa bez PVN', 'PVN', 'Summa ar PVN', 'Statuss'],
     R.list.map(o => [o.nr, lv(o.datums), lv(o.termins), o.klients, o.regnr || '', +o.summa || 0, +o.pvn || 0, +o.ar_pvn || 0, o.statuss]));

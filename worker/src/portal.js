@@ -8,7 +8,7 @@ import * as mailbox from './mailbox.js';
 import * as qc from './qc.js';
 import * as inv from './inv.js';
 import { viewLink, viewTokens } from './view.js';
-import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo, invoiceIssue, invoices, invoiceSet, priceChange, priceIndex, ctUpload, ctGet } from './klienti.js';
+import { clientsData, saveClient, delClient, report, firma, saveFirma, invoiceNo, invoiceIssue, invoices, invoiceSet, expCfg, expCfgSave, expData, priceChange, priceIndex, ctUpload, ctGet } from './klienti.js';
 import { notify } from './webpush.js';
 import { audit, diff, auditList } from './audit.js';
 import { dlHoursMonth, persMonth } from './exports.js';
@@ -330,6 +330,9 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'invoiceIssue') { return pj({ ok: true, invoice: await invoiceIssue(env.DB, String(b.client || ''), String(b.ym || ''), me.name) }); }
     if (a === 'invoices') return pj(Object.assign({ ok: true }, await invoices(env.DB, { st: String(b.st || '') })));
     if (a === 'invoiceSet') return pj({ ok: true, invoice: await invoiceSet(env.DB, b, me.name) });
+    if (a === 'invExpCfg') return pj({ ok: true, cfg: await expCfg(env.DB) });
+    if (a === 'invExpSave') return pj({ ok: true, cfg: await expCfgSave(env.DB, b.cfg, me.name) });
+    if (a === 'invExport') return pj(Object.assign({ ok: true }, await expData(env.DB, { ym: String(b.ym || ''), no: String(b.no || ''), lidz: String(b.lidz || '') })));
     if (a === 'clientReport') return pj(Object.assign({ ok: true }, await report(env.DB, String(b.client || ''), String(b.ym || ''))));
     if (a === 'viewLink') return pj(Object.assign({ ok: true }, await viewLink(env.DB, String(b.client || ''), !!b.revoke)));
     if (a === 'viewTokens') return pj({ ok: true, tokens: await viewTokens(env.DB) });

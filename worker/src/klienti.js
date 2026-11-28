@@ -268,3 +268,34 @@ export async function invoiceSet(db, b, who) {
   await after();
   return invRow(await db.prepare('SELECT * FROM invoice WHERE nr = ?').bind(r.nr).first());
 }
+
+/* ---------- Eksports grāmatvedības programmai (Horizon u.c.): formātu iestata grāmatvedība pati (kv inv:exp) ----------
+ * cfg = { cols: [{ h: virsraksts, f: lauks | 'const', c: konstante }], fmt: 'xlsx'|'csv', sep, dec, date, level: 'rinda'|'rekins',
+ *         lapa, anul, kodi: { app: kods }, konti: { app: konts }, kk: { clientId: partnera kods } }. Failu veido pārlūks. */
+export const EXP_FIELDS = ['nr', 'datums', 'termins', 'periods', 'periods_no', 'periods_lidz', 'pamatojums', 'valuta', 'pvn_likme', 'summa', 'pvn', 'ar_pvn', 'statuss',
+  'klients', 'klienta_kods', 'regnr', 'adrese', 'epasts', 'liguma_nr', 'rinda_nr', 'pak_kods', 'pak_nos', 'konts', 'daudz', 'mervien', 'cena', 'reizes', 'r_summa', 'r_pvn', 'r_ar_pvn',
+  'musu_nos', 'musu_regnr', 'musu_pvnnr', 'musu_iban', 'const', ''];
+const sTxt = (v, n) => String(v == null ? '' : v).slice(0, n || 120);
+const sMap = (o, n) => { const r = {}; Object.keys(o && typeof o === 'object' ? o : {}).slice(0, 500).forEach(k => { const v = sTxt(o[k], n || 60).trim(); if (v) r[sTxt(k, 60)] = v; }); return r; };
+export async function expCfg(db) { const r = await db.prepare("SELECT v FROM kv WHERE k = 'inv:exp'").first(); return J(r && r.v); }
+export async function expCfgSave(db, b, who) {
+  b = b || {};
+  const cols = (Array.isArray(b.cols) ? b.cols : []).slice(0, 80).map(c => ({ h: sTxt(c && c.h, 80), f: EXP_FIELDS.indexOf(c && c.f) !== -1 ? c.f : '', c: sTxt(c && c.c, 120) }));
+  const o = { cols, fmt: b.fmt === 'csv' ? 'csv' : 'xlsx', sep: [';', ',', 'tab'].indexOf(b.sep) !== -1 ? b.sep : ';', dec: b.dec === '.' ? '.' : ',',
+    date: ['dd.mm.yyyy', 'yyyy-mm-dd', 'dd/mm/yyyy', 'excel'].indexOf(b.date) !== -1 ? b.date : 'dd.mm.yyyy', level: b.level === 'rekins' ? 'rekins' : 'rinda',
+    head: b.head === false ? false : true, lapa: sTxt(b.lapa, 31), anul: !!b.anul, kodi: sMap(b.kodi), konti: sMap(b.konti), kk: sMap(b.kk) };
+  if (who) await audit(db, who, 'Rēķini', 'Eksporta formāts grāmatvedībai', [['kolonnas', '', String(cols.length) + ' · ' + o.fmt]]);
+  await db.prepare("INSERT OR REPLACE INTO kv (k, v) VALUES ('inv:exp', ?)").bind(JSON.stringify(o)).run(); return o;
+}
+/** Rēķini eksportam: periods no–līdz (izrakstīšanas datums) vai mēnesis (par kuru), ar rindām un klienta rekvizītiem */
+export async function expData(db, f) {
+  f = f || {}; const ym = /^\d{4}-\d{2}$/.test(f.ym || '') ? f.ym : '', no = isoD(f.no), lidz = isoD(f.lidz);
+  if (!ym && !(no && lidz)) throw new Error('Norādiet mēnesi vai periodu');
+  const L = ym ? await all(db, 'SELECT * FROM invoice WHERE ym = ? ORDER BY nr', ym) : await all(db, 'SELECT * FROM invoice WHERE datums >= ? AND datums <= ? ORDER BY nr', no, lidz);
+  const C = {}; for (const c of await all(db, 'SELECT id, name, regnr, adrese, epasts, liguma_nr FROM clients')) C[c.id] = c;
+  const list = L.map(r => { const o = invRow(r), d = o.dati || {}, cl = Object.assign({}, d.client || {}, C[r.client] || {});
+    return { nr: o.nr, client: o.client, klients: o.klients, ym: o.ym, datums: o.datums, termins: o.termins, summa: o.summa, pvn: o.pvn, ar_pvn: o.ar_pvn, statuss: o.statuss,
+      cl: { name: cl.name || o.klients, regnr: cl.regnr || '', adrese: cl.adrese || '', epasts: cl.epasts || '', liguma_nr: cl.liguma_nr || '' },
+      sum: (d.sum || []).filter(x => x.summa).map(x => ({ app: x.app, name: x.name, unit: x.unit, reizes: x.reizes, daudz: x.daudz, cena: x.cena, summa: x.summa })) }; });
+  return { list, cfg: await expCfg(db), firma: await firma(db) };
+}
