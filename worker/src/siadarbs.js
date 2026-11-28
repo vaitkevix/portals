@@ -65,7 +65,7 @@ export async function siaMonth(db, company, ym) {
   if (!/^\d{4}-\d{2}$/.test(ym || '')) throw new Error('Nederīgs mēnesis');
   const R = await report(db, '', ym), is = own(company);
   // grafika lietotnēs SIA = brigāde (izpildītājs var būt arī «SIA · vārds»); report() rindā «kas» = izpildītājs/brigāde
-  const rows = R.rows.filter(r => r.app !== 'aizv' && r.app !== 'ligums' && is(r.kas)).map(r => ({ app: r.app, datums: r.datums, adrese: r.adrese, daudz: r.daudz, kas: r.kas, piez: r.piez || '', foto: String(r.foto || '').split(',').filter(Boolean).slice(0, 8) }));
+  const rows = R.rows.filter(r => r.app !== 'aizv' && r.app !== 'ligums' && is(r.kas)).map(r => ({ app: r.app, datums: r.datums, adrese: r.adrese, daudz: r.daudz, kas: r.kas, piez: r.piez || '', koef: r.koef || '', foto: String(r.foto || '').split(',').filter(Boolean).slice(0, 8) }));
   const sum = {}; rows.forEach(r => { const s = sum[r.app] = sum[r.app] || { app: r.app, reizes: 0, daudz: 0 }; s.reizes++; s.daudz = Math.round((s.daudz + (+r.daudz || 0)) * 100) / 100; });
   const ok = await db.prepare('SELECT v FROM kv WHERE k = ?').bind('siaOk:' + company + ':' + ym).first();
   let ap = null; try { ap = ok ? JSON.parse(ok.v) : null; } catch (e) {}

@@ -207,6 +207,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .f input[type=text],.f input[type=tel]{width:100%;height:46px;border-radius:var(--r-md,14px);border:1px solid var(--line-2);background:var(--surface-2);padding:0 14px;outline:none;font-weight:700}
 .f input:focus{border-color:var(--brand)}
 .row2{display:flex;gap:8px}
+.dkx,.dkx b,.dkx small{color:#17201c!important}
 .exc .row2>.f,.exc .row2>span{flex:1;min-width:0}.exc .f input{width:100%;box-sizing:border-box}
 .f input[type=month],.exc .f input:not([type=checkbox]):not([type=file]){width:100%;box-sizing:border-box;height:46px;border-radius:var(--r-md,14px);border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink);padding:0 14px;outline:none;font:inherit;font-weight:700;color-scheme:light dark}
 .exc select.fsel{width:100%;height:40px;border:0;border-radius:12px;background:var(--surface-2);padding:0 10px;font:inherit;font-weight:700;color:var(--ink)}
@@ -1068,7 +1069,7 @@ function drawPanel() {
   $('dBk').onclick = async (e) => { const b = e.target; b.disabled = true; b.textContent = 'Veido…'; try { await api('backupNow'); toast('Rezerves kopija izveidota'); A.D.stale = 1; drawPanel(); } catch (err) { toast(netMsg(err), 'err'); b.disabled = false; b.textContent = 'Izveidot tagad'; } };
 }
 /* ---------- Administrēšana: cilvēki un pilnvaras + pamatdati (viens saraksts visām lietotnēm) ---------- */
-const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['invoices', 'Rēķini'], ['close', 'Slēgšana'], ['companies', 'Uzņēmumi'], ['kreq', 'Klientu pieteikumi'], ['maja', 'Mājas lapas'], ['season', 'Sezona'], ['inv', 'Inventārs'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['mbox', 'E-pasta pieteikumi'], ['sms', 'SMS'], ['audit', 'Žurnāls'], ['review', 'Pārbaudīt']];
+const TABS = [['panel', 'Panelis'], ['people', 'Cilvēki'], ['objects', 'Objekti'], ['groups', 'Grupas'], ['clients', 'Klienti'], ['reports', 'Atskaites'], ['invoices', 'Rēķini'], ['sinv', 'Izpildītāju rēķini'], ['close', 'Slēgšana'], ['companies', 'Uzņēmumi'], ['kreq', 'Klientu pieteikumi'], ['maja', 'Mājas lapas'], ['season', 'Sezona'], ['inv', 'Inventārs'], ['lists', 'Saraksti'], ['mail', 'E-pasts'], ['mbox', 'E-pasta pieteikumi'], ['sms', 'SMS'], ['audit', 'Žurnāls'], ['review', 'Pārbaudīt']];
 /* Objekti pārcelti uz Mājas lietu (2026-11-24): cilne paslēpta, kods paliek (atgriezt — izņemt 'objects' no ADM_HIDE) */
 const ADM_HIDE = ['objects'];
 const LK = { types: 'Darbu veidi (Aizvietošana)', materiali: 'Materiāli (Kaisāmmateriāls)', bankas: 'Bankas', atv_veidi: 'Atvaļinājuma veidi', amati: 'Amati', tel_kodi: 'Tālruņa kodi' };
@@ -1082,7 +1083,7 @@ async function openAdmin(tab) {
   if (ADM_HIDE.indexOf(A.tab) !== -1) A.tab = 'people';
   if (tab && ADM_HIDE.indexOf(tab) !== -1) { closeSheet(); return openApp('ml'); }
   if (tab && tab !== A.tab) { A.tab = tab; A.q = ''; A.f = {}; }
-  A.KR = null; A.MJ = null; A.SZ = null; A.parv = null; A.INV = null; A.MB = null; A.rits = null;   // klientu pieteikumi un mājas lapas — svaigi katru reizi
+  A.KR = null; A.SINV = null; A.MJ = null; A.SZ = null; A.parv = null; A.INV = null; A.MB = null; A.rits = null;   // klientu pieteikumi un mājas lapas — svaigi katru reizi
   const s = sheet(`<div class="hd"><h3>Administrēšana</h3>${X}</div><div class="skel"></div>`);
   try { const [r, m] = await Promise.all([api('people'), api('master')]); S.people = r.people; S.roles = r.roles; A.M = m; drawAdmin(); }
   catch (e) { s.innerHTML = `<div class="hd"><h3>Administrēšana</h3>${X}</div><p>${esc(netMsg(e))}</p>`; }
@@ -1116,6 +1117,7 @@ function drawAdmin() {
   if (A.tab === 'mbox') return drawMbox();
   if (A.tab === 'inv') return drawInv();
   if (A.tab === 'invoices') return drawInvoices();
+  if (A.tab === 'sinv') return drawSinv();
   if (A.tab === 'close') return drawClose();
   if (A.tab === 'audit') return drawAudit();
   if (A.tab === 'kreq') return drawKreq();
@@ -1566,9 +1568,9 @@ th:first-child{border-radius:var(--r-xs,7px) 0 0 var(--r-xs,7px)}th:last-child{b
 .sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:40px}.sig div{border-top:1.5px solid #17201c;padding-top:6px;font-size:11px;color:#4a534f}
 .foot{display:flex;justify-content:space-between;border-top:1px solid #dfe5e2;margin-top:24px;padding-top:8px;font-size:9.5px;color:#6d7672}
 tr{break-inside:avoid}h2{break-after:avoid}@media print{body{padding:0}}`;
-const xdoc = (title, kind, accent, body, right) => `<!doctype html><html lang="lv"><head><meta charset="utf-8"><title>${esc(title)}</title><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet"><style>${XCSS}</style></head><body>
-  <div class="top">${XLOGO}<div class="br"><b>SELECTUM HOME</b><small>${esc(kind)}</small></div><div class="r">${right || ''}</div></div>${body}
-  <div class="foot"><span>SELECTUM HOME · vaitkevix.cloud/sh</span><span>© VAITKEVIX, SIA</span></div><script>setTimeout(()=>print(),900)<\/script></body></html>`;
+const xdoc = (title, kind, accent, body, right, brand) => `<!doctype html><html lang="lv"><head><meta charset="utf-8"><title>${esc(title)}</title><link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet"><style>${XCSS}</style></head><body>
+  <div class="top">${XLOGO}<div class="br"><b>${esc(brand || 'SELECTUM HOME')}</b><small>${esc(kind)}</small></div><div class="r">${right || ''}</div></div>${body}
+  <div class="foot"><span>${esc(brand || 'SELECTUM HOME')} · vaitkevix.cloud/sh</span><span>© VAITKEVIX, SIA</span></div><script>setTimeout(()=>print(),900)<\/script></body></html>`;
 function xopen(html) { const w = window.open('', '_blank'); if (!w) return toast('Atļaujiet uznirstošos logus', 'err'); w.document.write(html); w.document.close(); }
 function exceljs() { return window.ExcelJS ? Promise.resolve() : new Promise((res, rej) => { const j = document.createElement('script'); j.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js'; j.onload = res; j.onerror = () => rej(new Error('Excel modulis neielādējās')); document.head.appendChild(j); }); }
 /* Stilizēts Excel: virsraksta josla pasteļkrāsā, tumša galvene, € formāts, kopsumma, piesprausta galvene, autofiltrs */
@@ -1643,10 +1645,92 @@ async function siaMonthSheet(company, ym, back) {
   const list = rows.length ? `<div class="plist">${rows.map(r => `<div class="prow" style="cursor:default"><div class="nm"><b>${esc(r.adrese)}</b><div class="chips"><span class="chip a">${esc(dd(r.datums))}</span><span class="chip">${gl(r.app, 13)} ${esc((SU[r.app] || [r.app])[0])}</span><span class="chip">${String(r.daudz).replace('.', ',')} ${esc((SU[r.app] || ['', ''])[1])}</span>${r.kas !== R.company ? `<span class="chip">${esc(r.kas.replace(R.company + ' · ', ''))}</span>` : ''}</div>
       ${r.piez ? `<div class="hint" style="margin-top:4px">${esc(r.piez)}</div>` : ''}${r.foto.length ? `<div class="ph" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">${r.foto.map(f => `<a href="${IMGU + encodeURIComponent(f)}&sz=w1600" target="_blank" rel="noopener"><img loading="lazy" src="${IMGU + encodeURIComponent(f)}&sz=w300" alt="Bilde" style="width:72px;height:56px;object-fit:cover;border-radius:8px"></a>`).join('')}</div>` : ''}</div></div>`).join('')}</div>`
     : '<div class="card" style="padding:18px;text-align:center;font-weight:700;color:var(--ink-3)">Šajā mēnesī izpildītu darbu nav</div>';
-  $('smOut').innerHTML = st + sum + `<div class="row2" style="gap:8px;margin:0 0 12px">${rows.length ? '<button class="btn ghost" id="smCsv" style="height:44px">Lejupielādēt CSV</button>' : ''}${adm ? `<button class="btn${ok ? ' ghost' : ''}" id="smOk" style="height:44px">${ok ? 'Atcelt saskaņojumu' : 'Saskaņot mēnesi'}</button>` : ''}</div>` + list;
+  $('smOut').innerHTML = st + sum + `<div id="smInv"></div>` + `<div class="row2" style="gap:8px;margin:0 0 12px">${rows.length ? '<button class="btn ghost" id="smCsv" style="height:44px">Lejupielādēt CSV</button>' : ''}${adm ? `<button class="btn${ok ? ' ghost' : ''}" id="smOk" style="height:44px">${ok ? 'Atcelt saskaņojumu' : 'Saskaņot mēnesi'}</button>` : ''}</div>` + list;
   if ($('smCsv')) $('smCsv').onclick = () => csvDl(R.company.replace(/[^\wĀ-ž-]+/g, '_') + '_' + ym + '.csv', ['Datums', 'Pakalpojums', 'Adrese', 'Daudzums', 'Vienība', 'Izpildītājs', 'Piezīme', 'Bildes'],
     rows.map(r => [r.datums, (SU[r.app] || [r.app])[0], r.adrese, +r.daudz || 0, (SU[r.app] || ['', ''])[1], r.kas, r.piez, r.foto.map(f => IMGU + f).join(' ')]));
+  if (adm || (S.me && S.me.siaAdmin)) sinvSection($('smInv'), R.company, ym, adm);
   if ($('smOk')) $('smOk').onclick = async () => { if (ok && !confirm('Atcelt saskaņojumu ' + ymName(ym) + '?')) return; try { await api('siaApprove', { company, ym, undo: !!ok }); toast(ok ? 'Saskaņojums atcelts' : 'Mēnesis saskaņots'); siaMonthSheet(company, ym, back); } catch (e) { toast(netMsg(e), 'err'); } };
+}
+/* ---------- Izpildītāju rēķini: izpildītāja SIA → katra pārvaldīšanas SIA (Mājas lieta «Pārvaldnieks») ar aktu ---------- */
+const SINV_APPS = [['izv', 'Izvešana', 'm³'], ['kais', 'Kaisāmmateriāls', 'maiss'], ['pl', 'Zāles pļaušana', 'm²'], ['logi', 'Logu mazgāšana', 'logs'], ['darz', 'Dārzniecība', 'cilvēkst.'], ['stav', 'Pazemes stāvvietas', 'm²'], ['sniegs', 'Sniega tīrīšana', 'h']];
+const REQF = [['nosaukums', 'Nosaukums'], ['regnr', 'Reģ. nr.'], ['pvnnr', 'PVN nr.'], ['adrese', 'Juridiskā adrese'], ['banka', 'Banka'], ['iban', 'Konts (IBAN)'], ['swift', 'SWIFT'], ['epasts', 'E-pasts'], ['talrunis', 'Tālrunis'], ['apmaksa_dienas', 'Apmaksas termiņš, dienas'], ['prefikss', 'Rēķina numura prefikss']];
+/** Sadaļa mēneša skatā: rēķini katram pārvaldniekam. adm = portāla admins (company norādīts) */
+async function sinvSection(el, company, ym, adm) {
+  el.innerHTML = '<div class="skel"></div>';
+  let M; try { M = await api(adm ? 'sinvMonth' : 'siaInvMonth', adm ? { company, ym } : { ym }); } catch (e) { el.innerHTML = `<p class="hint">${esc(netMsg(e))}</p>`; return; }
+  const warn = [];
+  if (!M.saskanots) warn.push('Rēķinus var izrakstīt, kad mēnesis ir saskaņots.');
+  if (M.bezCenas.length) warn.push('Nav ievadītas cenas: ' + M.bezCenas.map(a => (SINV_APPS.find(x => x[0] === a) || [a, a])[1]).join(', ') + (adm ? ' — spiediet «Cenas».' : ' — cenas ievada pārvaldnieks (portāla administrators).'));
+  if (M.nav.length) warn.push(M.nav.length + (M.nav.length % 10 === 1 && M.nav.length % 100 !== 11 ? ' darbam' : ' darbiem') + ' objektam nav norādīts pārvaldnieks (Mājas lieta → Objekts → Pārvaldnieks): ' + [...new Set(M.nav.map(r => r.adrese))].slice(0, 6).join('; ') + (M.nav.length > 6 ? '…' : ''));
+  el.innerHTML = `<div class="dsec" style="margin:0 0 12px"><h4>Rēķini pārvaldniekiem · ${esc(ymName(ym))}</h4>
+    ${warn.map(w => `<div class="card" style="padding:10px 12px;margin:0 0 8px;background:#fdf0d5;color:#17201c;font-weight:700;font-size:13.5px">${esc(w)}</div>`).join('')}
+    ${M.groups.length ? `<div class="plist">${M.groups.map(g => `<div class="prow" style="cursor:default"><div class="nm"><b>${esc(g.parv)}</b><div class="chips">${g.sum.map(x => `<span class="chip">${esc(x.name)} · ${num(x.daudz)} ${esc(x.unit)}</span>`).join('')}<span class="chip a">${eur(g.total)} bez PVN</span>${g.inv ? `<span class="chip dkx" style="background:#d6e8e1">${esc(g.inv.nr)} · ${esc(g.inv.statuss)}</span>` : ''}</div></div>
+      ${g.inv ? `<button class="btn ghost" data-sio="${esc(g.inv.nr)}" style="width:auto;height:40px;padding:0 14px">Atvērt</button>` : `<button class="btn" data-sii="${esc(g.parv)}" style="width:auto;height:40px;padding:0 14px" ${M.saskanots && !M.bezCenas.length && g.total > 0 ? '' : 'disabled'}>Izrakstīt</button>`}</div>`).join('')}</div>` : '<p class="hint">Šajā mēnesī darbu nav.</p>'}
+    <div class="row2" style="gap:8px;margin-top:10px;flex-wrap:wrap">${adm ? '<button class="btn ghost" id="siCen" style="height:42px">Cenas</button>' : ''}<button class="btn ghost" id="siReq" style="height:42px">${adm ? 'Izpildītāja rekvizīti' : 'Mani rekvizīti'}</button></div></div>`;
+  const again = () => sinvSection(el, company, ym, adm);
+  el.querySelectorAll('[data-sii]').forEach(b => b.onclick = async () => { if (!confirm('Izrakstīt rēķinu ' + b.dataset.sii + ' par ' + ymName(ym) + '? Pēc izrakstīšanas to mainīt nevar (var anulēt).')) return; b.disabled = true;
+    const w = window.open('', '_blank'); try { const r = await api(adm ? 'sinvIssue' : 'siaInvIssue', { company, ym, parv: b.dataset.sii }); toast('Izrakstīts ' + r.invoice.nr); printSiaInv(r.invoice, w); again(); } catch (e) { if (w) w.close(); toast(netMsg(e), 'err'); b.disabled = false; } });
+  el.querySelectorAll('[data-sio]').forEach(b => b.onclick = async () => { const w = window.open('', '_blank'); try { const r = await api(adm ? 'sinvGet' : 'siaInvGet', { nr: b.dataset.sio }); printSiaInv(r.invoice, w); } catch (e) { if (w) w.close(); toast(netMsg(e), 'err'); } });
+  if ($('siCen')) $('siCen').onclick = () => sinvPrices(company, again);
+  $('siReq').onclick = () => reqSheet(company, adm, again);
+}
+async function sinvPrices(company, done) {
+  let P; try { P = (await api('sinvPrices', { company })).cenas || {}; } catch (e) { return toast(netMsg(e), 'err'); }
+  const s = sheet(`<div class="hd"><h3>Cenas · ${esc(company)}</h3>${X}</div><p class="copy" style="text-align:left;margin:0 0 10px">Izpildītāja cena par vienību bez PVN — pēc tās veidojas rēķins pārvaldniekiem. Izvešanai pieskaitās koeficienti (piem. +10 % smagi maisi). Tukšs — šo darbu neapmaksā.</p>
+    <div class="exc">${SINV_APPS.map(([k, n, u]) => `<div class="row2" style="gap:8px;align-items:center;margin:0 0 6px"><span style="font-weight:700">${esc(n)}<small style="color:var(--ink-3)"> · €/${esc(u)}</small></span><div class="f" style="margin:0"><input type="text" inputmode="decimal" data-cn="${k}" value="${P[k] != null ? String(P[k]).replace('.', ',') : ''}" placeholder="0,00" aria-label="${esc(n)} cena"></div></div>`).join('')}</div>
+    <div class="acts"><button class="btn" id="cnS" type="button">Saglabāt</button></div>`);
+  $('cnS').onclick = async (e) => { const o = {}; s.querySelectorAll('[data-cn]').forEach(i => o[i.dataset.cn] = i.value.trim()); e.target.disabled = true;
+    try { await api('sinvPricesSave', { company, cenas: o }); toast('Cenas saglabātas'); sheet(''); done && done(); } catch (err) { toast(netMsg(err), 'err'); e.target.disabled = false; } };
+}
+async function reqSheet(name, adm, done) {
+  let R; try { R = (await api(adm ? 'reqGet' : 'siaReq', { name })).req || {}; } catch (e) { return toast(netMsg(e), 'err'); }
+  const s = sheet(`<div class="hd"><h3>Rekvizīti · ${esc(name)}</h3>${X}</div><p class="copy" style="text-align:left;margin:0 0 10px">Parādās rēķinos un aktos.</p>
+    <div class="exc">${REQF.map(([k, l]) => fld('rq_' + k, l, R[k] || '', k === 'prefikss' ? 'piem. RS' : '')).join('')}
+    <label style="display:flex;gap:8px;align-items:center;font-weight:700;margin:8px 0"><input type="checkbox" id="rq_bezpvn" ${R.bezpvn ? 'checked' : ''}> Nav PVN maksātājs (rēķins bez PVN)</label></div>
+    <div class="acts"><button class="btn" id="rqS" type="button">Saglabāt</button></div>`);
+  $('rqS').onclick = async (e) => { const o = {}; REQF.forEach(([k]) => o[k] = $('rq_' + k).value.trim()); o.bezpvn = $('rq_bezpvn').checked; e.target.disabled = true;
+    try { await api(adm ? 'reqSave' : 'siaReqSave', { name, req: o }); toast('Saglabāts'); sheet(''); done && done(); } catch (err) { toast(netMsg(err), 'err'); e.target.disabled = false; } };
+}
+function printSiaInv(I, w) {
+  w = w || window.open('', '_blank'); if (!w) return toast('Atļaujiet uznirstošos logus', 'err');
+  const D = I.dati || {}, F = D.from || {}, T = D.to || {}, [y, m] = I.ym.slice(0, 7).split('-').map(Number), mon = new Date(y, m - 1, 1).toLocaleDateString('lv-LV', { month: 'long', year: 'numeric' });
+  const lv = (x) => x ? x.slice(8, 10) + '.' + x.slice(5, 7) + '.' + x.slice(0, 4) : '';
+  const rq = (o) => [['Reģ. nr.', 'regnr'], ['PVN nr.', 'pvnnr'], ['Adrese', 'adrese'], ['Banka', 'banka'], ['Konts', 'iban'], ['SWIFT', 'swift'], ['E-pasts', 'epasts'], ['Tālr.', 'talrunis']].filter(r => o[r[1]]).map(r => `${r[0]}: ${esc(o[r[1]])}`).join('<br>');
+  const body = `<div class="band" style="background:#fdf0d5"><h1>Rēķins Nr. ${esc(I.nr)}${I.statuss === 'anulēts' ? ' · ANULĒTS' : ''}</h1><p>Datums ${esc(lv(I.datums))} · apmaksāt līdz <b>${esc(lv(I.termins))}</b> · par ${esc(mon)}</p></div>
+    <div class="two"><div class="card"><div class="l">Piegādātājs (izpildītājs)</div><b>${esc(F.nosaukums || I.company)}</b><br>${rq(F)}</div><div class="card"><div class="l">Saņēmējs (pārvaldnieks)</div><b>${esc(T.nosaukums || I.parv)}</b><br>${rq(T)}</div></div>
+    <h2>Pakalpojumi</h2><table><tr><th>Nr.</th><th>Pakalpojums (${esc(mon)})</th><th class="n">Daudzums</th><th class="n">Cena</th><th class="n">Summa</th></tr>
+    ${(D.sum || []).map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.name)} · ${x.reizes} reizes</td><td class="n">${num(x.daudz)} ${esc(x.unit)}</td><td class="n">${eur(x.cena)}</td><td class="n">${eur(x.summa)}</td></tr>`).join('')}
+    <tr class="tot"><td colspan="4" class="n">Kopā bez PVN</td><td class="n">${eur(I.summa)}</td></tr><tr class="tot"><td colspan="4" class="n">PVN ${D.likme != null ? D.likme : 21}%</td><td class="n">${eur(I.pvn)}</td></tr><tr class="tot big"><td colspan="4" class="n">Apmaksai</td><td class="n">${eur(I.ar_pvn)}</td></tr></table>
+    <p class="m">Pamatojums: pieņemšanas–nodošanas akts par ${esc(mon)} (pielikumā). Rēķins sagatavots elektroniski un derīgs bez paraksta.</p>
+    <h2 style="page-break-before:always">Pieņemšanas–nodošanas akts · ${esc(mon)}</h2><p class="m">${esc(F.nosaukums || I.company)} → ${esc(T.nosaukums || I.parv)} · rēķins Nr. ${esc(I.nr)}</p>
+    <table><tr><th>Nr.</th><th>Datums</th><th>Adrese</th><th>Darbs</th><th class="n">Daudzums</th><th class="n">Summa</th></tr>
+    ${(D.rows || []).map((r, i) => `<tr><td>${i + 1}</td><td>${esc(lv(r.datums))}</td><td>${esc(r.adrese)}</td><td>${esc((SINV_APPS.find(x => x[0] === r.app) || [r.app, r.app])[1])}${r.koef ? ' · ' + esc(r.koef) : ''}${r.foto && r.foto.length ? ` · <a href="${IMGU + encodeURIComponent(r.foto[0])}&sz=w1600">bilde</a>` : ''}</td><td class="n">${num(r.daudz)}</td><td class="n">${eur(r.summa)}</td></tr>`).join('')}</table>
+    <div class="two" style="margin-top:28px"><div class="card"><div class="l">Nodeva</div>${esc(F.nosaukums || I.company)}<br><br>____________________</div><div class="card"><div class="l">Pieņēma</div>${esc(T.nosaukums || I.parv)}<br><br>____________________</div></div>`;
+  w.document.open(); w.document.write(xdoc('Rēķins ' + I.nr + ' · ' + I.parv, 'Rēķins un akts', '#fdf0d5', body, 'Nr. ' + esc(I.nr), F.nosaukums || I.company)); w.document.close();
+}
+/* Admins: izpildītāju rēķinu reģistrs (saņemtie) */
+function drawSinv() {
+  if (!A.SINV || A.SINV.f !== JSON.stringify(A.sinvF || {})) { if (!A.SINV) adminShell('<div class="skel"></div>', null);
+    api('sinvList', A.sinvF || {}).then(r => { A.SINV = Object.assign(r, { f: JSON.stringify(A.sinvF || {}) }); if (A.tab === 'sinv') drawSinv(); }).catch(e => toast(netMsg(e), 'err')); if (!A.SINV) return; }
+  const R = A.SINV, F = A.sinvF || {}, stc = { 'izrakstīts': '#fdf0d5', 'apmaksāts': '#d6e8e1', 'anulēts': '#f1f4f2' }, lv = (d) => d ? d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4) : '';
+  const open = R.list.filter(o => o.statuss === 'izrakstīts'), sum = open.reduce((a, o) => a + o.ar_pvn, 0), kave = open.filter(o => o.kave > 0);
+  const s = adminShell(`<p class="copy" style="text-align:left;margin:0 0 10px">Rēķini, ko darbu izpildītāji (SIA) izraksta pārvaldīšanas uzņēmumiem par mēnesi — katram pārvaldniekam atsevišķi, ar aktu. Izraksta izpildītājs savā «Mans mēnesis» pēc saskaņošanas (vai administrators: Uzņēmumi → izpildītājs → mēnesis).</p>
+    <div class="stats3" style="margin:0 0 12px"><div class="sx dkx" style="background:#fdf0d5"><b style="font-size:26px">${eur(sum)}</b><small>neapmaksāts · ${open.length}</small></div><div class="sx dkx" style="background:#fde4e1"><b style="font-size:26px">${kave.length}</b><small>kavēti</small></div></div>
+    <div class="afil" id="siF"><select id="siP" aria-label="Pārvaldnieks"><option value="">Visi pārvaldnieki</option>${(R.parv || []).map(p => `<option ${F.parv === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
+      <button class="btn ghost" id="siRq" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">Pārvaldnieka rekvizīti</button><span class="n">${R.list.length} rēķini</span></div>
+    <div class="plist">${R.list.map(o => `<button class="prow" data-snr="${esc(o.nr)}"><div class="nm"><b>${esc(o.nr)} · ${esc(o.company)} → ${esc(o.parv)}</b><div class="chips"><span class="chip dkx" style="background:${stc[o.statuss] || '#f1f4f2'}">${esc(o.statuss)}</span>${o.kave ? `<span class="chip" style="background:#fde4e1;color:#b42318">kavē ${o.kave} d.</span>` : ''}<span class="chip">${eur(o.ar_pvn)}</span><span class="chip">par ${esc(o.ym.slice(0, 7))}</span><span class="chip">līdz ${esc(lv(o.termins))}</span></div></div>${CHEV}</button>`).join('') || empty()}</div>`, null);
+  $('siP').onchange = (e) => { A.sinvF = Object.assign({}, F, { parv: e.target.value }); drawSinv(); };
+  $('siRq').onclick = () => { const p = $('siP').value; if (!p) return toast('Vispirms izvēlieties pārvaldnieku', 'err'); reqSheet(p, true, () => drawAdmin()); };
+  s.querySelector('.plist').onclick = (e) => { const r = e.target.closest('[data-snr]'); if (!r) return; const o = R.list.find(x => x.nr === r.dataset.snr); if (o) editSinv(o); };
+}
+function editSinv(o) {
+  subSheet('Rēķins ' + o.nr, `<p class="copy" style="text-align:left;margin:0 0 10px">${esc(o.company)} → ${esc(o.parv)} · par ${esc(o.ym.slice(0, 7))} · ${eur(o.ar_pvn)} ar PVN</p>
+    <div class="f"><label for="siS">Statuss</label><select id="siS" class="fsel">${['izrakstīts', 'apmaksāts', 'anulēts'].map(x => `<option ${o.statuss === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+    ${fld('siD', 'Apmaksāts (datums)', o.apmaksats || '', 'GGGG-MM-DD')}${fld('siPz', 'Piezīme', o.piezime || '', '')}<p class="hint">Anulētā vietā izpildītājs var izrakstīt jaunu rēķinu.</p>
+    <button class="btn ghost" id="siPr" type="button" style="margin-top:8px">Atvērt rēķinu un aktu (drukāt / PDF)</button>`,
+    () => { if ($('siS').value === 'anulēts' && o.statuss !== 'anulēts' && !confirm('Anulēt rēķinu ' + o.nr + '?')) return;
+      api('sinvSet', { nr: o.nr, statuss: $('siS').value, apmaksats: $('siD').value.trim(), piezime: $('siPz').value }).then(() => { toast('Saglabāts'); A.SINV = null; sheet(''); drawAdmin(); }).catch(e => toast(netMsg(e), 'err')); }, null);
+  $('siPr').onclick = async () => { const w = window.open('', '_blank'); try { printSiaInv((await api('sinvGet', { nr: o.nr })).invoice, w); } catch (e) { if (w) w.close(); toast(netMsg(e), 'err'); } };
 }
 async function siaPeopleSheet() {
   const s = sheet(`<div class="hd"><h3>Mani darbinieki</h3>${X}</div><p class="copy" style="text-align:left;margin:0 0 10px">Katrs darbinieks ienāk portālā ar savu PIN un darbojas uzņēmuma vārdā — darbos būs redzams «${esc(S.me.name)} · vārds». Atsaucot darbinieku, viņa ieeja beidzas uzreiz. Uzņēmuma paroli darbiniekiem nedodiet.</p>
@@ -1853,9 +1937,9 @@ function drawInvoices() {
   if (!A.INV || A.INV.st !== (A.invSt || '')) { if (!A.INV) adminShell('<div class="skel"></div>', null); api('invoices', { st: A.invSt || '' }).then(r => { A.INV = Object.assign(r, { st: A.invSt || '' }); if (A.tab === 'invoices') drawInvoices(); }).catch(e => toast(netMsg(e), 'err')); if (!A.INV) return; }
   const R = A.INV, K = R.kopa || {}, stc = { 'izrakstīts': '#fdf0d5', 'daļēji': '#e2ddf2', 'apmaksāts': '#d6e8e1', 'anulēts': '#f1f4f2' };
   const lv = (d) => d ? d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4) : '';
-  const s = adminShell(`<div class="stats3" style="margin:0 0 12px"><div class="sx c-izv"><b style="font-size:26px">${eur(K.neapmaksats || 0)}</b><small>neapmaksāts kopā</small></div><div class="sx" style="background:#fde4e1"><b style="font-size:26px">${eur(K.kave || 0)}</b><small>kavēti · ${K.kaveN || 0} rēķini</small></div></div>
+  const s = adminShell(`<div class="stats3" style="margin:0 0 12px"><div class="sx dkx" style="background:#fdf0d5"><b style="font-size:26px">${eur(K.neapmaksats || 0)}</b><small>neapmaksāts kopā</small></div><div class="sx dkx" style="background:#fde4e1"><b style="font-size:26px">${eur(K.kave || 0)}</b><small>kavēti · ${K.kaveN || 0} rēķini</small></div></div>
     <div class="afil" id="ivF"><select aria-label="Statuss"><option value="">Visi rēķini</option><option value="kave" ${A.invSt === 'kave' ? 'selected' : ''}>Kavēti</option>${['izrakstīts', 'daļēji', 'apmaksāts', 'anulēts'].map(x => `<option ${A.invSt === x ? 'selected' : ''}>${x}</option>`).join('')}</select><span class="n">${R.list.length} rēķini</span><button class="btn" id="ivExp" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">Eksports grāmatvedībai</button>${R.list.length ? '<button class="btn ghost" id="ivCsv" style="width:auto;height:40px;padding:0 14px;font-size:13.5px">CSV grāmatvedībai</button>' : ''}</div>
-    <div class="plist">${R.list.map(o => `<button class="prow" data-nr="${esc(o.nr)}"><div class="nm"><b>${esc(o.nr)} · ${esc(o.klients)}</b><div class="chips"><span class="chip" style="background:${stc[o.statuss] || '#f1f4f2'}">${esc(o.statuss)}</span>${o.kave ? `<span class="chip" style="background:#fde4e1;color:#b42318">kavē ${o.kave} d.</span>` : ''}<span class="chip">${eur(o.ar_pvn)}</span><span class="chip">par ${esc(o.ym)}</span><span class="chip">līdz ${esc(lv(o.termins))}</span></div></div>${CHEV}</button>`).join('') || empty()}</div>`, null);
+    <div class="plist">${R.list.map(o => `<button class="prow" data-nr="${esc(o.nr)}"><div class="nm"><b>${esc(o.nr)} · ${esc(o.klients)}</b><div class="chips"><span class="chip dkx" style="background:${stc[o.statuss] || '#f1f4f2'}">${esc(o.statuss)}</span>${o.kave ? `<span class="chip" style="background:#fde4e1;color:#b42318">kavē ${o.kave} d.</span>` : ''}<span class="chip">${eur(o.ar_pvn)}</span><span class="chip">par ${esc(o.ym)}</span><span class="chip">līdz ${esc(lv(o.termins))}</span></div></div>${CHEV}</button>`).join('') || empty()}</div>`, null);
   $('ivExp').onclick = () => expSheet();
   s.querySelector('#ivF select').onchange = (e) => { A.invSt = e.target.value; A.INV = null; drawInvoices(); };
   if ($('ivCsv')) $('ivCsv').onclick = () => csvDl('rekini' + (A.invSt ? '-' + A.invSt : '') + '-' + new Date().toISOString().slice(0, 10) + '.csv', ['Nr.', 'Datums', 'Termiņš', 'Klients', 'Reģ. nr.', 'Summa bez PVN', 'PVN', 'Summa ar PVN', 'Statuss'],

@@ -160,9 +160,9 @@ export async function report(db, clientId, ym) {
   for (const v of await all(db, "SELECT id, datums, adrese, anorm, izpilditajs, brigade, sakums, laiks, foto, izpilde FROM sniegs_visit WHERE statuss = 'done' AND datums >= ? AND datums <= ?", d0, d1))
     if (inC(v.anorm, v.adrese) && !held('sniegs', v)) { const iz = J(v.izpilde); rows.push({ vid: v.id, app: 'sniegs', datums: v.datums, adrese: v.adrese, daudz: r2(mins(v.sakums, v.laiks) / 60), kas: v.brigade || v.izpilditajs, piez: [iz.tehnika, iz.kaisits && iz.kaisits !== 'Nav' ? iz.kaisits + ' ' + (iz.kg || 0) + ' kg' : '', iz.kravas ? iz.kravas + ' kravas' : ''].filter(Boolean).join(', '), foto: v.foto }); }
   // Izvešana — izvestie m³ (pēc izpildes datuma)
-  for (const t of await all(db, "SELECT adrese, m3, sia, izpildits, izv_kom, maisi, foto_pec FROM izv_task WHERE statuss = 'Izpildīts'")) {
+  for (const t of await all(db, "SELECT adrese, m3, sia, izpildits, izv_kom, maisi, foto_pec, koef FROM izv_task WHERE statuss = 'Izpildīts'")) {
     const d = dmyIso(t.izpildits); if (!d || d < d0 || d > d1) continue;
-    if (inC(norm(t.adrese), t.adrese)) rows.push({ pub: t.maisi || '', app: 'izv', datums: d, adrese: t.adrese, daudz: r2(num(t.m3)), kas: t.sia, piez: [t.maisi, t.izv_kom].filter(Boolean).join(' · '), foto: fid(t.foto_pec) });
+    if (inC(norm(t.adrese), t.adrese)) rows.push({ pub: t.maisi || '', app: 'izv', datums: d, adrese: t.adrese, daudz: r2(num(t.m3)), kas: t.sia, piez: [t.maisi, t.izv_kom].filter(Boolean).join(' · '), foto: fid(t.foto_pec), koef: t.koef || '' });
   }
   // Kaisāmmateriāls — piegādātie maisi
   for (const t of await all(db, "SELECT adrese, materials, piegadati, kurjers, piegadats, kurj_kom, foto_pec FROM kais_task WHERE statuss = 'Piegādāts'")) {

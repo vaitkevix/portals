@@ -14,6 +14,7 @@ import { audit, diff, auditList } from './audit.js';
 import { dlHoursMonth, persMonth } from './exports.js';
 import { profit, rentCfgSave } from './profit.js';
 import { siaMonth, siaApprove, siaApprovals } from './siadarbs.js';
+import * as sinv from './siarekini.js';
 import { clientReqs, clientReqSet, setViewPin } from './view.js';
 import { majaAdmin } from './maja.js';
 import { week, move as weekMove } from './week.js';
@@ -246,6 +247,16 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'logout') { await env.DB.prepare('DELETE FROM kv WHERE k = ?').bind('sess:' + await h(b.t)).run(); return pj({ ok: true }); }
     /* SIA: «Mans mēnesis» (E2) un savi darbinieki (E4) */
     if (a === 'siaMonth') { if (!me.company) throw new Error('Tikai darbu izpildītājam (SIA)'); return pj(Object.assign({ ok: true }, await siaMonth(env.DB, me.name, String(b.ym || '')))); }
+    if (/^siaInv|^siaReq/.test(a) && me.company) {   // izpildītāja rēķini pārvaldniekiem (tikai uzņēmuma administrators — ienācis ar SIA paroli)
+      if (me.worker) throw new Error('Rēķinus izraksta uzņēmuma administrators (ienācis ar SIA paroli)');
+      const ym = String(b.ym || '');
+      if (a === 'siaInvMonth') return pj(Object.assign({ ok: true }, await sinv.siaInvMonth(env.DB, me.name, ym), { req: await sinv.req(env.DB, me.name) }));
+      if (a === 'siaInvIssue') return pj({ ok: true, invoice: await sinv.siaInvIssue(env.DB, me.name, ym, b.parv, me.who || me.name) });
+      if (a === 'siaInvGet') return pj({ ok: true, invoice: await sinv.siaInvGet(env.DB, b.nr, me.name) });
+      if (a === 'siaInvList') return pj(Object.assign({ ok: true }, await sinv.siaInvList(env.DB, { company: me.name })));
+      if (a === 'siaReq') return pj({ ok: true, req: await sinv.req(env.DB, me.name) });
+      if (a === 'siaReqSave') return pj({ ok: true, req: await sinv.reqSave(env.DB, me.name, b.req, me.who || me.name) });
+    }
     if (/^siaPeople/.test(a)) {
       if (!me.company || me.worker) throw new Error('Darbiniekus pārvalda uzņēmuma administrators (ienācis ar SIA paroli)');
       if (a === 'siaPeopleAdd') await workerAdd(env.DB, me, b);
@@ -270,6 +281,15 @@ export async function portal(request, env, ctx, hooks) {
     if (a === 'siaApprove') { await siaApprove(env.DB, String(b.company || ''), String(b.ym || ''), me.name, !!b.undo); await audit(env.DB, me.name, 'SIA mēnesis', String(b.company || '') + ' · ' + String(b.ym || ''), ['statuss', b.undo ? 'saskaņots' : '', b.undo ? 'atcelts' : 'saskaņots']);
       return pj(Object.assign({ ok: true }, await siaMonth(env.DB, String(b.company || ''), String(b.ym || '')))); }
     if (a === 'siaApprovals') return pj({ ok: true, map: await siaApprovals(env.DB) });
+    if (a === 'sinvMonth') return pj(Object.assign({ ok: true }, await sinv.siaInvMonth(env.DB, String(b.company || ''), String(b.ym || ''))));
+    if (a === 'sinvIssue') return pj({ ok: true, invoice: await sinv.siaInvIssue(env.DB, String(b.company || ''), String(b.ym || ''), b.parv, me.name) });
+    if (a === 'sinvList') return pj(Object.assign({ ok: true }, await sinv.siaInvList(env.DB, { company: String(b.company || ''), parv: String(b.parv || '') }), { parv: await sinv.parvList(env.DB) }));
+    if (a === 'sinvGet') return pj({ ok: true, invoice: await sinv.siaInvGet(env.DB, b.nr) });
+    if (a === 'sinvSet') return pj({ ok: true, invoice: await sinv.siaInvSet(env.DB, b, me.name) });
+    if (a === 'sinvPrices') return pj({ ok: true, cenas: await sinv.prices(env.DB, String(b.company || '')) });
+    if (a === 'sinvPricesSave') return pj({ ok: true, cenas: await sinv.pricesSave(env.DB, String(b.company || ''), b.cenas, me.name) });
+    if (a === 'reqGet') return pj({ ok: true, req: await sinv.req(env.DB, String(b.name || '')) });
+    if (a === 'reqSave') return pj({ ok: true, req: await sinv.reqSave(env.DB, String(b.name || ''), b.req, me.name) });
     if (a === 'siaWorkers') return pj({ ok: true, list: await workers(env.DB, String(b.company || '')) });
     /* Klientu pieteikumi no skata (E5), Skata PIN rēķiniem (E7), mājas lapas (E8) */
     if (a === 'clientReqs') return pj(Object.assign({ ok: true }, await clientReqs(env.DB, String(b.st || ''))));
