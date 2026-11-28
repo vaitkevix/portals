@@ -286,7 +286,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .sec span{color:var(--ink-3);font-weight:700}
 .apps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 /* Sākums v2: skaitļi, «Jāizdara tagad», kompaktas lietotnes ar skaitļiem */
-.kpi{display:grid;grid-template-columns:repeat(var(--kn,4),minmax(0,1fr));gap:10px;margin:0 0 16px}.kpi:empty{display:none}
+.kpi[hidden]{display:none}.kpi{display:grid;grid-template-columns:repeat(var(--kn,4),minmax(0,1fr));gap:10px;margin:0 0 16px}.kpi:empty{display:none}
 .kpi button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:14px 16px;border:0;border-radius:var(--r-lg,20px);text-align:left;color:#17201c;cursor:pointer;font:inherit;min-width:0}
 .kpi b{font-size:30px;font-weight:800;line-height:1.05;letter-spacing:-.02em}.kpi span{font-size:12.5px;font-weight:800;line-height:1.25}.kpi small{font-size:11.5px;font-weight:700;opacity:.62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 :root[data-theme="dark"] .kpi button{color:var(--ink)}
@@ -305,6 +305,16 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .ap2 .bd{min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#b42318;color:#fff;font-size:12px;font-weight:800;display:grid;place-items:center;flex:none}
 .ap2.hidden-q{display:none}
 .ap2 .ii.c-adm{color:#fff}
+.nbig{background:#17201c;color:#fff;border-radius:var(--r-xl,26px);padding:20px;margin:0 0 16px}
+:root[data-theme="dark"] .nbig{background:#22302a}
+.nbig .nl{font-size:12px;font-weight:800;letter-spacing:.06em;color:#9fc8b4;text-transform:uppercase}.nbig h3{margin:6px 0 4px;font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.15;overflow-wrap:anywhere}
+.nbig p{margin:0 0 14px;font-size:13.5px;font-weight:600;color:#c8d7cf}.nbig .nb{display:flex;gap:8px}.nbig .nb>*{flex:1;height:48px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:999px;font:inherit;font-size:14.5px;font-weight:800;text-decoration:none;border:0;cursor:pointer}
+.nbig .go{background:#fff;color:#17201c}.nbig .dn{background:#7cc79b;color:#17201c}
+.bnav{display:none}
+@media(max-width:899px){.bnav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;background:var(--surface);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+  .bnav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 0;border:0;background:none;color:var(--ink-3);font:inherit;font-size:11px;font-weight:800;cursor:pointer}
+  .bnav button i{display:grid;place-items:center;width:52px;height:30px;border-radius:999px}.bnav button.on{color:var(--ink)}.bnav button.on i{background:var(--ink);color:var(--surface)}
+  #vHome .board{padding-bottom:84px}}
 :root[data-theme="dark"] .ap2 .ii{color:var(--ink)}
 .ap2 .sf{display:none}@media(max-width:520px){.ap2 .lf{display:none}.ap2 .sf{display:inline}}
 @media(max-width:520px){.apps2{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 4px}.ap2{flex-direction:column;gap:6px;padding:0;border:0;background:none;text-align:center}.ap2 .ii{width:56px;height:56px;border-radius:18px}.ap2 .nm b{font-size:11px;font-weight:700;letter-spacing:-.01em;overflow-wrap:anywhere;hyphens:auto}.ap2 .nm small{display:none}.ap2 .bd{position:absolute;top:-5px;left:calc(50% + 16px)}}
@@ -491,6 +501,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
       </header>
       <div class="cols">
         <div class="colL">
+          <div id="nextBig"></div>
           <div class="kpi" id="kpi"></div>
           <div id="todo"></div>
           <div id="myToday"></div>
@@ -507,6 +518,7 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
       </div>
       <div class="foot">© VAITKEVIX, SIA</div>
     </main>
+    <nav class="bnav" id="bnav" aria-label="Galvenā izvēlne"></nav>
   </div>
 </section>
 
@@ -692,6 +704,40 @@ function homeTodo(D) {
   $('todo').innerHTML = `<div class="todo"><div class="th"><b>Jāizdara tagad</b>${I.length ? `<span class="n">${I.length}</span>` : ''}</div>${I.length ? I.slice(0, MAX).map(([c, t, d], i) => `<div class="ti"><span class="dot" style="background:${c}"></span><div class="tx"><b>${esc(t)}</b>${d ? `<small>${esc(d)}</small>` : ''}</div><button class="btn${i ? ' ghost' : ''}" type="button" data-todo="${i}">${esc(I[i][3])}</button></div>`).join('') + (more > 0 ? `<button class="btn ghost" type="button" id="todoMore" style="margin:0 0 8px">Vēl ${more}</button>` : '') : '<div class="ok">Viss kārtībā — nekas nav jādara steidzami.</div>'}</div>`;
   $('todo').onclick = (e) => { const b = e.target.closest('[data-todo]'); if (b) return I[+b.dataset.todo][4](); if (e.target.id === 'todoMore') { e.target.remove(); $('todo').querySelector('.todo').insertAdjacentHTML('beforeend', I.slice(MAX).map(([c, t, d], j) => `<div class="ti"><span class="dot" style="background:${c}"></span><div class="tx"><b>${esc(t)}</b>${d ? `<small>${esc(d)}</small>` : ''}</div><button class="btn ghost" type="button" data-todo="${MAX + j}">${esc(I[MAX + j][3])}</button></div>`).join('')); } };
 }
+const WROLES = ['izpilditajs', 'izvedejs', 'kurjers', 'gatavotājs'];
+/** Kura sākuma ekrāna versija: SIA (izpildītāja uzņēmums), darbinieks (tikai izpildītāja lomas) vai vadītājs/admins */
+function homeMode() {
+  const me = S.me; if (me.company) return 'sia'; if (me.admin || me.guest) return 'mgr';
+  const r = apps().map(k => me.perms[k] || gRole(k)); return r.some(x => WROLES.indexOf(x) !== -1) && r.every(x => WROLES.indexOf(x) !== -1 || x === 'skatitajs' || !x) ? 'worker' : 'mgr';
+}
+function homeNextIdx(NX) {
+  if (!NX.length) return -1; const td = ymd(new Date()), sc = (x) => (x.u ? 0 : 10) + ((x.d || td) <= td ? 0 : 5);
+  let b = 0; NX.forEach((x, i) => { if (sc(x) < sc(NX[b]) || (sc(x) === sc(NX[b]) && (x.d || td) < (NX[b].d || td))) b = i; }); return b;
+}
+function nextBigH(x) {
+  const td = ymd(new Date()), when = !x.d || x.d === td ? 'šodien' : fmtD(x.d), q = encodeURIComponent(x.a.split(' / ')[0] + (/rīga/i.test(x.a) ? '' : ', Rīga'));
+  return `<div class="nbig"><div class="nl">Nākamais · ${esc(when)}${x.u ? ' · steidzami' : ''}</div><h3>${esc(x.a)}</h3><p>${esc(x.sub)}</p>
+    <div class="nb"><a class="go" href="https://www.google.com/maps/dir/?api=1&destination=${q}" target="_blank" rel="noopener">Ceļš</a><button class="dn" type="button" data-app="${x.k}">Atvērt un atzīmēt</button></div></div>`;
+}
+/** SIA sākumā: šī mēneša kartīte (darbi, saskaņots, rēķini) */
+async function siaHomeCard() {
+  const ym = ymNow(), el = $('todo'); el.innerHTML = '';
+  try { const R = await api('siaMonth', { ym }); if (!S.me || !S.me.company) return;
+    const n = R.rows.length, ok = R.saskanots;
+    el.innerHTML = `<div class="todo"><div class="th"><b>${esc(ymName(ym).replace(/^./, c => c.toUpperCase()))}</b></div>
+      <div class="ti"><span class="dot" style="background:${ok ? '#2f8f62' : '#d99a2b'}"></span><div class="tx"><b>${n} ${n % 10 === 1 && n % 100 !== 11 ? 'izpildīts darbs' : 'izpildīti darbi'}</b><small>${ok ? 'Saskaņots — var izrakstīt rēķinus pārvaldniekiem' : 'Vēl nav saskaņots ar pārvaldnieku'}</small></div><button class="btn" type="button" id="shMon">${S.me.siaAdmin && ok ? 'Rēķini' : 'Atvērt'}</button></div></div>`;
+    $('shMon').onclick = () => siaMonthSheet();
+  } catch (e) { /* kartīte nav obligāta */ }
+}
+const BN_IC = { home: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11 12 4l8 7v9h-5v-6h-6v6H4z"/></svg>', cal: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
+  q: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>', menu: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>' };
+/** Apakšējā izvēlne telefonā */
+function homeNav(mode) {
+  const L = [['home', 'Sākums', BN_IC.home, () => scrollTo({ top: 0, behavior: 'smooth' })], mode === 'sia' ? ['mon', 'Mēnesis', BN_IC.cal, () => siaMonthSheet()] : ['cal', 'Grafiks', BN_IC.cal, () => $('cal').scrollIntoView({ behavior: 'smooth', block: 'start' })],
+    ['q', 'Meklēt', BN_IC.q, () => { scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => $('q').focus(), 250); }], ['menu', 'Izvēlne', BN_IC.menu, () => $('menuBtn').click()]];
+  $('bnav').innerHTML = L.map(([id, l, ic], i) => `<button type="button" data-bn="${i}" class="${i ? '' : 'on'}"${i ? '' : ' aria-current="page"'}><i>${ic}</i>${l}</button>`).join('');
+  $('bnav').onclick = (e) => { const b = e.target.closest('[data-bn]'); if (b) L[+b.dataset.bn][3](); };
+}
 function home() {
   show('vHome'); if (S.tourLater && !$('sheetBg')) setTimeout(maybeTour, 600); prefetchApps();
   const d = new Date(), h = d.getHours(), me = S.me, D = S.dash || {};
@@ -748,14 +794,20 @@ function home() {
   // Kalendārs + tuvākais
   const t = new Date(); if (!CAL.y) { CAL.y = t.getFullYear(); CAL.m = t.getMonth(); }
   drawCal();
-  const items = [];
-  ((D.aizv && D.aizv.next) || []).forEach(j => items.push(`<button class="ni" data-app="aizv" data-q="${esc(j.adrese)}"><i>${gl('aizv')}</i><div><b>${esc(j.adrese)}</b><small>${esc(fmtD(j.datums))} · ${esc(j.tips || 'Darbs')}${j.brigade ? ' · ' + esc(j.brigade) : ' · bez brigādes'}</small></div></button>`));
-  ((D.izv && D.izv.top) || []).forEach(x => items.push(`<button class="ni ${x.u ? 'u' : 'u'}" data-app="izv" data-q="${esc(x.a)}"><i>${gl('izv')}</i><div><b>${esc(x.a)}</b><small>Izvešana${x.u ? ' · steidzami' : ''}${x.d ? ' · līdz ' + esc(x.d) : ''}</small></div></button>`));
-  ((D.kais && D.kais.top) || []).forEach(x => items.push(`<button class="ni k" data-app="kais" data-q="${esc(x.a)}"><i>${gl('kais')}</i><div><b>${esc(x.a)}</b><small>Kaisāmmateriāls${x.m ? ' · ' + esc(x.m) : ''}</small></div></button>`));
-  GRAF.filter(k => D[k] && hasApp(k)).forEach(k => (D[k].next || []).slice(0, 2).forEach(x => items.push(`<button class="ni" data-app="${k}" data-q="${esc(x.adrese)}"><i>${gl(k)}</i><div><b>${esc(x.adrese)}</b><small>${esc(fmtD(x.datums))} · ${esc(APPS[k].name)}${x.steidzami ? ' · steidzami' : ''}</small></div></button>`)));
+  const NX = [];   // tuvākie darbi (dati) — no tiem saraksts, «Nākamais» kartīte darbiniekam/SIA
+  ((D.aizv && D.aizv.next) || []).forEach(j => NX.push({ k: 'aizv', a: j.adrese, d: j.datums, sub: fmtD(j.datums) + ' · ' + (j.tips || 'Darbs') + (j.brigade ? ' · ' + j.brigade : ' · bez brigādes') }));
+  ((D.izv && D.izv.top) || []).forEach(x => NX.push({ k: 'izv', a: x.a, d: '', u: x.u, sub: 'Izvešana' + (x.u ? ' · steidzami' : '') + (x.d ? ' · līdz ' + x.d : '') }));
+  ((D.kais && D.kais.top) || []).forEach(x => NX.push({ k: 'kais', a: x.a, d: '', sub: 'Kaisāmmateriāls' + (x.m ? ' · ' + x.m : '') }));
+  GRAF.filter(k => D[k] && hasApp(k)).forEach(k => (D[k].next || []).slice(0, 2).forEach(x => NX.push({ k, a: x.adrese, d: x.datums, u: x.steidzami, sub: fmtD(x.datums) + ' · ' + APPS[k].name + (x.steidzami ? ' · steidzami' : '') })));
+  const niH = (x) => `<button class="ni${x.k === 'izv' ? ' u' : x.k === 'kais' ? ' k' : ''}" data-app="${x.k}" data-q="${esc(x.a)}"><i>${gl(x.k)}</i><div><b>${esc(x.a)}</b><small>${esc(x.sub)}</small></div></button>`;
+  const mode = homeMode(), bi = mode === 'mgr' ? -1 : homeNextIdx(NX);
+  $('nextBig').innerHTML = bi >= 0 ? nextBigH(NX[bi]) : '';
+  const items = NX.map(niH), mt = items.filter((_, i) => i !== bi);
   $('nextList').innerHTML = items.length ? items.join('') : '<div class="card" style="padding:18px;text-align:center;font-weight:700;color:var(--ink-3)">Nav gaidošu darbu ✓</div>';
-  $('myToday').innerHTML = items.length ? `<h2 class="sec">Mani tuvākie darbi</h2><div class="nextl" style="margin:0">${items.slice(0, 4).join('')}</div>${items.length > 4 ? `<button class="btn ghost" id="myAll" type="button" style="margin-top:10px">Visi darbi (${items.length})</button>` : ''}` : '';
+  $('myToday').innerHTML = mt.length ? `<h2 class="sec">${mode === 'mgr' ? 'Mani tuvākie darbi' : 'Pēc tam · ' + mt.length}</h2><div class="nextl" style="margin:0">${mt.slice(0, 4).join('')}</div>${mt.length > 4 ? `<button class="btn ghost" id="myAll" type="button" style="margin-top:10px">Visi darbi (${mt.length})</button>` : ''}` : '';
   { const ma = $('myAll'); if (ma) ma.onclick = () => $('nextList').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  $('kpi').hidden = mode === 'worker'; if (mode === 'worker') $('todo').innerHTML = ''; if (mode === 'sia') siaHomeCard();
+  homeNav(mode);
   filterQ();
 }
 const DOTC = { aizv: 'var(--mint)', pl: '#7fd3b0', logi: '#7fbcf2', sniegs: '#b49ff5', darz: '#9ccf7a', stav: '#f6cc55' };
@@ -781,7 +833,7 @@ function filterQ() {
 }
 $('q').oninput = filterQ;
 $('q').onkeydown = (e) => { if (e.key === 'Enter') { const f = document.querySelector('#tiles [data-app]:not(.hidden-q), #nextList [data-app]:not(.hidden-q)'); if (f) openApp(f.dataset.app); } };
-['railBtns', 'stats', 'kpi', 'wide', 'nextList', 'myToday'].forEach(id => $(id).addEventListener('click', (e) => { if (e.target.closest('[data-adm]')) return openAdmin(); const t = e.target.closest('[data-app]'); if (t) openApp(t.dataset.app); }));
+['railBtns', 'stats', 'kpi', 'nextBig', 'wide', 'nextList', 'myToday'].forEach(id => $(id).addEventListener('click', (e) => { if (e.target.closest('[data-adm]')) return openAdmin(); const t = e.target.closest('[data-app]'); if (t) openApp(t.dataset.app); }));
 $('railMenu').onclick = () => $('menuBtn').click();
 $('tiles').onclick = (e) => {
   if (e.target.closest('[data-adm]')) return openAdmin();
