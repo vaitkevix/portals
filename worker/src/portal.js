@@ -188,6 +188,12 @@ async function dash(env, me) {
   if (!me.company && (P.dl || P.portal === 'admin')) { try { const x = await dlSummary(env.DB, td); out.dl = Object.assign({ today: 0, done: 0, late: 0, cant: 0, urgent: 0, days: {}, next: [] }, x); } catch (e) { /* tabulas vēl nav */ } }
   /* Vadītāja panelis: mani objekti šodien (Darba laiks, aizvietošana, grafiki, izvešana, kaisāmmateriāls) */
   if (!me.company) { try { out.mine = await mineToday(env, me, td); } catch (e) { /* tabulas vēl nav */ } }
+  /* Sākuma ekrāns «Jāizdara tagad»: gaida apstiprinājumu (Darba laiks SMS, Personāls), atvērtās pretenzijas, neapmaksātie izpildītāju rēķini */
+  if (!me.company) { const T = {}, one = async (sql, ...x) => { try { const r = await env.DB.prepare(sql).bind(...x).first(); return (r && r.n) || 0; } catch (e) { return 0; } };
+    if (P.dl === 'admin' || P.dl === 'vaditajs' || P.portal === 'admin') { try { const r = await env.DB.prepare("SELECT v FROM kv WHERE k = 'dl:pending'").first(); T.dlGaida = r ? (JSON.parse(r.v) || []).length : 0; } catch (e) {} }
+    if (P.pers === 'admin') T.pers = await one("SELECT (SELECT COUNT(*) FROM pers_hire WHERE statuss = 'Jauns') + (SELECT COUNT(*) FROM pers_vac WHERE statuss = 'Jauns') + (SELECT COUNT(*) FROM pers_chg WHERE statuss = 'Jauns') n");
+    if (P.portal === 'admin') { T.claims = await one("SELECT COUNT(*) n FROM claim WHERE statuss = 'atverta'"); T.sinv = await one("SELECT COUNT(*) n FROM sia_inv WHERE statuss = 'izrakstīts'"); T.sinvKave = await one("SELECT COUNT(*) n FROM sia_inv WHERE statuss = 'izrakstīts' AND termins < ?", td); }
+    out.todo = T; }
   if (!me.company && out.mine) { try { out.rits = await rits.card(env, me.name); } catch (e) { console.error('rits card', e); } }   // I1 Rīta ziņa
   return out;
 }

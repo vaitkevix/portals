@@ -285,6 +285,29 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
 .sec{margin:22px 0 14px;font-size:clamp(22px,2.6vw,30px);font-weight:800;letter-spacing:-.02em;color:var(--ink-strong)}
 .sec span{color:var(--ink-3);font-weight:700}
 .apps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+/* Sākums v2: skaitļi, «Jāizdara tagad», kompaktas lietotnes ar skaitļiem */
+.kpi{display:grid;grid-template-columns:repeat(var(--kn,4),minmax(0,1fr));gap:10px;margin:0 0 16px}.kpi:empty{display:none}
+.kpi button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:14px 16px;border:0;border-radius:var(--r-lg,20px);text-align:left;color:#17201c;cursor:pointer;font:inherit;min-width:0}
+.kpi b{font-size:30px;font-weight:800;line-height:1.05;letter-spacing:-.02em}.kpi span{font-size:12.5px;font-weight:800;line-height:1.25}.kpi small{font-size:11.5px;font-weight:700;opacity:.62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+:root[data-theme="dark"] .kpi button{color:var(--ink)}
+@media(max-width:520px){.kpi{grid-template-columns:repeat(var(--km,3),minmax(0,1fr));gap:8px}.kpi button{padding:11px 12px}.kpi b{font-size:22px}.kpi small{display:none}}
+.todo{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-xl,24px);padding:14px 14px 6px;margin:0 0 18px}
+.todo .th{display:flex;align-items:center;gap:8px;margin:0 2px 8px}.todo .th b{font-size:17px;font-weight:800}.todo .th .n{min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#fde4e1;color:#b42318;font-size:12px;font-weight:800;display:grid;place-items:center}
+.ti{display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;background:var(--surface-2);margin:0 0 8px}
+.ti .dot{width:10px;height:10px;border-radius:50%;flex:none}.ti .tx{flex:1;min-width:0}.ti .tx b{display:block;font-size:14.5px;font-weight:800;line-height:1.3}.ti .tx small{display:block;font-size:12.5px;font-weight:600;color:var(--ink-3);overflow-wrap:anywhere;line-height:1.35;margin-top:1px}
+.ti .btn{width:auto;height:38px;padding:0 16px;font-size:13px;flex:none}
+.todo .ok{padding:4px 2px 10px;font-weight:700;color:var(--ink-3)}
+@media(max-width:520px){.ti{flex-wrap:wrap;gap:8px 10px}.ti .tx{flex-basis:calc(100% - 22px)}.ti .btn{margin-left:20px;height:36px}}
+.apps2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.ap2{position:relative;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:18px;border:1px solid var(--line);background:var(--surface);text-align:left;color:var(--ink);cursor:pointer;font:inherit;min-width:0}
+.ap2:hover{border-color:var(--line-2)}.ap2 .ii{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;flex:none;color:#17201c}
+.ap2 .nm{flex:1;min-width:0}.ap2 .nm b{display:block;font-size:14.5px;font-weight:800;line-height:1.25}.ap2 .nm small{display:block;font-size:12px;font-weight:600;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ap2 .bd{min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#b42318;color:#fff;font-size:12px;font-weight:800;display:grid;place-items:center;flex:none}
+.ap2.hidden-q{display:none}
+.ap2 .ii.c-adm{color:#fff}
+:root[data-theme="dark"] .ap2 .ii{color:var(--ink)}
+.ap2 .sf{display:none}@media(max-width:520px){.ap2 .lf{display:none}.ap2 .sf{display:inline}}
+@media(max-width:520px){.apps2{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 4px}.ap2{flex-direction:column;gap:6px;padding:0;border:0;background:none;text-align:center}.ap2 .ii{width:56px;height:56px;border-radius:18px}.ap2 .nm b{font-size:11px;font-weight:700;letter-spacing:-.01em;overflow-wrap:anywhere;hyphens:auto}.ap2 .nm small{display:none}.ap2 .bd{position:absolute;top:-5px;left:calc(50% + 16px)}}
 @media(max-width:520px){.apps{gap:10px}}
 .ac{position:relative;display:flex;flex-direction:column;justify-content:space-between;min-height:150px;padding:18px;border-radius:var(--r-xl,28px);border:0;text-align:left;color:#17201c;transition:transform .15s}
 .ac:active{transform:scale(.98)}
@@ -468,11 +491,12 @@ html.andfix .appv{bottom:var(--safe-b)}   /* Android zem pogu joslas — lietotn
       </header>
       <div class="cols">
         <div class="colL">
+          <div class="kpi" id="kpi"></div>
+          <div id="todo"></div>
           <div id="myToday"></div>
-          <h2 class="sec">Šodien <span id="todayN"></span></h2>
-          <div class="apps" id="tiles"></div>
-          <h2 class="sec">Kopsavilkums</h2>
-          <div class="stats3" id="stats"></div>
+          <h2 class="sec">Lietotnes <span id="todayN"></span></h2>
+          <div class="apps2" id="tiles"></div>
+          <div class="stats3" id="stats" hidden></div>
           <div id="wide"></div>
         </div>
         <div class="colR" id="colR">
@@ -628,6 +652,46 @@ function appChip(k) {
   if (GRAF.indexOf(k) !== -1 && (D.urgent || D.cant || D.late)) return `<span class="chip w">● ${D.urgent ? pl(D.urgent, 'steidzams', 'steidzami') : D.cant ? D.cant + ' nevar izpildīt' : pl(D.late, 'nokavēts', 'nokavēti')}</span>`;
   const r = S.me.perms[k] || (GRAF.indexOf(k) !== -1 ? gRole(k) : ''); return r ? `<span class="chip">${esc(RL[r] || (r === 'izvedejs' ? 'Izvedējs' : r === 'kurjers' ? 'Kurjers' : r))}</span>` : '';
 }
+const AP_SHORT = { 'Kaisāmmateriāls': 'Kaisāmm.', 'Zāles pļaušana': 'Pļaušana', 'Logu mazgāšana': 'Logi', 'Sniega tīrīšana': 'Sniegs', 'Pazemes stāvvietas': 'Stāvvietas', 'Administrēšana': 'Admin', 'Mani darbinieki': 'Darbinieki', 'Aizvietošana': 'Aizvietoš.' };
+/** Lietotnes ikonas sarkanais skaitlis — tikai tas, kam jāpievērš uzmanība */
+function appBadge(k) {
+  const D = (S.dash || {})[k] || {}, T = (S.dash || {}).todo || {};
+  if (k === 'dl') return (D.darbaDiena ? D.trukst || 0 : 0) + (T.dlGaida || 0);
+  if (GRAF.indexOf(k) !== -1) return (D.late || 0) + (D.cant || 0) + (D.urgent || 0);
+  if (k === 'izv') return D.urgent || 0; if (k === 'aizv') return D.unassigned || 0; if (k === 'pers') return T.pers || 0;
+  return 0;
+}
+function homeKpi(D, list) {
+  const has = (k) => list.indexOf(k) !== -1, gt = GRAF.filter(k => D[k] && has(k)), K = [];
+  const tod = gt.reduce((a, k) => a + (D[k].today || 0), 0) + (D.aizv && has('aizv') ? D.aizv.today || 0 : 0), don = gt.reduce((a, k) => a + (D[k].done || 0), 0) + (D.aizv && has('aizv') ? (D.aizv.today || 0) - (D.aizv.open || 0) : 0);
+  const top = gt.slice().sort((a, b) => (D[b].today || 0) - (D[a].today || 0))[0] || (has('aizv') ? 'aizv' : '');
+  if (gt.length || D.aizv) K.push([top, 'c-aizv', tod, 'darbi šodien', 'izpildīti ' + don]);
+  const late = gt.reduce((a, k) => a + (D[k].late || 0) + (D[k].cant || 0), 0), lk = gt.find(k => D[k].late || D[k].cant) || top;
+  if (gt.length) K.push([lk, 'c-pers', late, 'nokavēti', late ? 'jāpārplāno' : 'viss laikā']);
+  if (D.dl && D.dl.objekti && has('dl') && D.dl.darbaDiena) K.push(['dl', 'c-izv', D.dl.trukst || 0, 'trūkst darbinieka', D.dl.objekti + ' objekti']);
+  const gaida = (D.izv && has('izv') ? (D.izv.mine != null ? D.izv.mine : D.izv.open) || 0 : 0) + (D.kais && has('kais') ? D.kais.open || 0 : 0);
+  if (D.izv || D.kais) K.push([D.izv && has('izv') ? 'izv' : 'kais', 'c-budz', gaida, 'pieteikumi gaida', 'izvešana, kaisāmm.']);
+  const el = $('kpi'); el.style.setProperty('--kn', Math.max(K.length, 1)); el.style.setProperty('--km', K.length === 4 ? 2 : Math.max(K.length, 1));
+  el.innerHTML = K.map(([k, c, n, l, sm]) => `<button class="${c}" ${k ? `data-app="${k}"` : ''}><b>${n}</b><span>${esc(l)}</span><small>${esc(sm)}</small></button>`).join('');
+}
+/** «Jāizdara tagad»: konkrēti darbi ar pogu, svarīgākie augšā */
+function homeTodo(D) {
+  const me = S.me, T = D.todo || {}, I = [], RED = '#c63d3d', AMB = '#d99a2b', GRN = '#2f8f62', pl = (n, a, b) => n + ' ' + (n % 10 === 1 && n % 100 !== 11 ? a : b);
+  if (me.company || me.guest) { $('todo').innerHTML = ''; return; }
+  if (D.dl && D.dl.darbaDiena && D.dl.trukst && hasApp('dl')) I.push([RED, 'Trūkst darbinieka · ' + pl(D.dl.trukst, 'objekts', 'objekti'), (D.dl.truksAdr || []).slice(0, 3).map(x => x.a).join(' · '), 'Atvērt', () => openApp('dl')]);
+  GRAF.filter(k => D[k] && hasApp(k) && (D[k].late || D[k].cant)).forEach(k => I.push([RED, APPS[k].name + ': ' + [D[k].late ? pl(D[k].late, 'nokavēts', 'nokavēti') : '', D[k].cant ? D[k].cant + ' nevar izpildīt' : ''].filter(Boolean).join(', '), 'Jāpārplāno vai jāatzīmē iemesls', 'Atvērt', () => openApp(k)]));
+  if (D.izv && D.izv.urgent && hasApp('izv')) I.push([RED, 'Izvešana: ' + pl(D.izv.urgent, 'steidzams pieteikums', 'steidzami pieteikumi'), ((D.izv.top || []).filter(x => x.u).slice(0, 3).map(x => x.a)).join(' · '), 'Atvērt', () => openApp('izv')]);
+  GRAF.filter(k => D[k] && hasApp(k) && D[k].urgent).forEach(k => I.push([AMB, APPS[k].name + ': ' + pl(D[k].urgent, 'steidzams', 'steidzami'), ((D[k].next || []).filter(x => x.steidzami).slice(0, 2).map(x => x.adrese)).join(' · '), 'Atvērt', () => openApp(k)]));
+  if (D.aizv && D.aizv.unassigned && hasApp('aizv')) I.push([AMB, 'Rīt ' + pl(D.aizv.unassigned, 'darbs', 'darbi') + ' bez brigādes', 'Aizvietošana — piešķiriet brigādi', 'Piešķirt', () => openApp('aizv')]);
+  if (T.dlGaida && hasApp('dl')) I.push([AMB, pl(T.dlGaida, 'SMS labojums gaida', 'SMS labojumi gaida') + ' apstiprinājumu', 'Darba laiks: VAKAR, SLIMS, ATV, STOP ar laiku', 'Skatīt', () => openApp('dl')]);
+  if (T.pers && hasApp('pers')) I.push([GRN, 'Personāls: ' + pl(T.pers, 'jauns pieteikums', 'jauni pieteikumi'), 'Pieņemšana, atvaļinājumi, grozījumi', 'Skatīt', () => openApp('pers')]);
+  if (T.claims && D.rits) I.push([RED, pl(T.claims, 'atvērta pretenzija', 'atvērtas pretenzijas'), 'Darbi aktā neiet, kamēr nav labots', 'Skatīt', () => openRits(D.rits)]);
+  if (D.mine && D.mine.problem) I.push([AMB, 'Mani objekti: ' + D.mine.problem + ' jāpievērš uzmanība', D.mine.trukst ? 'trūkst darbinieka ' + D.mine.trukst : 'skatīt sarakstu zemāk', 'Skatīt', () => { const m = document.querySelector('#wide .mine'); if (m) m.scrollIntoView({ behavior: 'smooth', block: 'start' }); }]);
+  if (T.sinv && me.admin) I.push([T.sinvKave ? RED : GRN, 'Izpildītāju rēķini: ' + T.sinv + ' neapmaksāti' + (T.sinvKave ? ', ' + T.sinvKave + ' kavēti' : ''), 'Atzīmējiet apmaksātos', 'Atvērt', () => openAdmin('sinv')]);
+  const MAX = 5, more = I.length - MAX;
+  $('todo').innerHTML = `<div class="todo"><div class="th"><b>Jāizdara tagad</b>${I.length ? `<span class="n">${I.length}</span>` : ''}</div>${I.length ? I.slice(0, MAX).map(([c, t, d], i) => `<div class="ti"><span class="dot" style="background:${c}"></span><div class="tx"><b>${esc(t)}</b>${d ? `<small>${esc(d)}</small>` : ''}</div><button class="btn${i ? ' ghost' : ''}" type="button" data-todo="${i}">${esc(I[i][3])}</button></div>`).join('') + (more > 0 ? `<button class="btn ghost" type="button" id="todoMore" style="margin:0 0 8px">Vēl ${more}</button>` : '') : '<div class="ok">Viss kārtībā — nekas nav jādara steidzami.</div>'}</div>`;
+  $('todo').onclick = (e) => { const b = e.target.closest('[data-todo]'); if (b) return I[+b.dataset.todo][4](); if (e.target.id === 'todoMore') { e.target.remove(); $('todo').querySelector('.todo').insertAdjacentHTML('beforeend', I.slice(MAX).map(([c, t, d], j) => `<div class="ti"><span class="dot" style="background:${c}"></span><div class="tx"><b>${esc(t)}</b>${d ? `<small>${esc(d)}</small>` : ''}</div><button class="btn ghost" type="button" data-todo="${MAX + j}">${esc(I[MAX + j][3])}</button></div>`).join('')); } };
+}
 function home() {
   show('vHome'); if (S.tourLater && !$('sheetBg')) setTimeout(maybeTour, 600); prefetchApps();
   const d = new Date(), h = d.getHours(), me = S.me, D = S.dash || {};
@@ -640,26 +704,14 @@ function home() {
   const core = list.filter(k => GRAF.indexOf(k) === -1), graf = list.filter(k => GRAF.indexOf(k) !== -1);   // pamatlietotnes | grafika darbi | administrēšana
   $('railBtns').innerHTML = `<button class="rb on" title="Sākums">${GRID}</button><i class="rsep"></i>` + core.map(rbtn).join('') + (graf.length ? '<i class="rsep"></i>' + graf.map(rbtn).join('') : '') + (me.admin ? `<i class="rsep"></i><button class="rb" data-adm title="Administrēšana" aria-label="Administrēšana">${SHIELD}</button>` : '');
   const n = (D.aizv ? D.aizv.open || 0 : 0) + (D.izv ? (D.izv.mine != null ? D.izv.mine : D.izv.open) || 0 : 0) + (D.kais ? D.kais.open || 0 : 0) + GRAF.reduce((a, k) => a + (D[k] && hasApp(k) ? (D[k].today - D[k].done) + D[k].late : 0), 0);
-  $('todayN').textContent = n ? '(' + n + ')' : '';
-  $('tiles').innerHTML = list.map(k => `<button class="ac ${COLOR[k]}" data-app="${k}" data-q="${esc(APPS[k].name)}">
-      <div class="atop"><span class="ib">${gl(k, 20)}</span>${appChip(k)}</div>
-      <div><b>${APPS[k].name}</b><small>${esc(appSub(k))}</small></div>${ARROW}</button>`).join('')
-    + (me.admin ? `<button class="ac c-adm" data-adm data-q="Administrēšana pilnvaras objekti"><div class="atop"><span style="width:34px;height:34px;display:grid;place-items:center">${SHIELD}</span></div><div><b>Administrēšana</b><small>Cilvēki, pilnvaras, objekti, uzņēmumi</small></div>${ARROW}</button>` : '')
-    + (me.company ? `<button class="ac c-budz" data-sia="month" data-q="Mans mēnesis izpildītie darbi"><div class="atop"><span style="width:34px;height:34px;display:grid;place-items:center">${SIA_IC.cal}</span></div><div><b>Mans mēnesis</b><small>Izpildītie darbi, daudzumi, bildes, CSV</small></div>${ARROW}</button>`
-      + (me.siaAdmin ? `<button class="ac c-pers" data-sia="people" data-q="Mani darbinieki"><div class="atop"><span style="width:34px;height:34px;display:grid;place-items:center">${SIA_IC.ppl}</span></div><div><b>Mani darbinieki</b><small>Savi cilvēki ar savu PIN</small></div>${ARROW}</button>` : '') : '')
+  $('todayN').textContent = '';   // skaitļi tagad ir augšā (kpi) un uz ikonām
+  const T = D.todo || {}, ap2 = (attrs, cls, icon, name, sub, bd) => `<button class="ap2" ${attrs}><span class="ii ${cls}">${icon}</span><span class="nm"><b><span class="lf">${esc(name)}</span><span class="sf">${esc(AP_SHORT[name] || name)}</span></b><small>${esc(sub)}</small></span>${bd ? `<span class="bd" aria-label="${bd} jāpievērš uzmanība">${bd}</span>` : ''}</button>`;
+  $('tiles').innerHTML = list.map(k => ap2(`data-app="${k}" data-q="${esc(APPS[k].name)}"`, COLOR[k], gl(k, 22), APPS[k].name, appSub(k), appBadge(k))).join('')
+    + (me.admin ? ap2('data-adm data-q="Administrēšana pilnvaras objekti"', 'c-adm', SHIELD, 'Administrēšana', 'Cilvēki, objekti, uzņēmumi, rēķini', (T.sinvKave || 0) + (T.claims || 0)) : '')
+    + (me.company ? ap2('data-sia="month" data-q="Mans mēnesis izpildītie darbi rēķini"', 'c-budz', SIA_IC.cal, 'Mans mēnesis', 'Darbi, akts, rēķini pārvaldniekiem', 0)
+      + (me.siaAdmin ? ap2('data-sia="people" data-q="Mani darbinieki"', 'c-pers', SIA_IC.ppl, 'Mani darbinieki', 'Savi cilvēki ar savu PIN', 0) : '') : '')
     + (list.length ? '' : '<div class="card" style="grid-column:1/-1;padding:20px;text-align:center;font-weight:700;color:var(--ink-3)">Jums vēl nav piešķirta neviena lietotne. Sazinieties ar administratoru.</div>');
-  // Kopsavilkums
-  const sx = [];
-  if (D.aizv) sx.push(['aizv', 'Šodien neizpildīti', D.aizv.open, 'c-aizv']);
-  if (D.izv) sx.push(['izv', me.company ? 'Jāizved' : D.izv.mine != null ? 'Jūsu gaida' : 'Gaida izvešanu', D.izv.mine != null ? D.izv.mine : D.izv.open, 'c-izv']);
-  if (D.kais) sx.push(['kais', me.company ? 'Jāpiegādā' : 'Gaida piegādi', D.kais.open, 'c-kais']);
-  const gt = GRAF.filter(k => D[k] && hasApp(k)), gTod = gt.reduce((a, k) => a + D[k].today - D[k].done, 0), gLate = gt.reduce((a, k) => a + D[k].late + D[k].cant, 0);
-  if (gt.length) { const top = gt.slice().sort((a, b) => (D[b].today - D[b].done + D[b].late) - (D[a].today - D[a].done + D[a].late))[0];
-    sx.push([top, 'Grafikos šodien', gTod, COLOR[top]]); if (gLate) sx.push([gt.find(k => D[k].late || D[k].cant) || top, 'Nokavēti / nevar', gLate, 'c-pers']); }
-  if (D.aizv && sx.length < 3) sx.push(['aizv', 'Rīt darbi', D.aizv.tomorrow, 'c-lilac']);
-  const pri = (x) => ['Šodien neizpildīti', 'Grafikos šodien', 'Nokavēti / nevar'].indexOf(x[1]) !== -1 ? 0 : 1; sx.sort((a, b) => pri(a) - pri(b));
-  $('stats').innerHTML = sx.slice(0, 4).map(([k, l, v, c]) => `<button class="sx ${c === 'c-lilac' ? 'c-budz' : c}" data-app="${k}"><span>${l}</span><b>${v == null ? '—' : v}</b>${ARROW}</button>`).join('');
-  $('stats').previousElementSibling.hidden = $('stats').hidden = !sx.length;
+  homeKpi(D, list); homeTodo(D);
   // Plašā kartīte: šodienas progress
   if (D.aizv && D.aizv.today) {
     const done = D.aizv.today - D.aizv.open, pc = Math.round(done / D.aizv.today * 100);
@@ -729,7 +781,7 @@ function filterQ() {
 }
 $('q').oninput = filterQ;
 $('q').onkeydown = (e) => { if (e.key === 'Enter') { const f = document.querySelector('#tiles [data-app]:not(.hidden-q), #nextList [data-app]:not(.hidden-q)'); if (f) openApp(f.dataset.app); } };
-['railBtns', 'stats', 'wide', 'nextList', 'myToday'].forEach(id => $(id).addEventListener('click', (e) => { if (e.target.closest('[data-adm]')) return openAdmin(); const t = e.target.closest('[data-app]'); if (t) openApp(t.dataset.app); }));
+['railBtns', 'stats', 'kpi', 'wide', 'nextList', 'myToday'].forEach(id => $(id).addEventListener('click', (e) => { if (e.target.closest('[data-adm]')) return openAdmin(); const t = e.target.closest('[data-app]'); if (t) openApp(t.dataset.app); }));
 $('railMenu').onclick = () => $('menuBtn').click();
 $('tiles').onclick = (e) => {
   if (e.target.closest('[data-adm]')) return openAdmin();
@@ -2169,14 +2221,15 @@ window.SHX = { canTour: () => $('vApp').hidden && !$('sheetBg'), tourLater: () =
   tours: {
     lietotajs: [
       { title: 'Sveiki portālā!', text: 'Visas jūsu darba lietotnes ir vienuviet, ar vienu PIN. Pusminūtes pamācība.' },
-      { sel: '#tiles .ac', title: 'Lietotnes', text: 'Katrā kartītē redzams svarīgākais — piemēram, cik darbu gaida. Uzspiediet bultiņu, lai atvērtu.' },
+      { sel: '#todo', title: 'Jāizdara tagad', text: 'Svarīgākais šodien — kur trūkst darbinieka, kas nokavēts, kas gaida apstiprinājumu. Poga atver vajadzīgo vietu.' },
+      { sel: '#tiles .ap2', title: 'Lietotnes', text: 'Sarkanais skaitlis — cik lietām jāpievērš uzmanība. Uzspiediet, lai atvērtu.' },
       { sel: '#q', title: 'Meklēt', text: 'Ierakstiet adresi vai lietotni — kartītes un darbi atlasās uzreiz.' }, { sel: '#cal', title: 'Grafiks', text: 'Dienas ar darbiem ir iekrāsotas, šodiena — tumšā. Zemāk — tuvākie darbi.' },
       { sel: '#menuBtn', title: 'Jūsu izvēlne', text: 'Pamācība, tumšais režīms, pievienošana sākuma ekrānam un iziešana.' },
       { title: 'Viss gatavs!', text: 'Lietotnē augšā ir poga «Sākums» un ikonas ātrai pārslēgšanai. Veiksmīgu darbu!' }
     ]
   }
 };
-SHX.tours.admin = SHX.tours.lietotajs.slice(0, 2).concat([{ sel: '#tiles .c-adm', title: 'Administrēšana', text: 'Viens saraksts visām lietotnēm: cilvēki un PIN, pilnvaras, objekti, uzņēmumi un saraksti. Maini šeit — mainās visur.' }], SHX.tours.lietotajs.slice(2));
+SHX.tours.admin = SHX.tours.lietotajs.slice(0, 2).concat([{ sel: '#tiles [data-adm]', title: 'Administrēšana', text: 'Viens saraksts visām lietotnēm: cilvēki un PIN, pilnvaras, objekti, uzņēmumi un saraksti. Maini šeit — mainās visur.' }], SHX.tours.lietotajs.slice(2));
 </script>
 <script src="sh-addon.js?v=2"></script>
 <script src="https://vaitkevix.cloud/sh/api/apv.js" defer></script><!-- apvienotie objekti → «Apvienots» (no Mājas lietas) -->
